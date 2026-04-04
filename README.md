@@ -17,14 +17,12 @@
 
 | 功能 | 描述 |
 |------|------|
-| 🌍 **跨平台支持** | 完美支持 Windows、macOS 和 Linux 系统，一套工具遍天下 |
-| 🚀 **全自动补丁安装** | 图形化界面一键安装，自动移除游戏完整性校验 (Fuse)，小白也能用 |
+| 🌍 **跨平台支持** | 完美支持 Windows、macOS 和 Linux 系统 |
+| 🚀 **全自动补丁安装** | 图形化界面一键安装，自动备份，自动移除游戏完整性校验 (Fuse) |
 | 💾 **专业存档管理** | 自动扫描存档位置，支持一键备份/还原，带时间戳，可压缩为 ZIP |
-| 🛠️ **开发者工具箱** | 内置 Asar 解包/打包工具，支持跨平台格式选择，为汉化组和模组作者服务 |
+| 🛠️ **开发者工具箱** | 内置 Asar 解包/打包工具，支持跨平台格式选择 |
 | 🔒 **操作保护** | 智能并发锁、备份前确认提示，多重保障确保数据安全 |
 | 🌐 **多语言支持** | 内置中文/英文/日文，运行时自由切换，无需重启 |
-
-**注意：本工具设计为“双模式”运行。如果没有内置补丁数据，它将自动启动为“通用工具箱模式”。**
 
 ### 🇺🇸 English
 **Devil Connection Localization Tool** is a non-profit, fan-made localization patcher.
@@ -34,31 +32,27 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 
 | Feature | Description |
 |---------|-------------|
-| 🌍 **Cross-Platform** | Seamlessly runs on Windows, macOS, and Linux with a unified interface |
-| 🚀 **One-Click Patching** | GUI-based automatic installation with Fuse removal—no technical knowledge required |
+| 🌍 **Cross-Platform** | Seamlessly runs on Windows, macOS, and Linux |
+| 🚀 **One-Click Patching** | GUI-based automatic installation with auto-backup and Fuse removal |
 | 💾 **Professional Save Manager** | Auto-detects saves, timestamped backups, ZIP compression, instant restore |
-| 🛠️ **Developer Toolbox** | Built-in Asar extract/pack with multi-platform target selection for modders |
+| 🛠️ **Developer Toolbox** | Built-in Asar extract/pack with multi-platform target selection |
 | 🔒 **Operation Safety** | Concurrency protection, confirmation prompts, and multi-layer safeguards |
 | 🌐 **Multi-Language** | Chinese/English/Japanese with runtime switching—no restart needed |
 
-**Note: This tool runs in "Dual Mode". If no patch data is embedded, it launches as a "Generic Toolbox".**
-
 ### 🇯🇵 日本語
-本プロジェクトは、ゲーム『でびるコネクション』の非営利・個人制作によるローカライズツールです。
-完全なGUI、クロスプラットフォーム対応、そして強力なセーブデータ管理機能を搭載しました。
+本プロジェクトは、ゲーム『でびるコネクション』の非营利・個人制作によるローカライズツールです。
+完全なGUI、クロスプラットフォーム対応、そして強力なセーブデータ管理機能を搭载しました。
 
 **✨ 主な特徴:**
 
 | 機能 | 説明 |
 |------|------|
 | 🌍 **マルチプラットフォーム対応** | Windows、macOS、Linux で完全サポート |
-| 🚀 **自動ワンクリック導入** | GUI による簡単インストール、Fuse 自動解除 |
+| 🚀 **自動ワンクリック導入** | GUI による簡単インストール、自動バックアップ、Fuse 自動解除 |
 | 💾 **セーブデータ管理** | 自動検出、タイムスタンプ付きバックアップ、ZIP 圧縮対応 |
 | 🛠️ **開発者ツールボックス** | Asar 解凍/圧縮、マルチプラットフォーム対応 |
 | 🔒 **操作保護機能** | 並行実行保護、確認メッセージ、データ安全性多重保障 |
 | 🌐 **多言語サポート** | 中文/English/日本語、実行時切替可能 |
-
-**注意：本ツールは「デュアルモード」で動作します。パッチデータが内蔵されていない場合、「汎用ツールボックス」として起動します。**
 
 ---
 
@@ -69,7 +63,7 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 2. **放入目录**：将程序放入游戏根目录（即 `DevilConnection.exe` 所在的文件夹）。
 3. **运行**：双击运行。
    - **Windows**: 直接运行 `.exe`。
-   - **Mac/Linux**: 需要安装 Python环境 或使用构建好的二进制文件（如提供），并确保系统已安装 Node.js（Windows版本内置了精简版 Node，无需安装）。
+   - **Mac/Linux**: 需要安装 Python 环境或使用构建好的二进制文件（如提供），并确保系统已安装 Node.js（Windows版本内置了精简版 Node，无需安装）。
 4. **操作**：在弹出的窗口中点击 **"🚀 开始安装"** 即可。
 
 ### 🇺🇸 English
@@ -77,7 +71,7 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 2. **Place**: Put the tool into the game's root folder.
 3. **Run**:
    - **Windows**: Run the `.exe` directly.
-   - **Mac/Linux**: Requires Python or provided binary. Ensure Node.js is installed on your system (Windows version includes a bundled Node runtime).
+   - **Mac/Linux**: Requires Python or provided binary. Ensure Node.js is installed (Windows version includes a bundled Node runtime).
 4. **Action**: Click **"🚀 Start Patch"** in the GUI window.
 
 ### 🇯🇵 日本語
@@ -85,7 +79,7 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 2. **配置**: ツールをゲームのルートフォルダに置きます。
 3. **実行**:
    - **Windows**: `.exe` を直接実行します。
-   - **Mac/Linux**: Python環境、または提供されたバイナリが必要です。システムにNode.jsがインストールされていることを確認してください（Windows版は内蔵されています）。
+   - **Mac/Linux**: Python環境、または提供されたバイナリが必要です。Node.jsがインストールされていることを確認してください（Windows版は内装されています）。
 4. **操作**: ウィンドウ内の **"🚀 インストール開始"** をクリックします。
 
 ---
@@ -101,11 +95,11 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 ```
 
 #### 核心功能
-- **🔍 自动扫描**：智能识别 `_storage` 或 `save` 文件夹，开箱即用
-- **💾 快速备份**：点击 **\"📦 创建备份\"**，自动生成带**年月日时分秒**时间戳的快照
+- **🔍 自动扫描**：智能识别 `_storage` 或 `save` 文件夹
+- **💾 快速备份**：点击 **"📦 创建备份"**，自动生成带**年月日时分秒**时间戳的快照
   - 支持**文件夹备份**和 **ZIP 压缩备份**（节省空间）
   - 备份类型在列表中清晰显示 `[ZIP]` 或 `[DIR]`
-- **↩️ 瞬间还原**：选中历史备份，点击 **\"还原选中\"** 一秒回档
+- **↩️ 瞬间还原**：选中历史备份，点击 **"还原选中"** 一秒回档
   - 还原前自动弹出确认框，防止误操作覆盖当前进度
   - 异步操作，不卡顿游戏窗口
 - **🗑️ 灵活删除**：可随时清理不需要的旧备份，释放存储空间
@@ -121,9 +115,9 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 
 #### Core Functions
 - **🔍 Smart Detection**：Automatically identifies `_storage` or `save` folders
-- **💾 Fast Backup**：Click **\"📦 Backup Now\"** to create timestamped snapshots
+- **💾 Fast Backup**：Click **"📦 Backup Now"** to create timestamped snapshots
   - Support both folder and ZIP-compressed backups
-  - Backup types displayed as `[ZIP]` or `[DIR]` in the list
+  - Backup types displayed as `[ZIP]` or `[DIR]`
 - **↩️ Instant Restore**：Select and restore in seconds with confirmation prompts
   - Async operations, no freezing
 - **🗑️ Cleanup**：Delete old backups to free space
@@ -139,7 +133,7 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 
 #### コア機能
 - **🔍 自動検出**：`_storage` または `save` フォルダを自動認識
-- **💾 高速バックアップ**：**\"📦 バックアップ作成\"** でタイムスタンプ付きスナップショット生成
+- **💾 高速バックアップ**：**"📦 バックアップ作成"** でタイムスタンプ付きスナップショット生成
   - フォルダ・ZIP 圧縮の両対応
   - リストに `[ZIP]` または `[DIR]` を表示
 - **↩️ 瞬時復元**：選択して復元、確認メッセージで誤操作防止
@@ -149,43 +143,10 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 
 ---
 
-## ⚡ Advanced Features / 高级特性 / 高度な機能
-
-### 🇨🇳 最新优化（v2.0+）
-
-| 特性 | 说明 | 优势 |
-|------|------|------|
-| 🎛️ **配置持久化** | 平台选择和备份方式自动保存 | 无需每次重新配置 |
-| 📊 **双列备份列表** | 备份名称和类型分开显示 | 一目了然，管理更清晰 |
-| 🔄 **自动路径同步** | 解包完成后自动同步到打包源 | 加速工作流，减少人工操作 |
-| 🔐 **并发操作保护** | 智能锁机制防止同时执行 | 100% 避免数据冲突 |
-| 🌐 **国际化完全支持** | 全 UI 文本支持 CN/EN/JP | 全球用户友好 |
-
-### 🇺🇸 Latest Enhancements (v2.0+)
-
-| Feature | Description | Benefit |
-|---------|-------------|---------|
-| 🎛️ **Config Persistence** | Platform and backup preferences auto-saved | No reconfiguration needed |
-| 📊 **Dual-Column Backup List** | Separate backup name and type columns | Clear, organized management |
-| 🔄 **Auto Path Sync** | Extract completion auto-syncs to pack source | Streamlined workflow |
-| 🔐 **Concurrency Protection** | Intelligent lock prevents simultaneous ops | Zero data conflicts |
-| 🌐 **Full i18n Support** | Complete UI translation (CN/EN/JP) | Global user-friendly |
-
-### 🇯🇵 最新改善 (v2.0+)
-
-| 機能 | 説明 | メリット |
-|------|------|---------|
-| 🎛️ **設定永続化** | プラットフォームと方式を自動保存 | 毎回設定不要 |
-| 📊 **二列バックアップリスト** | 名前と型を分離表示 | 管理が明確 |
-| 🔄 **自動パス同期** | 解凍完了で自動同期 | ワークフロー加速 |
-| 🔐 **並行実行保護** | スマート排他制御 | データ衝突ゼロ |
-| 🌐 **完全多言語対応** | UI 完全翻訳（CN/EN/JP） | グローバル対応 |
-
----
-
 ## 🛠️ For Developers / 开发者与技术细节 / 技術情報
 
-### 🇨🇳 构建指南 (Build)
+### 🇨🇳 构建指南
+
 本项目包含一个智能构建脚本 `Pack.cmd`，可生成两种版本的程序：
 
 #### 📦 生成模式
@@ -201,7 +162,6 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
    ```bash
    git clone <repo-url>
    cd <repo-path>
-   # 确保 tools/ 目录完整（node.exe, bundled_asar 等）
    ```
 
 2. **配置汉化资源**（可选）
@@ -233,13 +193,14 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 - **Mac/Linux**：自动调用系统全局 Node.js
 
 **Asar 打包智能系统**
+- 使用内置 `asar_cli.mjs` 工具进行 ASAR 操作
 - 自动检测目标平台（Windows/Mac/Linux）
 - 智能选择 unpack 规则：
   - Windows：`.node`, `.dll`, `.exe`
   - Mac/Linux：`.node`, `.so`, `.dylib`, `.bin`
-- 确保跨平台兼容性
 
 ### 🇺🇸 Build Guide
+
 Intelligent `Pack.cmd` script with **dual-mode generation**:
 
 #### 📦 Generation Modes
@@ -255,7 +216,6 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
    ```bash
    git clone <repo-url>
    cd <repo-path>
-   # Verify tools/ is complete (node.exe, bundled_asar, etc.)
    ```
 
 2. **Add Translation Assets** (Optional)
@@ -286,14 +246,15 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
 - **Windows**: Bundled standalone Node.js (zero dependencies)
 - **Mac/Linux**: System global Node.js auto-detection
 
-**Smart Asar Packing**
+**Asar Operations**
+- Built-in `asar_cli.mjs` tool for ASAR operations
 - Auto-detect target platform
 - Intelligent unpack patterns:
   - Windows: `.node`, `.dll`, `.exe`
   - Mac/Linux: `.node`, `.so`, `.dylib`, `.bin`
-- Cross-platform compatibility guaranteed
 
 ### 🇯🇵 ビルドガイド
+
 スマートな `Pack.cmd` スクリプトで**デュアルモード生成**：
 
 #### 📦 生成モード
@@ -309,7 +270,6 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
    ```bash
    git clone <repo-url>
    cd <repo-path>
-   # tools/ 完全確認（node.exe、bundled_asar など）
    ```
 
 2. **翻訳リソース追加**（任意）
@@ -340,12 +300,12 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
 - **Windows**: 内蔵スタンドアロン Node.js（依存なし）
 - **Mac/Linux**: システムグローバル Node.js 自動検出
 
-**智能 Asar パッキング**
+**Asar オペレーション**
+- 内蔵 `asar_cli.mjs` ツールで ASAR 操作
 - ターゲットプラットフォーム自動検出
 - インテリジェント unpack パターン：
   - Windows: `.node`, `.dll`, `.exe`
   - Mac/Linux: `.node`, `.so`, `.dylib`, `.bin`
-- クロスプラットフォーム互換性保証
 
 ---
 
@@ -355,11 +315,11 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
 本项目严格遵守原作者 **ばやちゃお (Bayachao)** 的《二次创作与同人活动指南》。
 - **非营利**：仅限非营利目的使用，严禁用于商业用途。
 - **素材使用**：本补丁仅包含运行所需的翻译文件与代码，**不包含游戏本体**。
-- **版权归属**：游戏的所有权利（原作、设计、人物等）均归 **ばやちゃお** 所有。
-  
+- **版权归属**：游戏的所有权利（原作，设计，人物等）均归 **ばやちゃお** 所有。
+
 - **参考链接：** [原作者 Guideline](https://bayachao.com/devil-connection/guideline)
 - **许可证**：[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh)
-  
+
 ### 🇺🇸 English
 This project strictly adheres to the "Derivative Works Guidelines" set by the original author, **Bayachao**.
 - **Non-Commercial**: For non-profit, educational purposes only. Commercial use is strictly prohibited.
@@ -370,8 +330,8 @@ This project strictly adheres to the "Derivative Works Guidelines" set by the or
 - **License**: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 ### 🇯🇵 日本語
-本プロジェクトは、原作者 **ばやちゃお** 様の「二次創作・同人活動可能範囲」および「翻訳パッチの作成について」の規定を厳守して作成されています。
-- **非営利**: 非営利目的での利用に限ります。営利目的での利用は固く禁じられています。
+本プロジェクトは，原作者 **ばやちゃお** 様の「二次創作・同人活動可能範囲」および「翻訳パッチの作成について」の規定を厳守して作成されています。
+- **非营利**: 非营利目的での利用に限ります。营利目的での利用は固く禁じられています。
 - **素材の利用**: 本パッチは翻訳および導入に必要なファイルのみを含んでおり、**ゲーム本体は含まれません**。
 - **権利の帰属**: 原作、デザイン、キャラクター等のすべての権利は **ばやちゃお** 様に帰属します。
 
