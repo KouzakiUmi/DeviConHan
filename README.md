@@ -162,8 +162,6 @@ main.py (入口)
 │   │   └── image/      # 图片资源
 │   └── tyrano/
 │       └── lang.js      # 语言配置文件
-│
-└── 原文/                # 原文对照目录（可选）
 ```
 
 ### ⚙️ Configuration File / 配置文件详解 / 設定ファイル
