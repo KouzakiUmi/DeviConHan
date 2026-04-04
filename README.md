@@ -3,6 +3,7 @@
 ![Status](https://img.shields.io/badge/Status-Stable-green?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Win%20|%20Mac%20|%20Linux-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey?style=flat-square)
+![Build](https://img.shields.io/badge/Build-Automated-success?style=flat-square)
 
 > **By KouzakiUmi (呜咪 / 神前海)**
 
@@ -27,20 +28,22 @@
 
 ## 📥 Installation / 安装 / インストール
 
-### 🏁 Windows
+### 🚀 自动构建版（推荐）
 
-**从源码构建**
+每次推送到 main 分支会自动构建，下载最新版本：
+- 前往 [Releases](../../releases) 下载 `DevilConnection_Patch.exe` 或 `Tyrano_Toolbox.exe`
+
+### 🏁 Windows（从源码构建）
+
 ```cmd
 git clone <repo-url>
-cd <repo-path>
+cd repo-path
 .\Pack.cmd
 ```
 
-构建完成后在 `dist/` 目录获取可执行文件：
-- `dist/Tyrano_Toolbox.exe` - 纯净工具箱（不含补丁数据）
-- `dist/DevilConnection_Patch.exe` - 汉化补丁版（包含补丁数据，仅当 Patch/ 目录存在时生成）
-
-将生成的可执行文件放入游戏根目录（即 `DevilConnection.exe` 所在的文件夹）即可运行。
+构建产物位于 `dist/` 目录：
+- `Tyrano_Toolbox.exe` - 纯净工具箱
+- `DevilConnection_Patch.exe` - 汉化补丁版（仅当 Patch/ 目录存在时生成）
 
 ---
 
@@ -318,7 +321,14 @@ use_zip = true
 
 ### 🔧 Build Process / 构建流程 / ビルドプロセス
 
-#### Windows 构建 (`Pack.cmd`)
+#### 🤖 自动构建
+
+推送到 main 分支会自动触发 GitHub Actions 构建：
+- 构建 Windows 可执行文件
+- 生成 nightly 版本标签
+- 发布到 [Releases](../../releases)
+
+#### 💻 本地构建
 
 ```cmd
 # 确保前置条件
@@ -326,7 +336,6 @@ use_zip = true
 # 2. pip install pyinstaller
 # 3. 确保 tools/ 目录包含 node.exe 和 bundled_asar/
 
-# 运行构建脚本
 .\Pack.cmd
 ```
 
