@@ -116,10 +116,10 @@ main.py (入口)
 └── Batch Mode (--batch CLI)
 
     │
-    ├── core/          │  gui/           │  utils/
+    ├── core/            │  gui/                │  utils/
     │   ├── patcher.py│  │  └── main_window.py  │  ├── language.py
-    │   └── config.py │                    │  ├── paths.py
-    │                 │                    │  └── logging.py
+    │   └── config.py │                         │  ├── paths.py
+    │                 │                         │  └── logging.py
     │
     └── tools/
         ├── node.exe
