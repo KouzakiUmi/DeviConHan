@@ -11,13 +11,13 @@
 
 ### 🇨🇳 中文
 本项目是《恶魔链接（でびるコネクション）》的非营利性个人本地化工具。
-采用全图形化界面 (GUI)，支持跨平台运行，集成了强大的存档管理与开发者工具。
+采用全图形化界面 (GUI)，内置 Node.js 运行时，支持 Windows/macOS/Linux，集成了强大的存档管理与开发者工具。
 
 **✨ 核心功能：**
 
 | 功能 | 描述 |
 |------|------|
-| 🌍 **跨平台支持** | 完美支持 Windows、macOS 和 Linux 系统 |
+| 🌟 **内置运行时** | Windows 版本内置 Node.js 运行环境，零依赖，开箱即用 |
 | 🚀 **全自动补丁安装** | 图形化界面一键安装，自动备份，自动移除游戏完整性校验 (Fuse) |
 | 💾 **专业存档管理** | 自动扫描存档位置，支持一键备份/还原，带时间戳，可压缩为 ZIP |
 | 🛠️ **开发者工具箱** | 内置 Asar 解包/打包工具，支持跨平台格式选择 |
@@ -26,13 +26,13 @@
 
 ### 🇺🇸 English
 **Devil Connection Localization Tool** is a non-profit, fan-made localization patcher.
-Features a full Graphical User Interface (GUI), cross-platform support, and advanced save management tools.
+Features a full Graphical User Interface (GUI) with built-in Node.js runtime, supports Windows/macOS/Linux, and advanced save management tools.
 
 **✨ Key Features:**
 
 | Feature | Description |
 |---------|-------------|
-| 🌍 **Cross-Platform** | Seamlessly runs on Windows, macOS, and Linux |
+| 🌟 **Built-in Runtime** | Windows version includes bundled Node.js—no dependencies required |
 | 🚀 **One-Click Patching** | GUI-based automatic installation with auto-backup and Fuse removal |
 | 💾 **Professional Save Manager** | Auto-detects saves, timestamped backups, ZIP compression, instant restore |
 | 🛠️ **Developer Toolbox** | Built-in Asar extract/pack with multi-platform target selection |
@@ -41,13 +41,13 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 
 ### 🇯🇵 日本語
 本プロジェクトは、ゲーム『でびるコネクション』の非营利・個人制作によるローカライズツールです。
-完全なGUI、クロスプラットフォーム対応、そして強力なセーブデータ管理機能を搭载しました。
+完全なGUIを搭载し、内蔵 Node.js ランタイムで Windows/macOS/Linux をサポート、セーブデータ管理機能も強力です。
 
 **✨ 主な特徴:**
 
 | 機能 | 説明 |
 |------|------|
-| 🌍 **マルチプラットフォーム対応** | Windows、macOS、Linux で完全サポート |
+| 🌟 **内置ランタイム** | Windows 版は Node.js を内装、依存関係なし |
 | 🚀 **自動ワンクリック導入** | GUI による簡単インストール、自動バックアップ、Fuse 自動解除 |
 | 💾 **セーブデータ管理** | 自動検出、タイムスタンプ付きバックアップ、ZIP 圧縮対応 |
 | 🛠️ **開発者ツールボックス** | Asar 解凍/圧縮、マルチプラットフォーム対応 |
@@ -62,24 +62,24 @@ Features a full Graphical User Interface (GUI), cross-platform support, and adva
 1. **下载**：下载本项目的最新 [Releases](../../releases) 版本。
 2. **放入目录**：将程序放入游戏根目录（即 `DevilConnection.exe` 所在的文件夹）。
 3. **运行**：双击运行。
-   - **Windows**: 直接运行 `.exe`。
-   - **Mac/Linux**: 需要安装 Python 环境或使用构建好的二进制文件（如提供），并确保系统已安装 Node.js（Windows版本内置了精简版 Node，无需安装）。
+   - **Windows**: 直接运行 `.exe`（内置 Node.js，无需安装任何依赖）。
+   - **Mac/Linux**: 需要 Python 环境，并确保系统已安装 Node.js。
 4. **操作**：在弹出的窗口中点击 **"🚀 开始安装"** 即可。
 
 ### 🇺🇸 English
 1. **Download**: Get the latest release from [Releases](../../releases).
 2. **Place**: Put the tool into the game's root folder.
 3. **Run**:
-   - **Windows**: Run the `.exe` directly.
-   - **Mac/Linux**: Requires Python or provided binary. Ensure Node.js is installed (Windows version includes a bundled Node runtime).
+   - **Windows**: Run the `.exe` directly (bundled Node.js, no dependencies needed).
+   - **Mac/Linux**: Requires Python environment and Node.js installed.
 4. **Action**: Click **"🚀 Start Patch"** in the GUI window.
 
 ### 🇯🇵 日本語
 1. **ダウンロード**: [Releases](../../releases) から最新版をダウンロードします。
 2. **配置**: ツールをゲームのルートフォルダに置きます。
 3. **実行**:
-   - **Windows**: `.exe` を直接実行します。
-   - **Mac/Linux**: Python環境、または提供されたバイナリが必要です。Node.jsがインストールされていることを確認してください（Windows版は内装されています）。
+   - **Windows**: `.exe` を直接実行します（Node.js 内蔵、依存関係不要）。
+   - **Mac/Linux**: Python 環境と Node.js のインストールが必要です。
 4. **操作**: ウィンドウ内の **"🚀 インストール開始"** をクリックします。
 
 ---
@@ -147,14 +147,7 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 
 ### 🇨🇳 构建指南
 
-本项目包含一个智能构建脚本 `Pack.cmd`，可生成两种版本的程序：
-
-#### 📦 生成模式
-
-| 模式 | 触发条件 | 特点 | 用途 |
-|------|----------|------|------|
-| **自动安装器** (Patcher) | `Patch` 文件夹不为空 | 包含汉化资源，一键安装 | 汉化发布版 |
-| **通用工具箱** (Toolbox) | `Patch` 文件夹为空/不存在 | 仅含工具功能，跨项目可用 | 开发调试、通用工具 |
+本项目包含一个构建脚本 `Pack.cmd`：
 
 #### 🔨 快速开始
 
@@ -164,7 +157,7 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
    cd <repo-path>
    ```
 
-2. **配置汉化资源**（可选）
+2. **配置汉化资源**
    ```
    将汉化文件放入 Patch/ 文件夹：
    Patch/
@@ -201,14 +194,7 @@ A dedicated `Save Manager` tab with **enterprise-grade backup system**:
 
 ### 🇺🇸 Build Guide
 
-Intelligent `Pack.cmd` script with **dual-mode generation**:
-
-#### 📦 Generation Modes
-
-| Mode | Condition | Features | Use Case |
-|------|-----------|----------|----------|
-| **Auto-Installer** | `Patch/` not empty | Bundled patch, one-click install | Release version |
-| **Generic Toolbox** | `Patch/` empty | Tools only, project-agnostic | Development, utilities |
+The project includes a build script `Pack.cmd`:
 
 #### 🔨 Quick Start
 
@@ -218,7 +204,7 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
    cd <repo-path>
    ```
 
-2. **Add Translation Assets** (Optional)
+2. **Add Translation Assets**
    ```
    Place files in Patch/:
    Patch/
@@ -255,14 +241,7 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
 
 ### 🇯🇵 ビルドガイド
 
-スマートな `Pack.cmd` スクリプトで**デュアルモード生成**：
-
-#### 📦 生成モード
-
-| モード | 条件 | 特徴 | 用途 |
-|--------|------|------|------|
-| **自動インストーラー** | `Patch/` が存在 | パッチ付属、ワンクリック導入 | リリース版 |
-| **汎用ツールボックス** | `Patch/` が空/不存在 | ツールのみ、再利用可能 | 開発・調試 |
+本プロジェクトはビルドスクリプト `Pack.cmd` を搭载：
 
 #### 🔨 クイックスタート
 
@@ -272,7 +251,7 @@ Intelligent `Pack.cmd` script with **dual-mode generation**:
    cd <repo-path>
    ```
 
-2. **翻訳リソース追加**（任意）
+2. **翻訳リソース追加**
    ```
    Patch/ に配置：
    Patch/
