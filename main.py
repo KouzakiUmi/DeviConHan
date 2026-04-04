@@ -6,6 +6,7 @@ import os
 import argparse
 import logging
 
+from core.config import get_config
 from gui.main_window import App
 from core.patcher import batch_mode
 from utils.logging import setup_logging
@@ -14,7 +15,7 @@ from utils.language import init_lang, T
 def parse_arguments():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        prog="TyranoV8_Patcher",
+        prog=get_config().app_name,
         description="Tyrano Game Patcher - A tool for applying patches and managing game files",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )

@@ -135,16 +135,13 @@ main.py (入口)
 ├── Pack.cmd             # Windows 构建脚本，使用 PyInstaller 打包
 │
 ├── core/                # 核心模块
-│   ├── __init__.py
 │   ├── patcher.py       # 核心逻辑类 CoreLogic，包含所有补丁操作函数
 │   └── config.py        # 配置管理类 AppConfig，封装 ConfigParser
 │
 ├── gui/                 # 图形界面模块
-│   ├── __init__.py
 │   └── main_window.py   # 主窗口类 App(tk.Tk)，包含所有 UI 组件
 │
 ├── utils/               # 工具模块
-│   ├── __init__.py
 │   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言
 │   ├── logging.py       # 日志系统配置
 │   └── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
@@ -158,8 +155,8 @@ main.py (入口)
 ├── Patch/               # 汉化补丁数据目录（可选）
 │   ├── data/
 │   │   ├── scenario/    # 剧情脚本文件
-│   │   ├── others/     # 游戏资源文件
-│   │   └── image/      # 图片资源
+│   │   ├── others/      # 游戏资源文件
+│   │   └── image/       # 图片资源
 │   └── tyrano/
 │       └── lang.js      # 语言配置文件
 ```
@@ -182,6 +179,10 @@ PATCH_INFO_FILE = .patch_info
 PATCH_META_FILE = .patch_meta
 # 旧补丁时间阈值（天），超过此值提示用户
 TIME_DIFF_THRESHOLD_DAYS = 3
+# 资源目录名称
+RESOURCE_DIR = resources
+# 程序名称
+APP_NAME = TyranoV8_Patcher
 
 [files]
 # Steam更新检测文件列表
@@ -448,8 +449,8 @@ main.py [-h] [--batch] [--auto] [--fuse FILE] [--log-file PATH] [-v] [-q]
   -> 解包 ASAR -> temp_patch/
   -> 复制补丁文件 (Patch/* -> temp_patch/)
   -> 重新打包 ASAR (temp_patch/ -> app.asar)
-  -> 移除 Fuse (可选)
-  -> 保存元数据 (.patch_info, .patch_meta)
+  -> 保存元数据
+  -> 清理临时文件 (.patch_info, .patch_meta)
   -> 清理临时目录
   -> 安装完成
 ```

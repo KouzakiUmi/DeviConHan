@@ -11,6 +11,7 @@ import datetime
 import zipfile
 import logging
 
+from core.config import get_config
 from core.patcher import (
     CoreLogic, PatcherError, PatcherFileNotFoundError, 
     NodeNotFoundError, AsarCorruptedError, has_embedded_patch, 
@@ -596,7 +597,7 @@ class App(tk.Tk):
         ttk.Button(box_fuse, text=T("btn_fuse"), command=self._tool_fuse).pack(side="right")
 
     def _auto_scan_asar(self):
-        cands = ["resources/app.asar", "app.asar"]
+        cands = [get_config().resource_dir + "/app.asar", "app.asar"]
         for c in cands:
             p = os.path.abspath(c)
             if os.path.exists(p):
@@ -606,7 +607,7 @@ class App(tk.Tk):
         self.log("Not found.")
 
     def _auto_scan_exe(self):
-        p = os.path.abspath("DevilConnection.exe")
+        p = os.path.abspath(get_config().auto_target_exe)
         if os.path.exists(p):
             self.var_exe.set(p)
 
@@ -758,7 +759,7 @@ class App(tk.Tk):
         base = res = asar = bak = temp = None
         try:
             base = os.path.abspath(".")
-            res = os.path.join(base, "resources")
+            res = os.path.join(base, get_config().resource_dir)
             asar = os.path.join(res, "app.asar")
             bak = asar + ".bak"
             
@@ -820,7 +821,9 @@ class App(tk.Tk):
 
             self.log("Patch applied successfully. (Fuse removal is now manual)")
             self.log(T("patch_done"))
-            messagebox.showinfo(T("title_success"), T("patch_done"))
+            messagebox.showinfo(T("title_success"), T("patch_done_done"))
+            if messagebox.askyesno(T("title_confirm"), T("msg_exit_after_patch")):
+                self.destroy()
         except Exception as e:
             self.log(f"Error: {e}")
             logger.error(f"Patch error: {e}")

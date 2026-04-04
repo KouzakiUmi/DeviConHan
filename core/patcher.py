@@ -24,36 +24,27 @@ init_lang()
 
 logger = logging.getLogger(__name__)
 
-# ================== Constants ==================
-AUTO_TARGET_EXE = "DevilConnection.exe"
-FUSE_SENTINEL = b'dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
-BACKUP_PREFIX = "Backup_"
-PATCH_INFO_FILE = ".patch_info"  # 记录补丁信息的隐藏文件
-PATCH_META_FILE = ".patch_meta"  # 补丁元数据文件，用于检测Steam更新
-TIME_DIFF_THRESHOLD_DAYS = 3  # 时间差阈值（天），超过此值提示用户
+# ================== 加载配置 ==================
+from core.config import get_config
+
+_config = get_config()
+
+# ================== 常量（从配置读取） ==================
+AUTO_TARGET_EXE = _config.auto_target_exe
+FUSE_SENTINEL = _config.fuse_sentinel
+BACKUP_PREFIX = _config.backup_prefix
+PATCH_INFO_FILE = _config.patch_info_file
+PATCH_META_FILE = _config.patch_meta_file
+TIME_DIFF_THRESHOLD_DAYS = _config.time_diff_threshold_days
 
 # 关键文件列表，用于检测Steam是否更新
 # 这些文件在补丁中会被修改，如果Steam更新了游戏，这些文件的哈希会变化
-CHECK_FILES_FOR_UPDATE = [
-    "data/others/craftmincho.ttf",
-    "data/others/DZUYOKU.ttf",
-    "data/others/funwari-round.ttf",
-    "data/others/HeadUpDaisy.ttf",
-    "tyrano/lang.js",
-]
+CHECK_FILES_FOR_UPDATE = _config.check_files_for_update
 
 # ================= 稳定文件列表（用于验证备份完整性） =================
 # 这些文件是Electron应用的核心文件，不在补丁中，但游戏运行必须
 # Steam更新后这些文件通常不会改变，用于验证.bak文件的完整性
-STABLE_FILES_FOR_VALIDATION = [
-    # Electron 应用核心文件（绝对稳定）
-    "index.html",           # 入口HTML文件
-    "main.js",              # 主进程文件
-    "package.json",         # 包配置文件
-    "steam.js",             # Steam集成文件
-    "preload.js",           # 预加载脚本
-    "electron_latest.js",   # Electron相关文件
-]
+STABLE_FILES_FOR_VALIDATION = _config.stable_files_for_validation
 
 # ================= 异常类定义 =================
 class PatcherError(Exception):
