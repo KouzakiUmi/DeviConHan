@@ -11,7 +11,7 @@ cls
 set "ROOT=%~dp0"
 
 :: Python 脚本文件名
-set PY_SCRIPT=TyranoV8_Patcher.py
+set PY_SCRIPT=main.py
 
 :: 输出文件名
 set OUT_TOOL=Tyrano_Toolbox
@@ -37,7 +37,14 @@ if not exist "%ROOT%tools\bundled_asar" (
     exit /b 1
 )
 
-:: 1c. 检查 Python 脚本是否存在
+:: 1c. 检查 asar_cli.mjs 是否存在
+if not exist "%ROOT%tools\asar_cli.mjs" (
+    echo [Error] File missing: "%ROOT%tools\asar_cli.mjs"
+    pause
+    exit /b 1
+)
+
+:: 1d. 检查 Python 脚本是否存在
 if not exist "%ROOT%%PY_SCRIPT%" (
     echo [Error] Script missing: "%ROOT%%PY_SCRIPT%"
     pause
@@ -75,6 +82,9 @@ python -m PyInstaller -F --clean ^
     --workpath "build_toolbox" ^
     --add-data "%ROOT%tools\node.exe;tools" ^
     --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" ^
+    --add-data "%ROOT%tools\asar_cli.mjs;tools" ^
+    --add-data "%ROOT%config.ini;." ^
+    --add-data "%ROOT%utils\language.py;utils" ^
     --name "%OUT_TOOL%" ^
     "%ROOT%%PY_SCRIPT%"
 
@@ -96,25 +106,28 @@ if not exist "%ROOT%Patch" (
     REM 检查 Patch 文件夹是否非空
     setlocal enabledelayedexpansion
     set "HAS_PATCH_FILES="
-    for /D %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1"
-    for %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1"
-    
+    for /D %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1" & goto :check_files
+    for %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1" & goto :check_files
+    :check_files
     if not defined HAS_PATCH_FILES (
         echo - Warning: Patch folder is empty. Skipped.
     ) else (
-        
+
         echo - Patch folder found. Building Patcher...
         echo ------------------------------------------
-        
+
         python -m PyInstaller -F --clean ^
             --distpath "dist" ^
             --workpath "build_patcher" ^
             --add-data "%ROOT%tools\node.exe;tools" ^
             --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" ^
+            --add-data "%ROOT%tools\asar_cli.mjs;tools" ^
+            --add-data "%ROOT%config.ini;." ^
+            --add-data "%ROOT%utils\language.py;utils" ^
             --add-data "%ROOT%Patch;Patch" ^
             --name "%OUT_PATCH%" ^
             "%ROOT%%PY_SCRIPT%"
-            
+
         if %errorlevel% neq 0 (
             echo [Error] Patcher build failed.
             pause
