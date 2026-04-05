@@ -76,7 +76,9 @@ python -m PyInstaller -F --clean \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "utils/language.py:utils" \
+    --add-data "core:core" \
+    --add-data "gui:gui" \
+    --add-data "utils:utils" \
     --name "DevilConnection_Patch" \
     main.py
 ```
@@ -399,7 +401,9 @@ python -m PyInstaller -F --clean \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "utils/language.py:utils" \
+    --add-data "core:core" \
+    --add-data "gui:gui" \
+    --add-data "utils:utils" \
     --name "Tyrano_Toolbox" \
     main.py
 
@@ -410,7 +414,9 @@ python -m PyInstaller -F --clean \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "utils/language.py:utils" \
+    --add-data "core:core" \
+    --add-data "gui:gui" \
+    --add-data "utils:utils" \
     --add-data "Patch:Patch" \
     --name "DevilConnection_Patch" \
     main.py

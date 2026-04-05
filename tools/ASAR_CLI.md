@@ -57,7 +57,8 @@ node asar_cli.mjs extract-file <asar_path> <file_path>
 
 ### 2.3 计算单文件 SHA256 哈希 (`hash-file`)
 
-直接计算 ASAR 归档内特定文件的 SHA256 哈希值，完美支持二进制文件（如 `.ttf`, `.png` 等），不会发生编码截断问题。在 Steam 更新检测机制中被大量使用。
+直接计算 ASAR 归档内特定文件的 SHA256 哈希值，完美支持二进制文件（如 `.ttf`, `.png` 等），不会发生编码截断问题。
+*注意：在最新的架构中，为了提升性能并减少进程开启的开销，Steam 更新检测机制（如 `core/patcher.py` 中的 `get_file_hash_in_asar`）已改用纯 Python 内存解析实现。此命令目前作为后备或调试工具保留。*
 
 **命令**：
 ```bash
