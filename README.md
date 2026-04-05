@@ -71,7 +71,7 @@ python main.py
 ```bash
 # macOS / Linux 上构建 Windows 可执行文件（需要 wine）
 pip install pyinstaller
-python -m PyInstaller -F --clean \
+python -m PyInstaller -F -w --clean \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
@@ -171,13 +171,7 @@ main.py (入口)
 │   └── bundled_asar/    # ASAR Node.js 依赖库
 │       └── index.mjs    # ASAR 核心库
 │
-├── Patch/               # 汉化补丁数据目录（可选）
-│   ├── data/
-│   │   ├── scenario/    # 剧情脚本文件
-│   │   ├── others/      # 游戏资源文件
-│   │   └── image/       # 图片资源
-│   └── tyrano/
-│       └── lang.js      # 语言配置文件
+├── Patch.zip            # 汉化补丁数据压缩包（由 Pack.cmd 从 Patch/ 目录自动生成）
 ```
 
 ### ⚙️ Configuration File / 配置文件详解 / 設定ファイル
@@ -356,11 +350,12 @@ use_zip = true
 # 1. 安装 Python
 # 2. pip install pyinstaller
 # 3. 确保 tools/ 目录包含 node.exe 和 bundled_asar/
+# 4. (如果需要生成补丁版) 将汉化文件放入 Patch 目录
 
 .\Pack.cmd
 ```
 
-> **注意：** `Pack.cmd` 脚本在执行时，会自动将同目录下的 `Patch` 文件夹压缩为 `Patch.zip`（以大幅提升打包后程序的启动性能），**并自动删除原始的 `Patch` 文件夹**。此设计是为了简化发布与构建流程，如果您正在频繁修改翻译内容，请通过 Git 等工具妥善管理您的源码文件。
+> **注意：** `Pack.cmd` 脚本在执行时，为了优化打包后程序的启动性能，**会自动将同目录下的 `Patch` 文件夹压缩为 `Patch.zip`**，随后**自动删除原始的 `Patch` 文件夹**。此设计是为了简化发布者的最终构建流程。如果您正在频繁修改翻译内容，建议您将翻译源码保存在受 Git 监控的其他目录中，仅在最终打包前将文件拷贝至 `Patch/` 目录。
 
 构建脚本执行以下操作：
 
@@ -397,7 +392,7 @@ Pack.cmd 执行流程:
 pip install pyinstaller
 
 # 构建工具箱
-python -m PyInstaller -F --clean \
+python -m PyInstaller -F -w --clean \
     --distpath "dist" \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
@@ -409,11 +404,12 @@ python -m PyInstaller -F --clean \
     --name "Tyrano_Toolbox" \
     main.py
 
-# 构建包含补丁的版本（需要预先准备 Patch.zip，或存在 Patch/ 目录）
-# 推荐先将 Patch 目录压缩为 Patch.zip 以提升启动性能：
+# 构建包含补丁的版本（需要预先准备 Patch.zip）
+# 为了提升程序的启动性能，当前架构优先支持并打包 ZIP 格式的补丁：
+# 如果您有一份源码的 Patch 目录，请先压缩它：
 python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
 
-python -m PyInstaller -F --clean \
+python -m PyInstaller -F -w --clean \
     --distpath "dist" \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
