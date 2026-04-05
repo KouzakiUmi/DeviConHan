@@ -5,6 +5,5 @@ build/
 *.spec
 代码审查报告.md
 steam_update_logic_analysis.md
-__pycache__/  
-*.pyc  
-Patch.zip
+__pycache__/
+*.pyc
