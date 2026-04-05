@@ -12,7 +12,7 @@ import threading
 from configparser import ConfigParser
 from typing import Optional, List, Any, Union
 
-from utils.paths import get_resource_path
+from utils.paths import get_resource_path, get_user_config_path
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,9 @@ class AppConfig:
         Args:
             config_file: 配置文件路径，None 则使用默认路径
         """
-        user_config_dir = os.path.join(os.path.expanduser("~"), ".tyranopatcher")
-        user_config_path = os.path.join(user_config_dir, "config.ini")
+        user_config_path = get_user_config_path()
         default_config_path = get_resource_path("config.ini")
+        user_config_dir = os.path.dirname(user_config_path)
         
         if config_file is None:
             # 确保用户目录存在
@@ -177,9 +177,7 @@ class AppConfig:
         """
         try:
             if not self.config.has_section("preferences"):
-                if not self.config.add_section("preferences"):
-                    logger.warning(f"Failed to add section: preferences")
-                    return False
+                self.config.add_section("preferences")
             self.config.set("preferences", key, str(value))
             return True
         except Exception as e:

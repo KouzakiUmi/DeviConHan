@@ -86,7 +86,7 @@ def ensure_directory(dir_path: str) -> bool:
         return False
 
 
-def get_user_config_path(filename: str = "tyrano_patcher.ini") -> str:
+def get_user_config_path(filename: str = "config.ini") -> str:
     """
     获取用户配置文件路径（跨平台）
     
@@ -96,8 +96,5 @@ def get_user_config_path(filename: str = "tyrano_patcher.ini") -> str:
     Returns:
         str: 完整的配置文件路径
     """
-    if sys.platform.startswith("win"):
-        config_dir = os.environ.get("APPDATA", os.path.expanduser("~"))
-    else:
-        config_dir = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    config_dir = os.path.join(os.path.expanduser("~"), ".tyranopatcher")
     return os.path.join(config_dir, filename)

@@ -554,11 +554,11 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
     if not asar_exists and not bak_exists:
         logger.error("Neither ASAR nor backup file exists - game files may be corrupted or incomplete")
         if gui_app:
-            from tkinter import messagebox
-            messagebox.showerror(
-                T('title_game_files_missing'),
-                T('msg_game_files_missing')
-            )
+            if hasattr(gui_app, "thread_safe_showerror"):
+                gui_app.thread_safe_showerror(T('title_game_files_missing'), T('msg_game_files_missing'))
+            else:
+                from tkinter import messagebox
+                messagebox.showerror(T('title_game_files_missing'), T('msg_game_files_missing'))
         return (False, True)
     
     # 情况 3：ASAR 不存在，备份存在 → Steam 更新后恢复备份
@@ -569,20 +569,20 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
         if not _validate_backup_integrity(bak_path, core):
             logger.error("Backup file is corrupted")
             if gui_app:
-                from tkinter import messagebox
-                messagebox.showerror(
-                    T('title_backup_corrupted'),
-                    T('msg_backup_corrupted')
-                )
+                if hasattr(gui_app, "thread_safe_showerror"):
+                    gui_app.thread_safe_showerror(T('title_backup_corrupted'), T('msg_backup_corrupted'))
+                else:
+                    from tkinter import messagebox
+                    messagebox.showerror(T('title_backup_corrupted'), T('msg_backup_corrupted'))
             return (False, True)
         
         # 备份有效，询问用户是否恢复
         if gui_app:
-            from tkinter import messagebox
-            result = messagebox.askyesno(
-                T('title_asar_missing'),
-                T('msg_asar_missing_valid_backup')
-            )
+            if hasattr(gui_app, "thread_safe_askyesno"):
+                result = gui_app.thread_safe_askyesno(T('title_asar_missing'), T('msg_asar_missing_valid_backup'))
+            else:
+                from tkinter import messagebox
+                result = messagebox.askyesno(T('title_asar_missing'), T('msg_asar_missing_valid_backup'))
             if not result:
                 return (False, True)
             return (True, False)
@@ -604,16 +604,15 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
         if not _validate_asar_integrity(asar_path, core):
             logger.error("ASAR file is corrupted")
             if gui_app:
-                from tkinter import messagebox
-                messagebox.showerror(
-                    T('title_asar_corrupted'),
-                    T('msg_asar_corrupted')
-                )
+                if hasattr(gui_app, "thread_safe_showerror"):
+                    gui_app.thread_safe_showerror(T('title_asar_corrupted'), T('msg_asar_corrupted'))
+                else:
+                    from tkinter import messagebox
+                    messagebox.showerror(T('title_asar_corrupted'), T('msg_asar_corrupted'))
             return (False, True)
         
         # GUI 模式下提示用户首次打补丁的风险
         if gui_app:
-            from tkinter import messagebox
             title = T('title_first_time_patch')
             msg = T('msg_first_time_patch_warn')
             if title == 'title_first_time_patch': 
@@ -621,7 +620,11 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
             if msg == 'msg_first_time_patch_warn': 
                 msg = "No original backup detected. Please verify game files in Steam first if you have used other patches before. Continue?"
                 
-            result = messagebox.askyesno(title, msg)
+            if hasattr(gui_app, "thread_safe_askyesno"):
+                result = gui_app.thread_safe_askyesno(title, msg)
+            else:
+                from tkinter import messagebox
+                result = messagebox.askyesno(title, msg)
             if not result:
                 return (False, True)
         
@@ -636,11 +639,11 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
         if not _validate_backup_integrity(bak_path, core):
             logger.warning("Backup file is corrupted, but ASAR is valid")
             if gui_app:
-                from tkinter import messagebox
-                result = messagebox.askyesno(
-                    T('title_backup_corrupted_asar_valid'),
-                    T('msg_backup_corrupted_asar_valid')
-                )
+                if hasattr(gui_app, "thread_safe_askyesno"):
+                    result = gui_app.thread_safe_askyesno(T('title_backup_corrupted_asar_valid'), T('msg_backup_corrupted_asar_valid'))
+                else:
+                    from tkinter import messagebox
+                    result = messagebox.askyesno(T('title_backup_corrupted_asar_valid'), T('msg_backup_corrupted_asar_valid'))
                 if not result:
                     return (False, True)
             return (True, False)
@@ -655,11 +658,11 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
             if not os.path.exists(info_file):
                 logger.warning("Patch info and meta files missing - may be old version patch or used other tools")
                 if gui_app:
-                    from tkinter import messagebox
-                    result = messagebox.askyesno(
-                        T('title_no_patch_info'),
-                        T('msg_no_patch_info')
-                    )
+                    if hasattr(gui_app, "thread_safe_askyesno"):
+                        result = gui_app.thread_safe_askyesno(T('title_no_patch_info'), T('msg_no_patch_info'))
+                    else:
+                        from tkinter import messagebox
+                        result = messagebox.askyesno(T('title_no_patch_info'), T('msg_no_patch_info'))
                     return (result, not result)
                 return (True, False)
             else:
@@ -700,11 +703,17 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
                 # We return False for should_continue, False for cancel_or_error
                 # so the patching process skips without error
                 if gui_app:
-                    from tkinter import messagebox
-                    messagebox.showinfo(
-                        T('title_success') if T('title_success') else "Already Patched",
-                        T('msg_already_patched') if T('msg_already_patched') else "The game is already patched. No need to apply again."
-                    )
+                    if hasattr(gui_app, "thread_safe_showinfo"):
+                        gui_app.thread_safe_showinfo(
+                            T('title_success') if T('title_success') else "Already Patched",
+                            T('msg_already_patched') if T('msg_already_patched') else "The game is already patched. No need to apply again."
+                        )
+                    else:
+                        from tkinter import messagebox
+                        messagebox.showinfo(
+                            T('title_success') if T('title_success') else "Already Patched",
+                            T('msg_already_patched') if T('msg_already_patched') else "The game is already patched. No need to apply again."
+                        )
                 return (False, False)
             else:
                 logger.info("ASAR crucial files do not match patch meta. Checking if it's a Steam update...")
@@ -735,11 +744,13 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
                     # asar 既不匹配补丁，也不匹配原版 bak，说明使用了其他汉化或者文件被篡改，或者 Steam 更新修改了关键文件
                     logger.warning("ASAR files do not match patch OR backup. Possible third-party patch or major Steam update detected.")
                     if gui_app:
-                        from tkinter import messagebox
-                        result = messagebox.askyesno(
-                            T('title_third_party_patch_detected') if T('title_third_party_patch_detected') else "Modified ASAR Detected",
-                            T('msg_third_party_patch_detected') if T('msg_third_party_patch_detected') else "ASAR file has been modified by an unknown source or major Steam update.\nDo you want to rebuild backup and apply this patch?"
-                        )
+                        title = T('title_third_party_patch_detected') if T('title_third_party_patch_detected') else "Modified ASAR Detected"
+                        msg = T('msg_third_party_patch_detected') if T('msg_third_party_patch_detected') else "ASAR file has been modified by an unknown source or major Steam update.\nDo you want to rebuild backup and apply this patch?"
+                        if hasattr(gui_app, "thread_safe_askyesno"):
+                            result = gui_app.thread_safe_askyesno(title, msg)
+                        else:
+                            from tkinter import messagebox
+                            result = messagebox.askyesno(title, msg)
                         if result:
                             try:
                                 if os.path.exists(bak_path):

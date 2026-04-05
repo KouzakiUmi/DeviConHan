@@ -23,7 +23,7 @@ from core.patcher import (
     handle_steam_update, save_patch_info, save_patch_meta
 )
 from utils.cleanup import force_cleanup_dir
-from utils.language import init_lang, T
+from utils.language import init_lang, T, get_font, get_mono_font
 from utils.paths import get_resource_path, get_user_config_path
 from utils.performance import get_performance_monitor
 from utils.async_ops import get_async_manager, ProgressInfo
@@ -60,7 +60,7 @@ class App(tk.Tk):
         self.log_callback = log_callback  # 允许外部设置日志回调
         self.app_config = None
         # 使用统一的配置路径函数
-        self.config_file = get_user_config_path("tyrano_patcher.ini")
+        self.config_file = get_user_config_path()
         
         self.load_config()
         
@@ -79,19 +79,39 @@ class App(tk.Tk):
         self.title(T("app_title"))
         self.geometry("800x620")
         
+        default_font = get_font(9)
+        self.option_add("*Font", default_font)
+        
+        try:
+            icon_path = get_resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                self.iconbitmap(icon_path)
+        except Exception as e:
+            logger.warning(f"Failed to set app icon: {e}")
+        
         menubar = tk.Menu(self)
         self.config(menu=menubar) 
         lang_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=T("menu_lang"), menu=lang_menu)
-        lang_menu.add_command(label="English", command=lambda: self.change_lang("en"))
-        lang_menu.add_command(label="简体中文", command=lambda: self.change_lang("cn"))
-        lang_menu.add_command(label="日本語", command=lambda: self.change_lang("jp"))
+        lang_menu.add_command(label="English", command=lambda l="en": self.change_lang(l))
+        lang_menu.add_command(label="简体中文", command=lambda l="cn": self.change_lang(l))
+        lang_menu.add_command(label="日本語", command=lambda l="jp": self.change_lang(l))
+
+        about_menu = tk.Menu(menubar, tearoff=0)
+        about_label = T("menu_about")
+        if about_label == "menu_about": about_label = "关于"
+        about_app_label = T("menu_about_app")
+        if about_app_label == "menu_about_app": about_app_label = "关于本程序"
+        menubar.add_cascade(label=about_label, menu=about_menu)
+        about_menu.add_command(label=about_app_label, command=self.show_about_dialog)
 
         style = ttk.Style()
         if sys.platform.startswith("win"): style.theme_use("vista")
         elif sys.platform == "darwin": style.theme_use("clam")
         else: style.theme_use("clam")
-        style.configure("Big.TButton", font=("Segoe UI", 11, "bold"), padding=8)
+        
+        style.configure(".", font=default_font)
+        style.configure("Big.TButton", font=get_font(11, "bold"), padding=8)
         
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
@@ -111,11 +131,114 @@ class App(tk.Tk):
 
         self.log_frame = ttk.LabelFrame(self, text=T("log_frame"))
         self.log_frame.pack(fill="x", padx=5, pady=5, side="bottom")
-        self.log_area = scrolledtext.ScrolledText(self.log_frame, height=8, state="disabled", font=("Consolas", 9))
+        self.log_area = scrolledtext.ScrolledText(self.log_frame, height=8, state="disabled", font=get_mono_font(9))
         self.log_area.pack(fill="both", padx=5, pady=5)
         
         self.progress = ttk.Progressbar(self.log_frame, mode="indeterminate")
         self.progress.pack(fill="x", padx=5, pady=(0, 5))
+
+    def show_about_dialog(self):
+        about_app_label = T("menu_about_app")
+        if about_app_label == "menu_about_app": about_app_label = "关于本程序"
+        
+        dlg = tk.Toplevel(self)
+        dlg.title(about_app_label)
+        dlg.resizable(False, False)
+        dlg.transient(self)
+        dlg.grab_set()
+
+        # 计算居中位置
+        self.update_idletasks()
+        w, h = 550, 350
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - (w // 2)
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - (h // 2)
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+
+        try:
+            icon_path = get_resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                dlg.iconbitmap(icon_path)
+        except Exception:
+            pass
+
+        main_frame = ttk.Frame(dlg, padding=20)
+        main_frame.pack(fill="both", expand=True)
+
+        avatar_img = None
+        try:
+            import struct
+            import base64
+            icon_path = get_resource_path("icon.ico")
+            if os.path.exists(icon_path):
+                with open(icon_path, 'rb') as f:
+                    f.read(4)
+                    n = struct.unpack('<H', f.read(2))[0]
+                    for _ in range(n):
+                        img_w, img_h, _, _, _, _, size, offset = struct.unpack('<BBBBHHII', f.read(16))
+                        if img_w == 0 and img_h == 0:
+                            f.seek(offset)
+                            png_data = f.read(size)
+                            if png_data.startswith(b'\x89PNG'):
+                                b64_data = base64.b64encode(png_data)
+                                tk_img = tk.PhotoImage(data=b64_data)
+                                avatar_img = tk_img.subsample(2, 2)
+                                dlg._avatar_img_ref = avatar_img
+                            break
+        except Exception as e:
+            logger.warning(f"Failed to load avatar from ICO: {e}")
+
+        if avatar_img:
+            lbl_avatar = ttk.Label(main_frame, image=avatar_img)
+            lbl_avatar.pack(side="left", padx=(0, 20), anchor="n")
+        else:
+            lbl_avatar = ttk.Label(main_frame, text="[ICON]", font=get_font(24))
+            lbl_avatar.pack(side="left", padx=(0, 20), anchor="n")
+
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(side="left", fill="both", expand=True)
+
+        app_name = T("app_title")
+        if app_name == "app_title":
+            app_name = "DevilConnection Patcher"
+            
+        ttk.Label(info_frame, text=app_name, font=get_font(14, "bold")).pack(anchor="w", pady=(0, 5))
+        ttk.Label(info_frame, text="版本: 1.0 Release", font=get_font(10)).pack(anchor="w", pady=(0, 10))
+        
+        desc = (
+            "《でびるコネクション》非营利性个人本地化工具。\n"
+            "TyranoV8通用工具箱\n\n"
+            "==== 技术致谢 ====\n"
+            "• 核心语言: Python 3, JavaScript (Node.js)\n"
+            "• 图形界面: Tkinter (Tcl/Tk)\n"
+            "• 封包引擎: @electron/asar\n"
+            "• 构建工具: PyInstaller\n\n"
+            "==== 开发人员 ====\n"
+            "作者：KouzakiUmi (呜咪 / 神前海)\n"
+            "GitHub: https://github.com/KouzakiUmi/DeviConHan\n\n"
+            "==== 许可证 ====\n"
+            "本项目仅限非营利目的使用。\n"
+            "游戏内容的所有权利均归原作者 ばやちゃお 所有。\n"
+        )
+        
+        # 使用带滚动条的文本框展示 Credits
+        from tkinter import scrolledtext
+        text_area = scrolledtext.ScrolledText(info_frame, wrap=tk.WORD, height=8, font=get_font(9))
+        text_area.insert(tk.END, desc)
+        text_area.config(state="disabled")
+        text_area.pack(fill="both", expand=True, pady=(0, 10))
+        
+        # 链接标签
+        def open_url(event):
+            import webbrowser
+            webbrowser.open("https://github.com/KouzakiUmi/DeviConHan")
+            
+        lbl_link = ttk.Label(info_frame, text="访问 GitHub 主页", foreground="blue", cursor="hand2")
+        lbl_link.pack(anchor="w", pady=(0, 10))
+        lbl_link.bind("<Button-1>", open_url)
+        
+        btn_frame = ttk.Frame(info_frame)
+        btn_frame.pack(fill="x", side="bottom")
+        ttk.Button(btn_frame, text="确定", command=dlg.destroy, width=10).pack(side="right")
 
     def load_config(self):
         """
@@ -230,12 +353,15 @@ class App(tk.Tk):
 
     def change_lang(self, code):
         """切换界面语言"""
+        if self.is_operating:
+            from tkinter import messagebox
+            messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress"))
+            return
+            
         from utils.language import set_language
         set_language(code)
         if hasattr(self, "app_config") and self.app_config is not None:
-            if not self.app_config.config.has_section("preferences"):
-                self.app_config.config.add_section("preferences")
-            self.app_config.set("preferences", "language", code)
+            self.app_config.set_gui_config("language", code)
             self.save_config()
         self.init_ui()
 
@@ -258,6 +384,8 @@ class App(tk.Tk):
             logger.info(msg)
         
         def _update():
+            if not hasattr(self, 'log_area') or not self.log_area.winfo_exists():
+                return
             try:
                 ts = datetime.datetime.now().strftime("%H:%M:%S")
                 self.log_area.config(state="normal")
@@ -291,6 +419,33 @@ class App(tk.Tk):
         except tk.TclError:
             pass
 
+    def thread_safe_askyesno(self, title, message):
+        import queue
+        q = queue.Queue()
+        def _ask():
+            res = messagebox.askyesno(title, message, parent=self)
+            q.put(res)
+        self.after(0, _ask)
+        return q.get()
+
+    def thread_safe_showerror(self, title, message):
+        import queue
+        q = queue.Queue()
+        def _show():
+            messagebox.showerror(title, message, parent=self)
+            q.put(None)
+        self.after(0, _show)
+        q.get()
+        
+    def thread_safe_showinfo(self, title, message):
+        import queue
+        q = queue.Queue()
+        def _show():
+            messagebox.showinfo(title, message, parent=self)
+            q.put(None)
+        self.after(0, _show)
+        q.get()
+
     def _on_async_progress(self, progress_info: ProgressInfo) -> None:
         """
         处理异步操作进度更新
@@ -304,8 +459,8 @@ class App(tk.Tk):
                 self.log(progress_info.message, "debug")
             
         if progress_info.state.value in ["completed", "cancelled", "failed"]:
-            self.after(0, lambda: self.toggle_progress(False))
-            self.after(0, lambda: setattr(self, 'is_operating', False))
+            self.after(0, lambda s=self: s.toggle_progress(False))
+            self.after(0, lambda s=self: setattr(s, 'is_operating', False))
 
     def _file_entry(self, parent, label, is_dir=False, ext=None):
         """
@@ -463,11 +618,11 @@ class App(tk.Tk):
                         msg = T("msg_migrate_success").format(migrated=migrated_count)
                         if failed_count > 0:
                             msg += T("msg_migrate_failed").format(failed=failed_count)
-                        self.after(0, lambda: messagebox.showinfo(T("title_success"), msg))
+                        self.after(0, lambda success_msg=msg: messagebox.showinfo(T("title_success"), success_msg))
                         self.after(0, self.scan_saves)
                     except Exception as e:
                         logger.error(f"Migration error: {e}")
-                        self.after(0, lambda e=e: messagebox.showerror(T("title_error"), T("msg_migrate_error").format(error=e)))
+                        self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), T("msg_migrate_error").format(error=e_str)))
                 
                 # 启动异步线程
                 self.async_manager.submit("migrate_backup_op", _migrate_worker)
@@ -605,10 +760,11 @@ class App(tk.Tk):
                     self.log(f"Backup(DIR): {folder_name}")
                     logger.info(f"Backup created (DIR): {dest_folder}")
 
-                self.after(0, lambda: [self.scan_saves(), messagebox.showinfo(T("title_success"), T("msg_backup_ok"))])
+                self.after(0, self.scan_saves)
+                self.after(0, lambda msg=T("msg_backup_ok"): messagebox.showinfo(T("title_success"), msg))
             except Exception as e:
                 self.log(f"Backup error: {e}")
-                self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+                self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
                 # 记录备份操作耗时
                 elapsed = self.performance_monitor.stop("backup_save")
@@ -655,7 +811,7 @@ class App(tk.Tk):
                                 file_path = os.path.join(self.current_save_dir, member.filename)
                                 abs_save_dir = os.path.abspath(self.current_save_dir)
                                 abs_file_path = os.path.abspath(file_path)
-                                if not abs_file_path.startswith(abs_save_dir + os.sep):
+                                if not (abs_file_path.startswith(abs_save_dir + os.sep) or abs_file_path == abs_save_dir):
                                     raise ValueError("Invalid path in ZIP: potential directory traversal")
                             zf.extractall(self.current_save_dir)
                         logger.info(f"Restored save from ZIP: {src}")
@@ -666,7 +822,7 @@ class App(tk.Tk):
                         shutil.copytree(src, self.current_save_dir, dirs_exist_ok=True)
                         logger.info(f"Restored save from folder: {src}")
 
-                    self.after(0, lambda: messagebox.showinfo(T("title_success"), T("msg_restored")))
+                    self.after(0, lambda msg=T("msg_restored"): messagebox.showinfo(T("title_success"), msg))
                     self.after(0, self.scan_saves)
                 except Exception as e:
                     logger.error(f"Restore error: {e}")
@@ -678,17 +834,17 @@ class App(tk.Tk):
                             logger.info("Successfully restored from backup")
                         except Exception as restore_err:
                             logger.error(f"Failed to restore from backup: {restore_err}")
-                            self.after(0, lambda: messagebox.showerror(
+                            self.after(0, lambda err=str(restore_err), e_str=str(e): messagebox.showerror(
                                 T("title_error"),
-                                f"{str(e)}\n\nFailed to restore from backup: {str(restore_err)}"
+                                f"{e_str}\n\nFailed to restore from backup: {err}"
                             ))
                         else:
-                            self.after(0, lambda: messagebox.showerror(
+                            self.after(0, lambda e_str=str(e): messagebox.showerror(
                                 T("title_error"),
-                                f"{str(e)}\n\nCurrent save has been restored from backup."
+                                f"{e_str}\n\nCurrent save has been restored from backup."
                             ))
                     else:
-                        self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+                        self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
                 finally:
                     if temp_dir and os.path.exists(temp_dir):
                         try:
@@ -718,12 +874,15 @@ class App(tk.Tk):
         def _w():
             try:
                 if os.path.isfile(src):
-                    os.remove(src)
+                    try:
+                        os.remove(src)
+                    except Exception as e:
+                        logger.error(f"Failed to remove file {src}: {e}")
                 else:
                     shutil.rmtree(src, onerror=self.core.remove_readonly)
                 self.after(0, self.scan_saves)
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+                self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
                 # 记录删除备份操作耗时
                 elapsed = self.performance_monitor.stop("delete_backup")
@@ -873,7 +1032,7 @@ class App(tk.Tk):
         def _t():
             try:
                 self.core.run_asar("extract", src, out_dir, callback=self.log)
-                self.after(0, lambda: messagebox.showinfo(T("title_success"), f"{T('op_success')}\nPath: {out_dir}"))
+                self.after(0, lambda extracted_path=out_dir: messagebox.showinfo(T("title_success"), f"{T('op_success')}\nPath: {extracted_path}"))
                 self.after(0, self._sync_extracted_path)
                 if sys.platform.startswith("win"):
                     os.startfile(out_dir)
@@ -882,7 +1041,7 @@ class App(tk.Tk):
                 else:
                     subprocess.run(["xdg-open", out_dir], encoding='utf-8')
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+                self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
                 # 记录ASAR解包操作耗时
                 elapsed = self.performance_monitor.stop("gui_extract_asar")
@@ -981,9 +1140,9 @@ class App(tk.Tk):
         def _t():
             try:
                 self.core.run_asar("pack", src, out_path, callback=self.log, unpack_pattern=pat)
-                self.after(0, lambda: messagebox.showinfo(T("title_success"), f"{T('op_success')}\nPath: {out_path}"))
+                self.after(0, lambda packed_path=out_path: messagebox.showinfo(T("title_success"), f"{T('op_success')}\nPath: {packed_path}"))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+                self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
                 # 记录ASAR打包操作耗时
                 elapsed = self.performance_monitor.stop("gui_pack_asar")
@@ -1069,7 +1228,7 @@ class App(tk.Tk):
     def _init_patch_ui(self):
         f = ttk.Frame(self.tab_patch, padding=20)
         f.pack(fill="both", expand=True)
-        ttk.Label(f, text=T("lbl_patch_info"), font=("Segoe UI", 11)).pack(pady=20)
+        ttk.Label(f, text=T("lbl_patch_info"), font=get_font(11)).pack(pady=20)
 
         self.btn_p = ttk.Button(f, text=T("btn_start_patch"), style="Big.TButton", command=self.run_auto_patch)
         self.btn_p.pack(pady=10, ipady=10, fill="x", padx=50)
@@ -1163,7 +1322,7 @@ class App(tk.Tk):
 
             self.log("Patch applied successfully. (Fuse removal is now manual)")
             self.log(T("patch_done"))
-            self.after(0, lambda: messagebox.showinfo(T("title_success"), T("patch_done_done")))
+            self.after(0, lambda msg=T("patch_done_done"): messagebox.showinfo(T("title_success"), msg))
             
             # 先清理临时目录，再询问退出
             if temp and os.path.exists(temp):
@@ -1191,18 +1350,24 @@ class App(tk.Tk):
                     if os.path.exists(temp_bak):
                         self.log("Restoring backup due to error...")
                         if os.path.exists(bak):
-                            os.remove(bak)
+                            try:
+                                os.remove(bak)
+                            except Exception as e:
+                                logger.error(f"Failed to remove corrupted backup: {e}")
                         shutil.move(temp_bak, bak)
                     
                     if os.path.exists(asar):
-                        os.remove(asar)
+                        try:
+                            os.remove(asar)
+                        except Exception as e:
+                            logger.error(f"Failed to remove corrupted ASAR: {e}")
                     shutil.copy2(bak, asar)
                     self.log("Restored app.asar from backup.")
                 except Exception as be:
                     logger.error(f"Backup restore error: {be}")
                     self.log(f"Failed to restore backup: {be}")
 
-            self.after(0, lambda: messagebox.showerror(T("title_error"), str(e)))
+            self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
         finally:
             # 只在出错时执行清理（成功时已在前面清理）
             # 但为确保万无一失，仍做一次检查
@@ -1213,7 +1378,13 @@ class App(tk.Tk):
                     pass
             
             if hasattr(self, 'btn_p') and self.btn_p:
-                self.after(0, lambda: self.btn_p.state(["!disabled"]))
+                def _enable_btn():
+                    if hasattr(self, 'btn_p') and self.btn_p:
+                        try:
+                            self.btn_p.state(["!disabled"])
+                        except tk.TclError:
+                            pass
+                self.after(0, _enable_btn)
             # 记录自动补丁操作耗时
             elapsed = self.performance_monitor.stop("auto_patch")
             logger.info(f"Auto patch operation took {elapsed:.3f}s")

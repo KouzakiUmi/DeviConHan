@@ -420,6 +420,49 @@ def T(key):
     """
     return LANG_DICT.get(CURRENT_LANG_CODE, LANG_DICT.get("en")).get(key, key)
 
+def get_font(size=9, weight="normal"):
+    """
+    根据平台和语言返回合适的 UI 字体
+    """
+    if IS_WIN:
+        if CURRENT_LANG_CODE == 'cn':
+            family = "Microsoft YaHei UI"
+        elif CURRENT_LANG_CODE == 'jp':
+            family = "Meiryo UI"
+        else:
+            family = "Segoe UI"
+    elif sys.platform == "darwin":
+        if CURRENT_LANG_CODE == 'cn':
+            family = "PingFang SC"
+        elif CURRENT_LANG_CODE == 'jp':
+            family = "Hiragino Sans"
+        else:
+            family = ".AppleSystemUIFont"
+    else:
+        if CURRENT_LANG_CODE == 'cn':
+            family = "Noto Sans CJK SC"
+        elif CURRENT_LANG_CODE == 'jp':
+            family = "Noto Sans CJK JP"
+        else:
+            family = "Noto Sans"
+            
+    if weight == "normal":
+        return (family, size)
+    else:
+        return (family, size, weight)
+
+def get_mono_font(size=9):
+    """
+    返回合适的等宽字体（用于日志等）
+    """
+    if IS_WIN:
+        family = "Consolas"
+    elif sys.platform == "darwin":
+        family = "Menlo"
+    else:
+        family = "monospace"
+    return (family, size)
+
 def set_language(code):
     """
     设置界面语言（推荐使用此函数而非直接修改 CURRENT_LANG_CODE）
@@ -466,7 +509,7 @@ def _load_saved_language():
 
 def _get_config_path():
     """获取配置文件路径（使用统一的路径函数）"""
-    return get_user_config_path("tyrano_patcher.ini")
+    return get_user_config_path()
 
 def _save_language_to_config(code):
     """保存语言偏好到配置文件"""
