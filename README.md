@@ -72,6 +72,8 @@ python main.py
 # macOS / Linux 上构建 Windows 可执行文件（需要 wine）
 pip install pyinstaller
 python -m PyInstaller -F -w --clean \
+    -i "icon.ico" \
+    --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
@@ -393,7 +395,9 @@ pip install pyinstaller
 
 # 构建工具箱
 python -m PyInstaller -F -w --clean \
+    -i "icon.ico" \
     --distpath "dist" \
+    --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
@@ -410,7 +414,9 @@ python -m PyInstaller -F -w --clean \
 python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
 
 python -m PyInstaller -F -w --clean \
+    -i "icon.ico" \
     --distpath "dist" \
+    --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
