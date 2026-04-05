@@ -334,10 +334,11 @@ def has_embedded_patch():
     检测是否包含内置汉化补丁
     
     Returns:
-        bool: 如果 Patch 目录存在返回 True
+        bool: 如果 Patch.zip 或 Patch 目录存在返回 True
     """
+    patch_zip = os.path.join(get_resource_path("."), "Patch.zip")
     patch_dir = os.path.join(get_resource_path("."), "Patch")
-    return os.path.exists(patch_dir)
+    return os.path.exists(patch_zip) or os.path.exists(patch_dir)
 
 # ================= 补丁信息管理 =================
 
@@ -971,8 +972,20 @@ def batch_mode(args):
             return 1
         
         # 应用补丁
+        patch_zip = get_resource_path("Patch.zip")
         patch_dir = get_resource_path("Patch")
-        if os.path.exists(patch_dir):
+        
+        if os.path.exists(patch_zip):
+            logger.info(f"Applying patch from: {patch_zip}")
+            try:
+                import zipfile
+                with zipfile.ZipFile(patch_zip, 'r') as zf:
+                    zf.extractall(temp)
+                logger.info("Patch applied successfully")
+            except Exception as patch_err:
+                logger.error(f"Failed to extract Patch.zip: {patch_err}")
+                return 1
+        elif os.path.exists(patch_dir):
             logger.info(f"Applying patch from: {patch_dir}")
             try:
                 shutil.copytree(patch_dir, temp, dirs_exist_ok=True)
@@ -981,7 +994,7 @@ def batch_mode(args):
                 logger.error(f"Failed to apply patch: {patch_err}")
                 return 1
         else:
-            logger.error("Patch directory not found - cannot continue without patch files")
+            logger.error("Patch data not found - cannot continue without patch files")
             return 1
         
         # 打包

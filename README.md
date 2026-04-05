@@ -407,7 +407,10 @@ python -m PyInstaller -F --clean \
     --name "Tyrano_Toolbox" \
     main.py
 
-# 构建包含补丁的版本（需要同时存在 Patch/ 目录）
+# 构建包含补丁的版本（需要预先准备 Patch.zip，或存在 Patch/ 目录）
+# 推荐先将 Patch 目录压缩为 Patch.zip 以提升启动性能：
+python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
+
 python -m PyInstaller -F --clean \
     --distpath "dist" \
     --add-data "tools/node.exe:tools" \
@@ -417,7 +420,7 @@ python -m PyInstaller -F --clean \
     --add-data "core:core" \
     --add-data "gui:gui" \
     --add-data "utils:utils" \
-    --add-data "Patch:Patch" \
+    --add-data "Patch.zip:." \
     --name "DevilConnection_Patch" \
     main.py
 ```

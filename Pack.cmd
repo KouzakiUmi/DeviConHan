@@ -71,31 +71,57 @@ if exist "build_toolbox" rd /s /q "build_toolbox"
 echo.
 echo [2/2] Checking for Patch Data...
 
-if not exist "%ROOT%Patch" (
-    echo - No Patch folder found. Skipped.
-) else (
+set "BUILD_PATCHER=0"
+
+if exist "%ROOT%Patch.zip" (
+    echo - Patch.zip found.
+    set "BUILD_PATCHER=1"
+)
+
+if exist "%ROOT%Patch" (
     setlocal enabledelayedexpansion
     set "HAS_PATCH_FILES="
     for /D %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1" & goto :check_files
     for %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1" & goto :check_files
     :check_files
-    if not defined HAS_PATCH_FILES (
-        echo - Warning: Patch folder is empty. Skipped.
-    ) else (
-        echo - Patch folder found. Building Patcher...
-        echo ------------------------------------------
-
-        python -m PyInstaller -F --clean --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --add-data "%ROOT%Patch;Patch" --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
-
-        if %errorlevel% neq 0 (
-            echo [Error] Patcher build failed
-            pause
-            exit /b 1
+    if defined HAS_PATCH_FILES (
+        echo - Patch folder found. Compressing to Patch.zip to boost startup performance...
+        if exist "%ROOT%Patch.zip" del /q "%ROOT%Patch.zip"
+        python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
+        
+        if exist "%ROOT%Patch.zip" (
+            echo - Cleaning up original Patch directory...
+            rd /s /q "%ROOT%Patch"
+            set "HAS_PATCH_DATA=1"
+        ) else (
+            echo [Error] Failed to compress Patch directory.
         )
-        echo - Patcher build success.
-
-        if exist "build_patcher" rd /s /q "build_patcher"
+    ) else (
+        echo - Warning: Patch folder is empty.
     )
+    if defined HAS_PATCH_DATA (
+        endlocal & set "BUILD_PATCHER=1"
+    ) else (
+        endlocal
+    )
+)
+
+if "%BUILD_PATCHER%"=="1" (
+    echo - Building Patcher...
+    echo ------------------------------------------
+
+    python -m PyInstaller -F --clean --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
+
+    if %errorlevel% neq 0 (
+        echo [Error] Patcher build failed
+        pause
+        exit /b 1
+    )
+    echo - Patcher build success.
+
+    if exist "build_patcher" rd /s /q "build_patcher"
+) else (
+    echo - No Patch data found. Skipped.
 )
 
 echo.

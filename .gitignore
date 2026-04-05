@@ -7,3 +7,4 @@ build/
 steam_update_logic_analysis.md
 __pycache__/  
 *.pyc  
+Patch.zip

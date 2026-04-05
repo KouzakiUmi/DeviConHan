@@ -1115,11 +1115,21 @@ class App(tk.Tk):
             self.core.run_asar("extract", asar, temp, callback=self.log)
             
             self.log("Applying patch...")
+            patch_zip = get_resource_path("Patch.zip")
             patch_dir = get_resource_path("Patch")
-            if not os.path.exists(patch_dir):
-                raise Exception("Patch directory not found")
-            shutil.copytree(patch_dir, temp, dirs_exist_ok=True)
-            self.log("Patch files copied.")
+            
+            if os.path.exists(patch_zip):
+                self.log(f"Extracting Patch.zip...")
+                import zipfile
+                with zipfile.ZipFile(patch_zip, 'r') as zf:
+                    zf.extractall(temp)
+                self.log("Patch.zip extracted successfully.")
+            elif os.path.exists(patch_dir):
+                self.log(f"Copying Patch directory...")
+                shutil.copytree(patch_dir, temp, dirs_exist_ok=True)
+                self.log("Patch files copied.")
+            else:
+                raise Exception("Patch data not found (neither Patch.zip nor Patch directory exists)")
 
             self.log("Packing ASAR...")
             self.core.run_asar("pack", temp, asar, callback=self.log, unpack_pattern="*.{node,dll,exe}")
