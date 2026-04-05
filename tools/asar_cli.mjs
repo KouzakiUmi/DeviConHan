@@ -14,6 +14,7 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
@@ -49,7 +50,14 @@ function warnLog(...args) {
 function cleanupTempDir(tempDir, operation) {
     if (tempDir && fs.existsSync(tempDir)) {
         try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            // 在 Windows 上，防病毒软件可能会短暂锁定刚刚提取的文件
+            // 使用 maxRetries 选项来重试删除
+            fs.rmSync(tempDir, { 
+                recursive: true, 
+                force: true, 
+                maxRetries: 10, 
+                retryDelay: 300 
+            });
             debugLog(`Cleaned up temp directory (${operation}): ${tempDir}`);
         } catch (cleanupErr) {
             warnLog(`Failed to cleanup temp directory (${operation}): ${cleanupErr.message}`);
@@ -140,15 +148,14 @@ const argsRaw = process.argv.slice(3);
 // 规范化路径（处理 Windows 反斜杠和前导斜杠问题）
 function normalizePath(p) {
     if (!p) return p;
-    // 移除前导的反斜杠（如果有的话）
-    let normalized = p.replace(/^\\+/, '');
-    // 转换反斜杠为正斜杠以保持一致性
-    normalized = normalized.replace(/\\/g, '/');
-    return normalized;
+    // 使用 path.normalize 让 Node 自动处理不同系统的路径分隔符
+    // 移除不必要的前缀如 / 或 \，但不能破坏绝对路径
+    return path.normalize(p);
 }
 
 // 规范化所有传入的路径参数
 const args = argsRaw.map(normalizePath);
+
 
 /**
  * 显示使用帮助
@@ -229,9 +236,8 @@ async function main() {
                     process.exit(1);
                 }
                 
-                const cwd = process.cwd();
                 const basename = path.basename(filePath);
-                const tempDir = path.join(cwd, '__temp_stat__');
+                const tempDir = path.join(os.tmpdir(), `__temp_stat_${Date.now()}__`);
                 
                 try {
                     // 使用 list 命令检查文件是否在包中
@@ -338,9 +344,8 @@ async function main() {
                     process.exit(1);
                 }
                 
-                const cwd = process.cwd();
                 const basename = path.basename(filePath);
-                const tempDir = path.join(cwd, '__temp_extract__');
+                const tempDir = path.join(os.tmpdir(), `__temp_extract_${Date.now()}__`);
                 
                 try {
                     // 清理并创建临时目录
@@ -398,6 +403,80 @@ async function main() {
                 break;
             }
             
+            case 'hash-file': {
+                const [asarPath, filePath] = args;
+                debugLog(`hash-file command: asar=${asarPath}, file=${filePath}`);
+                
+                if (!asarPath || !filePath) {
+                    console.error(JSON.stringify({
+                        success: false,
+                        error: 'Missing required parameters',
+                        error_type: 'invalid_args'
+                    }));
+                    process.exit(1);
+                }
+                
+                const basename = path.basename(filePath);
+                const tempDir = path.join(os.tmpdir(), `__temp_hash_${Date.now()}__`);
+                
+                try {
+                    // 清理并创建临时目录
+                    cleanupTempDir(tempDir, 'hash-prepare');
+                    fs.mkdirSync(tempDir, { recursive: true });
+                    debugLog(`Created temp directory: ${tempDir}`);
+                    
+                    // 在临时目录中运行 ASAR CLI 提取文件
+                    debugLog(`Extracting file for hash: ${asarPath} -> ${filePath}`);
+                    execFileSync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
+                        cwd: tempDir,
+                        stdio: ['pipe', 'pipe', 'pipe'],
+                        encoding: 'utf8',
+                        windowsHide: true
+                    });
+                    
+                    const outputFile = path.join(tempDir, basename);
+                    if (fs.existsSync(outputFile)) {
+                        // 使用 require/import 计算 SHA256，既然是 ES Module 直接 import
+                        const crypto = await import('crypto');
+                        const fileBuffer = fs.readFileSync(outputFile);
+                        const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+                        
+                        // 清理临时目录
+                        cleanupTempDir(tempDir, 'hash-complete');
+                        console.log(JSON.stringify({ success: true, hash: hash }));
+                    } else {
+                        cleanupTempDir(tempDir, 'hash-fail');
+                        console.error(JSON.stringify({
+                            success: false,
+                            error: 'Failed to extract file',
+                            error_type: 'file_not_found'
+                        }));
+                        process.exit(1);
+                    }
+                } catch (error) {
+                    cleanupTempDir(tempDir, 'hash-error');
+                    
+                    let errorType = 'unknown';
+                    const errorMsg = (error.stderr || error.message || '').toLowerCase();
+                    
+                    if (errorMsg.includes('not found') || errorMsg.includes('no such file') || errorMsg.includes('does not exist')) {
+                        errorType = 'file_not_found';
+                    } else if (errorMsg.includes('corrupted') || errorMsg.includes('invalid') || errorMsg.includes('malformed')) {
+                        errorType = 'file_corrupted';
+                    } else if (errorMsg.includes('asar')) {
+                        errorType = 'invalid_asar';
+                    }
+                    
+                    console.error(JSON.stringify({
+                        success: false,
+                        error: error.stderr || error.message || 'Unknown error',
+                        error_type: errorType
+                    }));
+                    process.exit(1);
+                }
+                break;
+            }
+
             case 'extract': {
                 const [asarPath, destDir] = args;
                 debugLog(`extract command: asar=${asarPath}, dest=${destDir}`);

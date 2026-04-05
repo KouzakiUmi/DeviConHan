@@ -1,4 +1,10 @@
 # -*- coding: utf-8 -*-
+"""
+恶魔链接补丁工具 - 核心逻辑模块
+
+提供ASAR文件操作、补丁应用、Steam更新处理等核心功能。
+包含性能监控集成，用于跟踪和优化操作性能。
+"""
 
 import os
 import sys
@@ -7,46 +13,25 @@ import mmap
 import subprocess
 import stat
 import datetime
-import threading
-import zipfile
 import logging
-import argparse
 import hashlib
 import enum
 import tempfile
-from configparser import ConfigParser
+import json
 
 from utils.paths import get_resource_path, normalize_path
-from utils.language import T, init_lang
-
-# 初始化多语言支持
-init_lang()
+from utils.language import T
+from utils.performance import timing_context, get_performance_monitor
+from utils.cleanup import force_cleanup_dir
+from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
-# ================== 加载配置 ==================
-from core.config import get_config
+# ================== 配置延迟加载 ==================
+# 注意: 配置和语言初始化现在由 main.py 统一处理
+# 避免在模块导入时执行可能依赖日志系统的初始化
 
-_config = get_config()
-
-# ================== 常量（从配置读取） ==================
-AUTO_TARGET_EXE = _config.auto_target_exe
-FUSE_SENTINEL = _config.fuse_sentinel
-BACKUP_PREFIX = _config.backup_prefix
-PATCH_INFO_FILE = _config.patch_info_file
-PATCH_META_FILE = _config.patch_meta_file
-TIME_DIFF_THRESHOLD_DAYS = _config.time_diff_threshold_days
-
-# 关键文件列表，用于检测Steam是否更新
-# 这些文件在补丁中会被修改，如果Steam更新了游戏，这些文件的哈希会变化
-CHECK_FILES_FOR_UPDATE = _config.check_files_for_update
-
-# ================= 稳定文件列表（用于验证备份完整性） =================
-# 这些文件是Electron应用的核心文件，不在补丁中，但游戏运行必须
-# Steam更新后这些文件通常不会改变，用于验证.bak文件的完整性
-STABLE_FILES_FOR_VALIDATION = _config.stable_files_for_validation
-
-# ================= 异常类定义 =================
+# ================== 异常类定义 ==================
 class PatcherError(Exception):
     """自定义异常类，用于区分不同类型的错误"""
     pass
@@ -69,7 +54,7 @@ class AsarCorruptedError(PatcherError):
 
 # ================= Steam 更新状态枚举 =================
 class UpdateStatus(enum.Enum):
-    """Steam 更新检测状态，替代字符串匹配控制流"""
+    """Steam 的更新检测状态，替代字符串匹配控制流"""
     FIRST_TIME = "first_time"                    # 首次打补丁，无 .bak 文件
     OLD_VERSION = "old_version"                  # 旧版本升级，缺少 .patch_info
     STEAM_UPDATED = "steam_updated"              # 确认被 Steam 更新
@@ -80,6 +65,16 @@ class UpdateStatus(enum.Enum):
 
 # ================= 核心逻辑类 (Worker) =================
 class CoreLogic:
+    # 统一的 remove_readonly 方法
+    @staticmethod
+    def remove_readonly_handler(func, path, excinfo):
+        """删除只读属性的回调函数（静态方法，可在类外复用）"""
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception as e:
+            logger.debug(f"Failed to remove readonly: {e}")
+
     def __init__(self):
         """
         初始化核心逻辑
@@ -101,6 +96,7 @@ class CoreLogic:
             raise PatcherFileNotFoundError(f"Patcher script not found")
         
         # 直接使用内置工具，不再检测系统环境
+        # TODO: 从配置文件读取或自动检测模式
         self.mode = 'bundled'
         
         logger.info(f"CoreLogic initialized. Mode: {self.mode}")
@@ -130,12 +126,21 @@ class CoreLogic:
         return None
 
     def remove_readonly(self, func, path, excinfo):
-        """删除只读属性的回调函数"""
-        try:
-            os.chmod(path, stat.S_IWRITE)
-            func(path)
-        except Exception as e:
-            logger.debug(f"Failed to remove readonly: {e}")
+        """
+        删除只读属性的回调函数
+        
+        此方法委托给静态方法，用于 shutil.rmtree 的 onerror 回调。
+        当删除只读文件时，Python 会调用此函数先移除只读属性再重试删除。
+        
+        Args:
+            func: 导致异常的操作函数（通常是 os.remove 或 os.rmdir）
+            path: 文件/目录路径
+            excinfo: 异常信息元组
+            
+        Returns:
+            处理结果（委托给静态方法）
+        """
+        return self.remove_readonly_handler(func, path, excinfo)
 
     def run_asar(self, action, src, dest, callback=None, unpack_pattern=None):
         """
@@ -171,14 +176,18 @@ class CoreLogic:
         if not unpack_pattern:
             unpack_pattern = "*.{node,dll,so,dylib,exe,bin}"
         
+        # 使用性能监控器记录ASAR操作
+        monitor = get_performance_monitor()
+        monitor.start(f"asar_{action}")
+        
         try:
             # 固定使用内置工具
             cmd = [self.node_path, self.script_path, action, src, dest]
-            if action == "pack": 
+            if action == "pack":
                 cmd.extend(["--unpack", unpack_pattern])
             
             logger.debug(f"Using bundled Node.js: {self.node_path}")
-            logger.debug(f"Command: {" ".join(cmd)}")
+            logger.debug(f"Command: {' '.join(cmd)}")
             
             # 执行命令
             if callback:
@@ -195,9 +204,9 @@ class CoreLogic:
                 stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
-                errors="replace",
+                errors="backslashreplace",
                 creationflags=creationflags,
-                timeout=300  # 5分钟超时
+                timeout=get_config().get_int("main", "ASAR_OPERATION_TIMEOUT", fallback=300)  # 超时时间从配置读取
             )
             
             if proc.returncode != 0:
@@ -212,7 +221,7 @@ class CoreLogic:
             return True
             
         except subprocess.TimeoutExpired:
-            error_msg = f"Operation timed out after 300 seconds"
+            error_msg = "Operation timed out after 300 seconds"
             logger.error(error_msg)
             raise PatcherError(error_msg)
             
@@ -221,6 +230,10 @@ class CoreLogic:
             if isinstance(e, (NodeNotFoundError, PatcherFileNotFoundError)):
                 raise
             raise PatcherError(str(e))
+        finally:
+            # 记录ASAR操作耗时
+            elapsed = monitor.stop(f"asar_{action}")
+            logger.debug(f"ASAR {action} operation took {elapsed:.3f}s")
 
     def remove_fuse(self, exe_path, callback=None):
         """
@@ -265,15 +278,21 @@ class CoreLogic:
             # 移除只读属性
             os.chmod(exe_path, stat.S_IWRITE)
             
+            # 获取Fuse配置
+            fuse_sentinel = get_config().fuse_sentinel
+            header_len = get_config().fuse_wire_header_length
+            integrity_offset = get_config().fuse_asar_integrity_offset
+            
             with open(exe_path, "r+b") as f:
                 with mmap.mmap(f.fileno(), 0) as mm:
-                    offset = mm.find(FUSE_SENTINEL)
+                    offset = mm.find(fuse_sentinel)
                     
                     if offset == -1:
                         logger.info("Fuse sentinel not found - already removed or never present")
                         return False
                     
-                    target = offset + 34 + 4
+                    # 计算目标偏移量
+                    target = offset + header_len + integrity_offset
                     
                     # 边界检查
                     if target >= mm.size():
@@ -290,6 +309,8 @@ class CoreLogic:
                         return True
                     elif current_byte == b"\x30":
                         logger.info("Fuse already disabled")
+                        if callback:
+                            callback("Fuse already disabled.")
                         return True
                     else:
                         logger.warning(f"Unexpected byte at target position: {current_byte}")
@@ -307,370 +328,6 @@ class CoreLogic:
                 callback(f"Fuse Error: {e}")
             return False
 
-def _extract_and_get_file_info(asar_path, file_paths=None, core=None):
-    """
-    通过解包asar文件获取文件信息（大小、哈希等）
-    
-    这是修复后的核心函数，替代原来有问题的get_asar_file_size()。
-    
-    Args:
-        asar_path: asar 文件路径
-        file_paths: 要获取信息的文件路径列表（None表示获取所有CHECK_FILES_FOR_UPDATE）
-        core: CoreLogic 实例（必须提供）
-        
-    Returns:
-        dict: {file_path: {"size": int, "hash": str}} 或空字典（如果失败）
-    """
-    import tempfile
-    import atexit
-    
-    if core is None:
-        raise ValueError("core parameter is required for _extract_and_get_file_info")
-    
-    temp_dir = None
-    result = {}
-    
-    try:
-        # 创建临时目录
-        temp_dir = tempfile.mkdtemp(prefix="asar_extract_")
-        
-        # 注册清理函数，确保即使程序崩溃也能清理
-        def cleanup_temp_dir():
-            if temp_dir and os.path.exists(temp_dir):
-                try:
-                    shutil.rmtree(temp_dir, onerror=core.remove_readonly)
-                    logger.debug(f"Cleaned up temp directory: {temp_dir}")
-                except Exception as cleanup_err:
-                    logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
-        
-        atexit.register(cleanup_temp_dir)
-        
-        # 解包asar文件
-        core.run_asar("extract", asar_path, temp_dir)
-        
-        # 确定要检查的文件列表
-        if file_paths is None:
-            file_paths = CHECK_FILES_FOR_UPDATE
-        
-        # 获取每个文件的信息
-        for rel_path in file_paths:
-            full_path = os.path.join(temp_dir, rel_path)
-            if os.path.exists(full_path):
-                file_size = os.path.getsize(full_path)
-                file_hash = compute_file_hash(full_path)
-                result[rel_path] = {
-                    "size": file_size,
-                    "hash": file_hash
-                }
-            else:
-                logger.debug(f"File not found in extracted asar: {rel_path}")
-                
-    except Exception as e:
-        logger.error(f"Failed to extract and get file info from {asar_path}: {e}")
-        return {}
-    finally:
-        # 立即清理临时目录
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir, onerror=core.remove_readonly)
-                logger.debug(f"Cleaned up temp directory: {temp_dir}")
-            except Exception as cleanup_err:
-                logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
-    
-    return result
-
-def _remove_readonly_handler(func, path, excinfo):
-    """删除只读属性的回调函数"""
-    import stat
-    try:
-        os.chmod(path, stat.S_IWRITE)
-        func(path)
-    except Exception as e:
-        logger.debug(f"Failed to remove readonly: {e}")
-
-def get_asar_file_info(asar_path, file_path, core=None):
-    """
-    获取 asar 包中指定文件的完整信息（不解包）
-    
-    使用 asar 的 statFile API 获取文件信息，包括大小、偏移量、可执行标志等
-    
-    Args:
-        asar_path: asar 文件路径
-        file_path: asar 中要查询的文件路径（如 data/others/craftmincho.ttf）
-        core: CoreLogic 实例（必须提供）
-
-    Returns:
-        dict: 文件信息字典，包含 size, offset, executable 等字段
-        None: 如果文件不存在或无法访问
-        
-    Raises:
-        AsarCorruptedError: 如果asar文件损坏或无法访问
-        ValueError: 如果 core 参数为 None
-    """
-    import json
-    
-    if core is None:
-        raise ValueError("core parameter is required for get_asar_file_info")
-    
-    try:
-        # 使用 asar 的 statFile API（不解包）
-        cmd = [core.node_path, core.script_path, 'stat', asar_path, file_path]
-        proc_result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, encoding='utf-8')
-        
-        # 检查命令执行状态
-        if proc_result.returncode != 0:
-            # 解析错误信息
-            try:
-                error_data = json.loads(proc_result.stderr.strip())
-                error_type = error_data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.debug(f"File not found in ASAR: {file_path}")
-                    return None
-                elif error_type == "file_corrupted":
-                    raise AsarCorruptedError(f"ASAR file is corrupted: {error_data.get('error')}")
-                else:
-                    raise AsarCorruptedError(f"ASAR stat failed: {error_data.get('error')}")
-            except json.JSONDecodeError:
-                raise AsarCorruptedError(f"Failed to parse ASAR stat error response: {proc_result.stderr}")
-        
-        # 解析成功响应
-        data = json.loads(proc_result.stdout.strip())
-        if data.get("success"):
-            return {
-                "size": data.get("size"),
-                "offset": data.get("offset"),
-                "executable": data.get("executable"),
-                "mtime": data.get("mtime"),
-                "atime": data.get("atime")
-            }
-        else:
-            error_type = data.get("error_type", "unknown")
-            if error_type == "file_not_found":
-                logger.debug(f"File not found in ASAR: {file_path}")
-                return None
-            raise AsarCorruptedError(f"ASAR stat failed: {data.get('error')}")
-            
-    except subprocess.TimeoutExpired:
-        raise AsarCorruptedError(f"ASAR stat operation timed out for {file_path}")
-    except json.JSONDecodeError as e:
-        raise AsarCorruptedError(f"Failed to parse ASAR stat response: {e}")
-    except Exception as e:
-        raise AsarCorruptedError(f"Failed to get file info from ASAR: {e}")
-
-
-def get_asar_file_size(asar_path, file_path, core=None):
-    """
-    获取 asar 包中指定文件的大小（三层容错版）
-    
-    优先级：
-    1. 使用asar的statFile API（最快，不解压）
-    2. 失败则提取单个文件到临时目录（较快）
-    3. 仍然失败则抛出AsarCorruptedError（文件损坏）
-
-    Args:
-        asar_path: asar 文件路径
-        file_path: asar 中要查询的文件路径（如 data/others/craftmincho.ttf）
-        core: CoreLogic 实例（必须提供）
-
-    Returns:
-        int: 文件大小（字节），如果文件不存在则返回 None
-        
-    Raises:
-        AsarCorruptedError: 如果asar文件损坏或无法访问
-        ValueError: 如果 core 参数为 None
-    """
-    import tempfile
-    
-    if core is None:
-        raise ValueError("core parameter is required for get_asar_file_size")
-    
-    try:
-        # 第一层：使用asar的statFile API（不解压）
-        file_info = get_asar_file_info(asar_path, file_path, core)
-        if file_info is not None:
-            logger.debug(f"Got file size from statFile API for {file_path}: {file_info['size']}")
-            return file_info["size"]
-        
-        # 文件不存在，返回None而不是抛出异常
-        return None
-        
-    except AsarCorruptedError as e:
-        logger.debug(f"statFile API failed for {file_path}: {e}, trying fallback method")
-        # 继续尝试第二层
-    
-    # 第二层：提取单个文件到临时目录
-    temp_dir = None
-    try:
-        temp_dir = tempfile.mkdtemp(dir=".")
-        extracted_file_path = os.path.join(temp_dir, os.path.basename(file_path))
-        cmd_extract = [core.node_path, core.script_path, 'extract-file', asar_path, file_path]
-        subprocess.run(cmd_extract, capture_output=True, text=True, timeout=30, check=True, cwd=temp_dir, encoding='utf-8')
-        file_size = os.path.getsize(extracted_file_path)
-        logger.debug(f"Got file size from extraction for {file_path}: {file_size}")
-        return file_size
-        
-    except subprocess.CalledProcessError as e:
-        # 提取失败，检查是否是文件不存在还是asar损坏
-        error_output = e.stderr.lower() if e.stderr else ""
-        if 'not found' in error_output or 'no such file' in error_output:
-            logger.debug(f"File not found in ASAR: {file_path}")
-            return None
-        # 其他错误视为asar损坏
-        raise AsarCorruptedError(
-            f'ASAR file "{asar_path}" is corrupted or invalid. '
-            f'Cannot access file "{file_path}".'
-        )
-    except Exception as e:
-        raise AsarCorruptedError(
-            f'Failed to get file size for "{file_path}" from ASAR: {e}'
-        )
-    finally:
-        # 确保临时目录被清理
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                shutil.rmtree(temp_dir)
-            except Exception as cleanup_err:
-                logger.warning(f"Failed to cleanup temp directory in get_asar_file_size: {cleanup_err}")
-
-def validate_asar_file(asar_path, file_paths=None, core=None):
-    """
-    验证asar文件的完整性
-    
-    Args:
-        asar_path: asar 文件路径
-        file_paths: 要验证的文件路径列表（None表示使用STABLE_FILES_FOR_VALIDATION）
-        core: CoreLogic 实例（必须提供）
-        
-    Returns:
-        dict: {file_path: {"size": int, "hash": str}} 或空字典（如果失败）
-        
-    Raises:
-        AsarCorruptedError: 如果asar文件损坏或无法访问
-        ValueError: 如果 core 参数为 None
-    """
-    import json
-    
-    if core is None:
-        raise ValueError("core parameter is required for validate_asar_file")
-    
-    if file_paths is None:
-        file_paths = STABLE_FILES_FOR_VALIDATION
-
-    result = {}
-    logger.info(f"Validating ASAR file: {asar_path}")
-    
-    for rel_path in file_paths:
-        temp_dir = None
-        try:
-            # First, try to get stats without extraction
-            cmd = [core.node_path, core.script_path, 'stat', asar_path, rel_path]
-            proc_result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True, encoding='utf-8')
-            data = json.loads(proc_result.stdout.strip())
-            
-            # Now, get hash by extracting single file to temp
-            temp_dir = tempfile.mkdtemp(dir=".")
-            try:
-                extracted_file_path = os.path.join(temp_dir, os.path.basename(rel_path))
-                cmd_extract = [core.node_path, core.script_path, 'extract-file', asar_path, rel_path]
-                subprocess.run(cmd_extract, capture_output=True, text=True, timeout=30, check=True, cwd=temp_dir, encoding='utf-8')
-                
-                file_hash = compute_file_hash(extracted_file_path)
-                result[rel_path] = {
-                    "size": data["size"],
-                    "hash": file_hash
-                }
-                logger.debug(f"Validated file: {rel_path} (size: {data['size']})")
-            finally:
-                # 确保临时目录被清理
-                if temp_dir and os.path.exists(temp_dir):
-                    try:
-                        shutil.rmtree(temp_dir)
-                    except Exception as cleanup_err:
-                        logger.warning(f"Failed to cleanup temp dir for {rel_path}: {cleanup_err}")
-                    temp_dir = None
-                        
-        except subprocess.CalledProcessError as e:
-            # 解析 stderr 中的 JSON 错误信息
-            try:
-                error_data = json.loads(e.stderr.strip())
-                error_type = error_data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.debug(f"File not found in ASAR: {rel_path}, skipping validation")
-                    continue  # 跳过不存在的文件
-                elif error_type == "file_corrupted":
-                    logger.error(f"ASAR file is corrupted (validation failed for {rel_path}): {error_data.get('error')}")
-                    raise AsarCorruptedError(f"ASAR file is corrupted: {error_data.get('error')}")
-                else:
-                    logger.warning(f"ASAR stat failed for {rel_path}: {error_data.get('error')}, skipping")
-                    continue  # 跳过有问题的文件
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse error response for {rel_path}: {e.stderr}, skipping")
-                continue  # 跳过有问题的文件
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.warning(f"Fast path for validation failed for {rel_path}: {e}, trying fallback")
-            # Fallback: extract single file to get info
-            temp_dir = None
-            try:
-                temp_dir = tempfile.mkdtemp(dir=".")
-                try:
-                    extracted_file_path = os.path.join(temp_dir, os.path.basename(rel_path))
-                    cmd_extract = [core.node_path, core.script_path, 'extract-file', asar_path, rel_path]
-                    subprocess.run(cmd_extract, capture_output=True, text=True, timeout=30, check=True, cwd=temp_dir, encoding='utf-8')
-                    
-                    file_size = os.path.getsize(extracted_file_path)
-                    file_hash = compute_file_hash(extracted_file_path)
-                    result[rel_path] = {
-                        "size": file_size,
-                        "hash": file_hash
-                    }
-                    logger.debug(f"Validated file (fallback): {rel_path} (size: {file_size})")
-                finally:
-                    # 确保临时目录被清理
-                    if temp_dir and os.path.exists(temp_dir):
-                        try:
-                            shutil.rmtree(temp_dir)
-                        except Exception as cleanup_err:
-                            logger.warning(f"Failed to cleanup temp dir for {rel_path}: {cleanup_err}")
-                        temp_dir = None
-            except Exception as e2:
-                logger.error(f"Fallback extraction failed for {rel_path}: {e2}")
-                raise AsarCorruptedError(f"Failed to validate file: {rel_path}") from e2
-
-    logger.info(f"ASAR validation complete. Validated {len(result)}/{len(file_paths)} files")
-    return result
-
-def get_asar_font_sizes(asar_path, core=None):
-    """
-    获取 asar 中所有字体文件的大小（修复版）
-
-    Args:
-        asar_path: asar 文件路径
-        core: CoreLogic 实例（必须提供）
-
-    Returns:
-        dict: {font_file_path: size_in_bytes}
-    """
-    if core is None:
-        raise ValueError("core parameter is required for get_asar_font_sizes")
-    
-    font_files = [
-        "data/others/craftmincho.ttf",
-        "data/others/DZUYOKU.ttf",
-        "data/others/funwari-round.ttf",
-        "data/others/HeadUpDaisy.ttf"
-    ]
-
-    try:
-        all_file_info = _extract_and_get_file_info(asar_path, font_files, core)
-        # 只提取size信息
-        sizes = {}
-        for font_file in font_files:
-            if font_file in all_file_info:
-                sizes[font_file] = all_file_info[font_file]["size"]
-        return sizes
-    except Exception as e:
-        logger.error(f"Failed to get font sizes from {asar_path}: {e}")
-        return {}
 
 def has_embedded_patch():
     """
@@ -718,6 +375,93 @@ def compute_file_hash(file_path):
         logger.error(f"Unexpected error when computing hash for {file_path}: {e}")
         return None
 
+def get_file_hash_in_asar(core, asar_path, file_path):
+    """
+    计算 ASAR 包内特定文件的 SHA256 哈希值
+    纯 Python 内存实现，不依赖外部命令行调用，速度快且不产生临时文件。
+    
+    Args:
+        core: CoreLogic 实例 (保留以保持接口兼容，实际未被使用)
+        asar_path: ASAR 文件路径
+        file_path: ASAR 内的相对路径
+        
+    Returns:
+        str: 文件的 SHA256 哈希值，失败返回 None
+    """
+    import struct
+    import json
+    
+    if not os.path.exists(asar_path):
+        return None
+        
+    try:
+        with open(asar_path, 'rb') as f:
+            # 4 bytes for magic number
+            magic = f.read(4)
+            if magic != b'\x04\x00\x00\x00':
+                return None
+                
+            header_size_bytes = f.read(4)
+            if len(header_size_bytes) != 4:
+                return None
+            header_size = struct.unpack('<I', header_size_bytes)[0]
+            
+            # Read the rest of the header
+            header_data = f.read(header_size)
+            if len(header_data) != header_size:
+                return None
+                
+            # The next two uint32s are sizes
+            json_size = struct.unpack('<I', header_data[4:8])[0]
+            
+            # The JSON string
+            json_str = header_data[8:8+json_size].decode('utf-8')
+            header_dict = json.loads(json_str)
+            
+            # base offset is where the file data begins
+            base_offset = 8 + header_size
+            
+            # Normalize path
+            path_parts = [p for p in file_path.replace('\\', '/').split('/') if p]
+            
+            # Find node
+            node = header_dict
+            for part in path_parts:
+                if 'files' in node and part in node['files']:
+                    node = node['files'][part]
+                else:
+                    return None # File not found
+                    
+            # Check if it's a file
+            if 'offset' not in node or 'size' not in node:
+                return None
+                
+            # We can use the pre-calculated hash if it exists
+            if 'integrity' in node and node['integrity'].get('algorithm') == 'SHA256':
+                return node['integrity'].get('hash')
+                
+            # Otherwise, read the file and compute hash
+            offset = int(node['offset'])
+            size = node['size']
+            
+            f.seek(base_offset + offset)
+            # Read in chunks to avoid memory issues with large files
+            sha256_hash = hashlib.sha256()
+            bytes_read = 0
+            while bytes_read < size:
+                chunk_size = min(4096, size - bytes_read)
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                sha256_hash.update(chunk)
+                bytes_read += len(chunk)
+                
+            return sha256_hash.hexdigest()
+            
+    except Exception as e:
+        logger.debug(f"Error parsing ASAR file {asar_path} for {file_path}: {e}")
+        return None
+
 def save_patch_info(base_dir, asar_path, bak_path):
     """
     保存补丁信息到 .patch_info 文件
@@ -727,7 +471,9 @@ def save_patch_info(base_dir, asar_path, bak_path):
         asar_path: asar文件路径
         bak_path: 备份文件路径
     """
-    info_file = os.path.join(base_dir, PATCH_INFO_FILE)
+    import json
+    patch_info_file = get_config().patch_info_file
+    info_file = os.path.join(base_dir, patch_info_file)
     info = {
         "asar_path": asar_path,
         "bak_path": bak_path,
@@ -735,7 +481,6 @@ def save_patch_info(base_dir, asar_path, bak_path):
     }
     
     with open(info_file, "w", encoding="utf-8") as f:
-        import json
         json.dump(info, f, indent=2, ensure_ascii=False)
     
     logger.info(f"Saved patch info to: {info_file}")
@@ -748,7 +493,9 @@ def save_patch_meta(base_dir, temp_dir):
         base_dir: 基础目录
         temp_dir: 临时目录
     """
-    meta_file = os.path.join(base_dir, PATCH_META_FILE)
+    import json
+    patch_meta_file = get_config().patch_meta_file
+    meta_file = os.path.join(base_dir, patch_meta_file)
     
     # 收集补丁文件的信息
     meta_info = {
@@ -757,13 +504,13 @@ def save_patch_meta(base_dir, temp_dir):
     }
     
     # 记录关键文件的哈希值
-    for file_path in CHECK_FILES_FOR_UPDATE:
+    check_files = get_config().check_files_for_update
+    for file_path in check_files:
         full_path = os.path.join(temp_dir, file_path)
         if os.path.exists(full_path):
             meta_info["patch_files"][file_path] = compute_file_hash(full_path)
     
     with open(meta_file, "w", encoding="utf-8") as f:
-        import json
         json.dump(meta_info, f, indent=2, ensure_ascii=False)
     
     logger.info(f"Saved patch meta to: {meta_file}")
@@ -793,6 +540,10 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
     """
     if log_callback:
         log_callback("Checking for Steam updates...")
+    
+    # 获取配置常量
+    patch_info_file = get_config().patch_info_file
+    time_diff_threshold_days = get_config().time_diff_threshold_days
     
     # 检查 ASAR 文件状态
     asar_exists = asar_path and os.path.exists(asar_path)
@@ -864,7 +615,7 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
     
     # 情况 2：ASAR 存在，备份存在 → 检查补丁信息，判断是否需要重新打补丁
     if asar_exists and bak_exists:
-        logger.info("Both ASAR and backup exist - checking patch status")
+        logger.info("Both ASAR and backup exist - checking patch status via file hashes")
         
         # 验证备份文件的完整性
         if not _validate_backup_integrity(bak_path, core):
@@ -879,49 +630,196 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
                     return (False, True)
             return (True, False)
         
-        # 检查补丁信息文件
-        info_file = os.path.join(base_dir, PATCH_INFO_FILE)
-        if not os.path.exists(info_file):
-            logger.warning("Patch info file missing - may be old version patch or used other tools")
-            if gui_app:
-                from tkinter import messagebox
-                result = messagebox.askyesno(
-                    T('title_no_patch_info'),
-                    T('msg_no_patch_info')
-                )
-                return (result, not result)
-            return (True, False)
+        # 检查补丁元数据文件
+        patch_meta_file = get_config().patch_meta_file
+        meta_file = os.path.join(base_dir, patch_meta_file)
         
-        # 读取并验证补丁信息
-        try:
-            patch_info = _read_and_validate_patch_info(info_file)
-            if patch_info is None:
-                # 文件损坏或被删除，继续执行
-                return (True, False)
-            
-            # 检查时间差，超过阈值显示警告但仍继续
-            patch_time = datetime.datetime.fromisoformat(patch_info.get("timestamp", ""))
-            time_diff = datetime.datetime.now() - patch_time
-            
-            if time_diff.days > TIME_DIFF_THRESHOLD_DAYS:
-                logger.warning(f"Patch was applied {time_diff.days} days ago")
+        # 兼容旧版本：如果没有 meta，但有 info，视为旧版本
+        if not os.path.exists(meta_file):
+            info_file = os.path.join(base_dir, patch_info_file)
+            if not os.path.exists(info_file):
+                logger.warning("Patch info and meta files missing - may be old version patch or used other tools")
                 if gui_app:
                     from tkinter import messagebox
                     result = messagebox.askyesno(
-                        T('title_old_patch_detected'),
-                        T('msg_old_patch_detected').format(days=time_diff.days)
+                        T('title_no_patch_info'),
+                        T('msg_no_patch_info')
                     )
-                    if not result:
-                        return (False, True)
+                    return (result, not result)
+                return (True, False)
+            else:
+                logger.warning("Found old patch info without meta file - recommend repatching")
+                return (True, False)
+                
+        # 存在 meta 文件，读取并验证哈希
+        try:
+            import json
+            with open(meta_file, 'r', encoding='utf-8') as f:
+                meta_info = json.load(f)
+            
+            patch_files = meta_info.get("patch_files", {})
+            if not patch_files:
+                logger.warning("No patch files listed in meta, cannot verify ASAR.")
+                return (True, False)
+            
+            # Step 1: 检查 asar 关键文件 vs 补丁
+            check_files = get_config().check_files_for_update
+            all_match_patch = True
+            mismatched_files = []
+            
+            for file_path in check_files:
+                expected_hash = patch_files.get(file_path)
+                if not expected_hash:
+                    # 这个文件可能不在补丁中，跳过
+                    continue
+                
+                current_hash = get_file_hash_in_asar(core, asar_path, file_path)
+                if current_hash != expected_hash:
+                    all_match_patch = False
+                    mismatched_files.append(file_path)
+                    logger.info(f"File {file_path} in ASAR hash mismatch. Expected: {expected_hash}, Got: {current_hash}")
+                    break
+                    
+            if all_match_patch:
+                logger.info("All crucial files in ASAR match the patch meta. Patch is active.")
+                # We return False for should_continue, False for cancel_or_error
+                # so the patching process skips without error
+                if gui_app:
+                    from tkinter import messagebox
+                    messagebox.showinfo(
+                        T('title_success') if T('title_success') else "Already Patched",
+                        T('msg_already_patched') if T('msg_already_patched') else "The game is already patched. No need to apply again."
+                    )
+                return (False, False)
+            else:
+                logger.info("ASAR crucial files do not match patch meta. Checking if it's a Steam update...")
+                
+                # Step 2: 检查 bak 关键文件 vs asar
+                all_match_bak = True
+                for file_path in mismatched_files:
+                    bak_hash = get_file_hash_in_asar(core, bak_path, file_path)
+                    asar_hash = get_file_hash_in_asar(core, asar_path, file_path)
+                    
+                    if bak_hash != asar_hash:
+                        all_match_bak = False
+                        logger.info(f"File {file_path} differs between ASAR and backup. Bak: {bak_hash}, ASAR: {asar_hash}")
+                        break
+                        
+                if all_match_bak:
+                    # bak 关键文件与 asar 一致
+                    # 这意味着当前 asar 是纯净的原始文件，与我们早先备份的原始文件（或下载的原始文件）一致
+                    logger.info("ASAR crucial files match backup files. Steam update detected.")
+                    # 既然要重建备份，我们删除现有的备份
+                    try:
+                        if os.path.exists(bak_path):
+                            os.remove(bak_path)
+                    except Exception as e:
+                        logger.error(f"Failed to remove old backup for rebuilding: {e}")
+                    return (True, False) # 需要重新打补丁（main_window 中会把当前的 asar 复制为 bak）
+                else:
+                    # asar 既不匹配补丁，也不匹配原版 bak，说明使用了其他汉化或者文件被篡改，或者 Steam 更新修改了关键文件
+                    logger.warning("ASAR files do not match patch OR backup. Possible third-party patch or major Steam update detected.")
+                    if gui_app:
+                        from tkinter import messagebox
+                        result = messagebox.askyesno(
+                            T('title_third_party_patch_detected') if T('title_third_party_patch_detected') else "Modified ASAR Detected",
+                            T('msg_third_party_patch_detected') if T('msg_third_party_patch_detected') else "ASAR file has been modified by an unknown source or major Steam update.\nDo you want to rebuild backup and apply this patch?"
+                        )
+                        if result:
+                            try:
+                                if os.path.exists(bak_path):
+                                    os.remove(bak_path)
+                            except Exception as e:
+                                logger.error(f"Failed to remove old backup: {e}")
+                        return (result, not result)
+                    else:
+                        try:
+                            if os.path.exists(bak_path):
+                                os.remove(bak_path)
+                        except:
+                            pass
+                        return (True, False)
+                    
         except Exception as e:
-            logger.warning(f"Failed to check patch time: {e}")
-        
-        logger.info("Steam update check passed")
-        return (True, False)
+            logger.warning(f"Failed to check patch meta: {e}")
+            # 回退机制
+            return (True, False)
     
     # 默认情况（理论上不会到达这里）
     logger.warning("Unexpected file state, proceeding with caution")
     return (True, False)
+
+def _validate_archive_integrity(archive_path, core, archive_type="archive"):
+    """
+    验证归档文件（ASAR 或备份）的完整性
+    
+    Args:
+        archive_path: 归档文件路径
+        core: CoreLogic 实例
+        archive_type: 归档类型（"asar" 或 "backup"），用于日志记录
+        
+    Returns:
+        bool: 文件是否有效
+    """
+    import json
+    
+    # 使用性能监控器记录验证操作
+    monitor = get_performance_monitor()
+    monitor.start(f"validate_{archive_type}")
+    
+    try:
+        # 检查文件大小
+        file_size = os.path.getsize(archive_path)
+        if file_size < 1024:  # 小于 1KB 可能是损坏的
+            logger.warning(f"{archive_type.capitalize()} file too small: {file_size} bytes")
+            return False
+        
+        # 尝试读取归档文件的基本信息
+        try:
+            cmd = [core.node_path, core.script_path, 'stat', archive_path, 'package.json']
+            proc_result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True, encoding='utf-8')
+            data = json.loads(proc_result.stdout.strip())
+            if not data.get("success"):
+                error_type = data.get("error_type", "unknown")
+                if error_type == "file_not_found":
+                    logger.warning(f"File not found in {archive_type}: package.json")
+                    return False
+                elif error_type == "file_corrupted":
+                    logger.warning(f"{archive_type.capitalize()} file is corrupted: {data.get('error')}")
+                    return False
+                else:
+                    logger.warning(f"{archive_type.capitalize()} stat failed: {data.get('error')}")
+                    return False
+        except subprocess.CalledProcessError as e:
+            # 解析 stderr 中的 JSON 错误信息
+            try:
+                error_data = json.loads(e.stderr.strip())
+                error_type = error_data.get("error_type", "unknown")
+                if error_type == "file_not_found":
+                    logger.warning(f"File not found in {archive_type}: package.json")
+                    return False
+                elif error_type == "file_corrupted":
+                    logger.warning(f"{archive_type.capitalize()} file is corrupted: {error_data.get('error')}")
+                    return False
+                else:
+                    logger.warning(f"{archive_type.capitalize()} stat failed: {error_data.get('error')}")
+                    return False
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse error response: {e.stderr}")
+                return False
+        except Exception as e:
+            logger.warning(f"Failed to validate {archive_type} integrity: {e}")
+            return False
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error validating {archive_type} integrity: {e}")
+        return False
+    finally:
+        # 记录验证操作耗时
+        elapsed = monitor.stop(f"validate_{archive_type}")
+        logger.debug(f"Validate {archive_type} integrity took {elapsed:.3f}s")
+
 
 def _validate_asar_integrity(asar_path, core):
     """
@@ -934,56 +832,8 @@ def _validate_asar_integrity(asar_path, core):
     Returns:
         bool: 文件是否有效
     """
-    import json
-    
-    try:
-        # 检查文件大小
-        file_size = os.path.getsize(asar_path)
-        if file_size < 1024:  # 小于 1KB 可能是损坏的
-            logger.warning(f"ASAR file too small: {file_size} bytes")
-            return False
-        
-        # 尝试读取 ASAR 文件的基本信息
-        try:
-            cmd = [core.node_path, core.script_path, 'stat', asar_path, 'package.json']
-            proc_result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True, encoding='utf-8')
-            data = json.loads(proc_result.stdout.strip())
-            if not data.get("success"):
-                error_type = data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.warning(f"File not found in ASAR: package.json")
-                    return False
-                elif error_type == "file_corrupted":
-                    logger.warning(f"ASAR file is corrupted: {data.get('error')}")
-                    return False
-                else:
-                    logger.warning(f"ASAR stat failed: {data.get('error')}")
-                    return False
-        except subprocess.CalledProcessError as e:
-            # 解析 stderr 中的 JSON 错误信息
-            try:
-                error_data = json.loads(e.stderr.strip())
-                error_type = error_data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.warning(f"File not found in ASAR: package.json")
-                    return False
-                elif error_type == "file_corrupted":
-                    logger.warning(f"ASAR file is corrupted: {error_data.get('error')}")
-                    return False
-                else:
-                    logger.warning(f"ASAR stat failed: {error_data.get('error')}")
-                    return False
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse error response: {e.stderr}")
-                return False
-        except Exception as e:
-            logger.warning(f"Failed to validate ASAR integrity: {e}")
-            return False
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error validating ASAR integrity: {e}")
-        return False
+    return _validate_archive_integrity(asar_path, core, "asar")
+
 
 def _validate_backup_integrity(bak_path, core):
     """
@@ -996,56 +846,7 @@ def _validate_backup_integrity(bak_path, core):
     Returns:
         bool: 文件是否有效
     """
-    import json
-    
-    try:
-        # 检查文件大小
-        file_size = os.path.getsize(bak_path)
-        if file_size < 1024:  # 小于 1KB 可能是损坏的
-            logger.warning(f"Backup file too small: {file_size} bytes")
-            return False
-        
-        # 尝试读取备份文件的基本信息
-        try:
-            cmd = [core.node_path, core.script_path, 'stat', bak_path, 'package.json']
-            proc_result = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True, encoding='utf-8')
-            data = json.loads(proc_result.stdout.strip())
-            if not data.get("success"):
-                error_type = data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.warning(f"File not found in backup: package.json")
-                    return False
-                elif error_type == "file_corrupted":
-                    logger.warning(f"Backup file is corrupted: {data.get('error')}")
-                    return False
-                else:
-                    logger.warning(f"Backup stat failed: {data.get('error')}")
-                    return False
-        except subprocess.CalledProcessError as e:
-            # 解析 stderr 中的 JSON 错误信息
-            try:
-                error_data = json.loads(e.stderr.strip())
-                error_type = error_data.get("error_type", "unknown")
-                if error_type == "file_not_found":
-                    logger.warning(f"File not found in backup: package.json")
-                    return False
-                elif error_type == "file_corrupted":
-                    logger.warning(f"Backup file is corrupted: {error_data.get('error')}")
-                    return False
-                else:
-                    logger.warning(f"Backup stat failed: {error_data.get('error')}")
-                    return False
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse error response: {e.stderr}")
-                return False
-        except Exception as e:
-            logger.warning(f"Failed to validate backup integrity: {e}")
-            return False
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error validating backup integrity: {e}")
-        return False
+    return _validate_archive_integrity(bak_path, core, "backup")
 
 def _read_and_validate_patch_info(info_file):
     """
@@ -1082,6 +883,7 @@ def _read_and_validate_patch_info(info_file):
         logger.error(f"Failed to read patch info: {e}")
         return None
 
+
 def batch_mode(args):
     """
     批处理模式
@@ -1101,7 +903,7 @@ def batch_mode(args):
         return 1
     
     base = os.path.abspath(".")
-    res = os.path.join(base, "resources")
+    res = os.path.join(base, get_config().resource_dir)
     asar = os.path.join(res, "app.asar")
     bak = asar + ".bak"
     
@@ -1116,8 +918,11 @@ def batch_mode(args):
         core, base, bak, asar
     )
     
-    if cancel_or_error or not should_continue:
+    if cancel_or_error:
         return 1
+    if not should_continue:
+        logger.info("Patch operation skipped (already patched or not needed)")
+        return 0
     
     # 检查asar文件
     if not os.path.exists(asar):
@@ -1146,20 +951,26 @@ def batch_mode(args):
         if os.path.exists(temp):
             logger.info(f"Cleaning up existing temp directory: {temp}")
             try:
-                shutil.rmtree(temp, onerror=core.remove_readonly)
+                shutil.rmtree(temp, onerror=core.remove_readonly_handler)
             except Exception as cleanup_err:
                 logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
         
         logger.info(f"Extracting asar to: {temp}")
         try:
-            core.run_asar("extract", asar, temp)
-            logger.info("ASAR extraction completed")
+            # 使用性能监控器记录ASAR解包操作
+            monitor = get_performance_monitor()
+            monitor.start("batch_extract_asar")
+            try:
+                core.run_asar("extract", asar, temp)
+                logger.info("ASAR extraction completed")
+            finally:
+                elapsed = monitor.stop("batch_extract_asar")
+                logger.info(f"Batch ASAR extraction took {elapsed:.3f}s")
         except Exception as extract_err:
             logger.error(f"Failed to extract ASAR: {extract_err}")
             return 1
         
         # 应用补丁
-        from utils.paths import get_resource_path
         patch_dir = get_resource_path("Patch")
         if os.path.exists(patch_dir):
             logger.info(f"Applying patch from: {patch_dir}")
@@ -1176,8 +987,15 @@ def batch_mode(args):
         # 打包
         logger.info("Packing asar with patch...")
         try:
-            core.run_asar("pack", temp, asar, unpack_pattern="*.{node,dll,exe}")
-            logger.info("ASAR packing completed - patch applied successfully")
+            # 使用性能监控器记录ASAR打包操作
+            monitor = get_performance_monitor()
+            monitor.start("batch_pack_asar")
+            try:
+                core.run_asar("pack", temp, asar, unpack_pattern="*.{node,dll,exe}")
+                logger.info("ASAR packing completed - patch applied successfully")
+            finally:
+                elapsed = monitor.stop("batch_pack_asar")
+                logger.info(f"Batch ASAR packing took {elapsed:.3f}s")
         except Exception as pack_err:
             logger.error(f"Failed to pack ASAR: {pack_err}")
             return 1
@@ -1191,33 +1009,13 @@ def batch_mode(args):
         except Exception as save_err:
             logger.error(f"Failed to save patch information: {save_err}")
         
-        # 清理临时目录
+        # 清理临时目录（使用更强力的清理策略）
         logger.info(f"Cleaning up temp directory: {temp}")
         if os.path.exists(temp):
-            try:
-                shutil.rmtree(temp, onerror=core.remove_readonly)
-                logger.info("Temp directory cleaned up")
-            except Exception as cleanup_err:
-                logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
+            force_cleanup_dir(temp)
         
         logger.info("Patch completed successfully")
         return 0
-    
-    # 处理Fuse移除
-    if args.fuse:
-        exe_path = os.path.abspath(args.fuse)
-        if not os.path.exists(exe_path):
-            logger.error(f"Executable not found: {exe_path}")
-            return 1
-        
-        logger.info(f"Removing Fuse from: {exe_path}")
-        result = core.remove_fuse(exe_path)
-        if result:
-            logger.info("Fuse removed successfully")
-            return 0
-        else:
-            logger.warning("Fuse sentinel not found or already disabled")
-            return 1
     
     logger.info("Batch mode completed")
     return 0
