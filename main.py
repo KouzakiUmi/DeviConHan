@@ -69,6 +69,15 @@ def main() -> int:
         print("Use --batch flag to run in batch mode or remove the non-GUI flags.")
         return 1
 
+    # Windows 下动态分配控制台用于 Debug
+    if sys.platform.startswith("win") and not args.batch:
+        if config.get_gui_config("show_console", False):
+            import ctypes
+            # 如果 AllocConsole 返回 1，说明成功分配了新的控制台
+            if ctypes.windll.kernel32.AllocConsole():
+                sys.stdout = open("CONOUT$", "w", encoding="utf-8")
+                sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+
     # 启动GUI模式
     try:
         app = App()

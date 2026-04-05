@@ -59,6 +59,7 @@ LANG_DICT = {
         'rad_win': "Windows",
         'rad_mac_linux': "Mac/Linux",
         'grp_config': "配置管理",
+        'chk_show_console': "显示调试控制台 (需重启生效)",
         'btn_validate_config': "✔️ 验证配置",
         'btn_reset_config': "🔄 还原配置",
         'msg_config_valid': "配置完全合法，没有发现警告。",
@@ -130,6 +131,8 @@ LANG_DICT = {
         'msg_already_patched': "游戏已经安装过本补丁，文件状态正常，无需再次安装。",
         'title_third_party_patch_detected': "检测到未知的 ASAR 更改",
         'msg_third_party_patch_detected': "ASAR 文件已被未知的补丁修改，或者 Steam 进行了重大更新。\n\n是否要删除现有备份，使用当前的 ASAR 重建备份并强制安装本补丁？",
+        'title_first_time_patch': "首次安装补丁提醒",
+        'msg_first_time_patch_warn': "未检测到原始备份文件，这似乎是您首次安装本补丁。\n\n⚠️ 警告：如果您之前安装过其他汉化工具，您当前的 app.asar 可能已被篡改。继续操作将把已被篡改的文件作为您的“原版”基准备份。\n\n💡 强烈建议：如果您不确定，请在继续之前先在 Steam 中验证游戏文件的完整性。\n\n是否确认原版文件纯净，并继续备份打补丁？",
     },
     'en': {
         'menu_lang': "Language",
@@ -177,6 +180,7 @@ LANG_DICT = {
         'rad_win': "Windows",
         'rad_mac_linux': "Mac/Linux",
         'grp_config': "Configuration",
+        'chk_show_console': "Show Debug Console (requires restart)",
         'btn_validate_config': "✔️ Validate Config",
         'btn_reset_config': "🔄 Reset Config",
         'msg_config_valid': "Configuration is fully valid. No warnings found.",
@@ -246,6 +250,8 @@ LANG_DICT = {
         'msg_already_patched': "The game is already successfully patched. No further action is required.",
         'title_third_party_patch_detected': "Unknown ASAR Modifications Detected",
         'msg_third_party_patch_detected': "The ASAR file has been modified by an unknown third-party patch, or a major Steam update has occurred.\n\nDo you want to delete the current backup, rebuild it from this ASAR, and force install the patch?",
+        'title_first_time_patch': "First Time Patching Notice",
+        'msg_first_time_patch_warn': "No original backup detected. This appears to be your first time installing this patch.\n\n⚠️ WARNING: If you have previously installed other translation tools, your current app.asar may already be modified. Continuing will backup this modified file as your 'original' baseline.\n\n💡 STRONGLY RECOMMENDED: If you are unsure, please verify integrity of game files in Steam first before proceeding.\n\nDo you want to continue backing up the current state and apply the patch?",
     },
     'jp': {
         'menu_lang': "言語 (Language)",
@@ -293,6 +299,7 @@ LANG_DICT = {
         'rad_win': "Windows",
         'rad_mac_linux': "Mac/Linux",
         'grp_config': "設定管理",
+        'chk_show_console': "デバッグコンソールを表示 (再起動が必要)",
         'btn_validate_config': "✔️ 設定の検証",
         'btn_reset_config': "🔄 初期設定に戻す",
         'msg_config_valid': "設定は完全に有効です。警告はありません。",
@@ -356,6 +363,8 @@ LANG_DICT = {
         'msg_already_patched': "ゲームにはすでにパッチが適用されています。追加の操作は必要ありません。",
         'title_third_party_patch_detected': "不明なASARの変更が検出されました",
         'msg_third_party_patch_detected': "ASARファイルが不明なサードパーティ製パッチによって変更されたか、Steamの大規模な更新が行われました。\n\n現在のバックアップを削除し、このASARから再構築してパッチを強制適用しますか？",
+        'title_first_time_patch': "初回パッチ適用の注意",
+        'msg_first_time_patch_warn': "元のバックアップが検出されませんでした。今回が初めてのパッチ適用のようです。\n\n⚠️ 警告: 過去に他の翻訳ツールをインストールしたことがある場合、現在の app.asar はすでに変更されている可能性があります。続行すると、この変更されたファイルが基準となる「オリジナル」としてバックアップされます。\n\n💡 強く推奨: 不確かな場合は、続行する前にSteamでゲームファイルの整合性を確認してください。\n\n現在のファイルをバックアップしてパッチの適用を続行しますか？",
     }
 }
 

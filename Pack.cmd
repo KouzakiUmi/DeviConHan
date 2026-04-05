@@ -58,7 +58,7 @@ echo ------------------------------------------
 
 if exist "dist" rd /s /q "dist"
 
-python -m PyInstaller -F --clean --distpath "dist" --workpath "build_toolbox" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --name "%OUT_TOOL%" "%ROOT%%PY_SCRIPT%"
+python -m PyInstaller -F -w --clean --distpath "dist" --workpath "build_toolbox" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --name "%OUT_TOOL%" "%ROOT%%PY_SCRIPT%"
 
 if %errorlevel% neq 0 (
     echo [Error] Toolbox build failed
@@ -110,7 +110,7 @@ if "%BUILD_PATCHER%"=="1" (
     echo - Building Patcher...
     echo ------------------------------------------
 
-    python -m PyInstaller -F --clean --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
+    python -m PyInstaller -F -w --clean --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%core;core" --add-data "%ROOT%gui;gui" --add-data "%ROOT%utils;utils" --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
 
     if %errorlevel% neq 0 (
         echo [Error] Patcher build failed

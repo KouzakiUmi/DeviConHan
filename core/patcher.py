@@ -611,6 +611,20 @@ def handle_steam_update(core, base_dir, bak_path, asar_path=None, log_callback=N
                 )
             return (False, True)
         
+        # GUI 模式下提示用户首次打补丁的风险
+        if gui_app:
+            from tkinter import messagebox
+            title = T('title_first_time_patch')
+            msg = T('msg_first_time_patch_warn')
+            if title == 'title_first_time_patch': 
+                title = "First Time Patch"
+            if msg == 'msg_first_time_patch_warn': 
+                msg = "No original backup detected. Please verify game files in Steam first if you have used other patches before. Continue?"
+                
+            result = messagebox.askyesno(title, msg)
+            if not result:
+                return (False, True)
+        
         # ASAR 文件有效，可以继续打补丁
         return (True, False)
     

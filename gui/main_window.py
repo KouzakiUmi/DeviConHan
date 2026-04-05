@@ -205,6 +205,10 @@ class App(tk.Tk):
                 value = self.var_zip.get()
                 self.app_config.set_gui_config("use_zip", str(value).lower())
 
+            if hasattr(self, "var_console") and self.var_console is not None:
+                value = self.var_console.get()
+                self.app_config.set_gui_config("show_console", str(value).lower())
+
             if hasattr(self, "var_backup_dir") and self.var_backup_dir is not None:
                 value = self.var_backup_dir.get()
                 self.app_config.set_gui_config("backup_dir", str(value))
@@ -769,6 +773,13 @@ class App(tk.Tk):
 
         lf3 = ttk.LabelFrame(f, text=T("grp_config"), padding=10)
         lf3.pack(fill="x", pady=10)
+        
+        if sys.platform.startswith("win"):
+            box_debug = ttk.Frame(lf3)
+            box_debug.pack(fill="x", pady=(0, 10))
+            show_console = self.get_config_value("show_console", False)
+            self.var_console = tk.BooleanVar(value=show_console)
+            ttk.Checkbutton(box_debug, text=T("chk_show_console"), variable=self.var_console, command=self.save_config).pack(side="left")
         
         box_config = ttk.Frame(lf3)
         box_config.pack(fill="x")

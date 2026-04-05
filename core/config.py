@@ -157,6 +157,8 @@ class AppConfig:
                 return self.get("preferences", key, fallback=str(default) if default else "win")
             elif key == "language":
                 return self.get("preferences", key, fallback=str(default) if default else "en")
+            elif key == "show_console":
+                return self.get_bool("preferences", key, fallback=bool(default) if default is not None else False)
             else:
                 return self.get("preferences", key, fallback=str(default) if default else "")
         except Exception:
