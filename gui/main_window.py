@@ -13,20 +13,20 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 import threading
 import datetime
-import zipfile
 import logging
 import subprocess
 
 from core.config import get_config
-from core.patcher import (
-    CoreLogic, has_embedded_patch,
-    handle_steam_update, save_patch_info, save_patch_meta
-)
+from core.patcher import CoreLogic, has_embedded_patch
+from core.save_service import SaveService
+from controllers.patch_controller import PatchController
+from controllers.save_manager_controller import SaveManagerController
 from utils.cleanup import force_cleanup_dir
 from utils.language import init_lang, T, get_font, get_mono_font
 from utils.paths import get_resource_path, get_user_config_path
 from utils.performance import get_performance_monitor
 from utils.async_ops import get_async_manager, ProgressInfo
+from gui.about_dialog import show_about_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +51,12 @@ class App(tk.Tk):
         try:
             # 初始化核心逻辑（可能抛出异常）
             self.core = CoreLogic()
+            self.save_service = SaveService(self.core)
+            self.save_controller = SaveManagerController(self.save_service, log_callback=self.log)
+            self.patch_controller = PatchController(self.core, log_callback=self.log)
         except Exception as e:
             logger.error(f"Failed to initialize CoreLogic: {e}")
-            messagebox.showerror(T("title_error") if T("title_error") else "Initialization Error", str(e))
+            messagebox.showerror(T("title_error", "Initialization Error"), str(e))
             self.after(0, self.destroy)
             return
 
@@ -99,11 +102,9 @@ class App(tk.Tk):
 
         about_menu = tk.Menu(menubar, tearoff=0)
         about_label = T("menu_about")
-        if about_label == "menu_about": about_label = "关于"
         about_app_label = T("menu_about_app")
-        if about_app_label == "menu_about_app": about_app_label = "关于本程序"
         menubar.add_cascade(label=about_label, menu=about_menu)
-        about_menu.add_command(label=about_app_label, command=self.show_about_dialog)
+        about_menu.add_command(label=about_app_label, command=lambda: show_about_dialog(self))
 
         style = ttk.Style()
         if sys.platform.startswith("win"): style.theme_use("vista")
@@ -136,109 +137,6 @@ class App(tk.Tk):
         
         self.progress = ttk.Progressbar(self.log_frame, mode="indeterminate")
         self.progress.pack(fill="x", padx=5, pady=(0, 5))
-
-    def show_about_dialog(self):
-        about_app_label = T("menu_about_app")
-        if about_app_label == "menu_about_app": about_app_label = "关于本程序"
-        
-        dlg = tk.Toplevel(self)
-        dlg.title(about_app_label)
-        dlg.resizable(False, False)
-        dlg.transient(self)
-        dlg.grab_set()
-
-        # 计算居中位置
-        self.update_idletasks()
-        w, h = 550, 350
-        x = self.winfo_rootx() + (self.winfo_width() // 2) - (w // 2)
-        y = self.winfo_rooty() + (self.winfo_height() // 2) - (h // 2)
-        dlg.geometry(f"{w}x{h}+{x}+{y}")
-
-        try:
-            icon_path = get_resource_path("icon.ico")
-            if os.path.exists(icon_path):
-                dlg.iconbitmap(icon_path)
-        except Exception:
-            pass
-
-        main_frame = ttk.Frame(dlg, padding=20)
-        main_frame.pack(fill="both", expand=True)
-
-        avatar_img = None
-        try:
-            import struct
-            import base64
-            icon_path = get_resource_path("icon.ico")
-            if os.path.exists(icon_path):
-                with open(icon_path, 'rb') as f:
-                    f.read(4)
-                    n = struct.unpack('<H', f.read(2))[0]
-                    for _ in range(n):
-                        img_w, img_h, _, _, _, _, size, offset = struct.unpack('<BBBBHHII', f.read(16))
-                        if img_w == 0 and img_h == 0:
-                            f.seek(offset)
-                            png_data = f.read(size)
-                            if png_data.startswith(b'\x89PNG'):
-                                b64_data = base64.b64encode(png_data)
-                                tk_img = tk.PhotoImage(data=b64_data)
-                                avatar_img = tk_img.subsample(2, 2)
-                                dlg._avatar_img_ref = avatar_img
-                            break
-        except Exception as e:
-            logger.warning(f"Failed to load avatar from ICO: {e}")
-
-        if avatar_img:
-            lbl_avatar = ttk.Label(main_frame, image=avatar_img)
-            lbl_avatar.pack(side="left", padx=(0, 20), anchor="n")
-        else:
-            lbl_avatar = ttk.Label(main_frame, text="[ICON]", font=get_font(24))
-            lbl_avatar.pack(side="left", padx=(0, 20), anchor="n")
-
-        info_frame = ttk.Frame(main_frame)
-        info_frame.pack(side="left", fill="both", expand=True)
-
-        app_name = T("app_title")
-        if app_name == "app_title":
-            app_name = "DevilConnection Patcher"
-            
-        ttk.Label(info_frame, text=app_name, font=get_font(14, "bold")).pack(anchor="w", pady=(0, 5))
-        ttk.Label(info_frame, text="版本: 1.0 Release", font=get_font(10)).pack(anchor="w", pady=(0, 10))
-        
-        desc = (
-            "《でびるコネクション》非营利性个人本地化工具。\n"
-            "TyranoV8通用工具箱\n\n"
-            "==== 技术致谢 ====\n"
-            "• 核心语言: Python 3, JavaScript (Node.js)\n"
-            "• 图形界面: Tkinter (Tcl/Tk)\n"
-            "• 封包引擎: @electron/asar\n"
-            "• 构建工具: PyInstaller\n\n"
-            "==== 开发人员 ====\n"
-            "作者：KouzakiUmi (呜咪 / 神前海)\n"
-            "GitHub: https://github.com/KouzakiUmi/DeviConHan\n\n"
-            "==== 许可证 ====\n"
-            "本项目仅限非营利目的使用。\n"
-            "游戏内容的所有权利均归原作者 ばやちゃお 所有。\n"
-        )
-        
-        # 使用带滚动条的文本框展示 Credits
-        from tkinter import scrolledtext
-        text_area = scrolledtext.ScrolledText(info_frame, wrap=tk.WORD, height=8, font=get_font(9))
-        text_area.insert(tk.END, desc)
-        text_area.config(state="disabled")
-        text_area.pack(fill="both", expand=True, pady=(0, 10))
-        
-        # 链接标签
-        def open_url(event):
-            import webbrowser
-            webbrowser.open("https://github.com/KouzakiUmi/DeviConHan")
-            
-        lbl_link = ttk.Label(info_frame, text="访问 GitHub 主页", foreground="blue", cursor="hand2")
-        lbl_link.pack(anchor="w", pady=(0, 10))
-        lbl_link.bind("<Button-1>", open_url)
-        
-        btn_frame = ttk.Frame(info_frame)
-        btn_frame.pack(fill="x", side="bottom")
-        ttk.Button(btn_frame, text="确定", command=dlg.destroy, width=10).pack(side="right")
 
     def load_config(self):
         """
@@ -419,32 +317,56 @@ class App(tk.Tk):
         except tk.TclError:
             pass
 
-    def thread_safe_askyesno(self, title, message):
+    def thread_safe_askyesno(self, title, message, timeout=30):
         import queue
         q = queue.Queue()
         def _ask():
-            res = messagebox.askyesno(title, message, parent=self)
-            q.put(res)
+            try:
+                res = messagebox.askyesno(title, message, parent=self)
+                q.put(res)
+            except Exception as e:
+                logger.error(f"Error in ask dialog: {e}")
+                q.put(False)
         self.after(0, _ask)
-        return q.get()
+        try:
+            return q.get(timeout=timeout)
+        except queue.Empty:
+            logger.error(f"thread_safe_askyesno timed out after {timeout}s. Returning False.")
+            return False
 
-    def thread_safe_showerror(self, title, message):
+    def thread_safe_showerror(self, title, message, timeout=30):
         import queue
         q = queue.Queue()
         def _show():
-            messagebox.showerror(title, message, parent=self)
-            q.put(None)
+            try:
+                messagebox.showerror(title, message, parent=self)
+                q.put(None)
+            except Exception as e:
+                logger.error(f"Error in showerror dialog: {e}")
+                q.put(e)
         self.after(0, _show)
-        q.get()
-        
-    def thread_safe_showinfo(self, title, message):
+        try:
+            return q.get(timeout=timeout)
+        except queue.Empty:
+            logger.error(f"thread_safe_showerror timed out after {timeout}s.")
+            return None
+
+    def thread_safe_showinfo(self, title, message, timeout=30):
         import queue
         q = queue.Queue()
         def _show():
-            messagebox.showinfo(title, message, parent=self)
-            q.put(None)
+            try:
+                messagebox.showinfo(title, message, parent=self)
+                q.put(None)
+            except Exception as e:
+                logger.error(f"Error in showinfo dialog: {e}")
+                q.put(e)
         self.after(0, _show)
-        q.get()
+        try:
+            return q.get(timeout=timeout)
+        except queue.Empty:
+            logger.error(f"thread_safe_showinfo timed out after {timeout}s.")
+            return None
 
     def _on_async_progress(self, progress_info: ProgressInfo) -> None:
         """
@@ -489,20 +411,28 @@ class App(tk.Tk):
             try:
                 if is_dir:
                     p = filedialog.askdirectory(
-                        title="Select Directory",
+                        title=T("title_select_directory"),
                         initialdir=os.getcwd()
                     )
                 else:
-                    types = [("All Files", "*.*")]
+                    types = [(T("file_type_all"), "*.*")]
                     if ext:
                         if not isinstance(ext, (list, tuple)):
                             ext_tuple = (ext,)
                         else:
                             ext_tuple = ext
-                        types.insert(0, ext_tuple)
+                        
+                        # Fix up the types display based on extension
+                        display_name = ext_tuple[0]
+                        if "asar" in str(ext_tuple).lower():
+                            display_name = T("file_type_asar")
+                        elif "exe" in str(ext_tuple).lower():
+                            display_name = T("file_type_exe")
+                        
+                        types.insert(0, (display_name, ext_tuple[1] if len(ext_tuple) > 1 else ext_tuple[0]))
                     
                     p = filedialog.askopenfilename(
-                        title="Select File",
+                        title=T("title_select_file"),
                         filetypes=types,
                         initialdir=os.getcwd()
                     )
@@ -511,7 +441,7 @@ class App(tk.Tk):
                     var.set(os.path.abspath(p))
             except Exception as e:
                 logger.error(f"File browser error: {e}")
-                messagebox.showerror(T("title_error") if T("title_error") else "Error", str(e))
+                messagebox.showerror(T("title_error", "Error"), str(e))
         
         browse_btn = ttk.Button(f, text="...", width=4, command=_browse)
         browse_btn.pack(side="right")
@@ -599,22 +529,10 @@ class App(tk.Tk):
                 
                 def _migrate_worker():
                     try:
-                        from utils.file_ops import migrate_backup
-                        migrated_count = 0
-                        failed_count = 0
-                        
-                        # 扫描旧目录中的 Backup_ 文件
-                        if os.path.exists(old_dir):
-                            for d in os.listdir(old_dir):
-                                fp = os.path.join(old_dir, d)
-                                if d.startswith("Backup_") and (os.path.isdir(fp) or fp.endswith(".zip")):
-                                    self.log(f"Migrating: {d}...")
-                                    success = migrate_backup(fp, new_dir)
-                                    if success:
-                                        migrated_count += 1
-                                    else:
-                                        failed_count += 1
-                                        
+                        self.save_controller.set_log_callback(self.log)
+                        migrated_count, failed_count = self.save_controller.migrate_backups(
+                            old_dir, new_dir
+                        )
                         msg = T("msg_migrate_success").format(migrated=migrated_count)
                         if failed_count > 0:
                             msg += T("msg_migrate_failed").format(failed=failed_count)
@@ -623,6 +541,9 @@ class App(tk.Tk):
                     except Exception as e:
                         logger.error(f"Migration error: {e}")
                         self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), T("msg_migrate_error").format(error=e_str)))
+                    finally:
+                        self.after(0, lambda: setattr(self, 'is_operating', False))
+                        self.after(0, lambda: self.toggle_progress(False))
                 
                 # 启动异步线程
                 self.async_manager.submit("migrate_backup_op", _migrate_worker)
@@ -699,167 +620,76 @@ class App(tk.Tk):
             logger.debug(f"Error parsing backup name \'{filename}\': {parse_err}")
             list_ref.append((filename, fullpath, is_zip))
 
-    def _clear_save_directory(self):
-        """
-        清空当前存档目录（处理只读文件）
-        
-        Returns:
-            bool: 是否成功清空
-        """
-        if not self.current_save_dir or not os.path.exists(self.current_save_dir):
-            return False
-        try:
-            shutil.rmtree(self.current_save_dir, onerror=self.core.remove_readonly)
-            return True
-        except Exception as clear_err:
-            logger.warning(f"Failed to clear save directory: {clear_err}")
-            return False
 
     def do_backup_save(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         if not self.current_save_dir:
             return messagebox.showerror(T("title_error"), T("err_no_save"))
 
         if not os.path.exists(self.current_save_dir):
-            return messagebox.showerror(T("title_error"), T("err_save_dir_not_exist") if T("err_save_dir_not_exist") else "Save directory does not exist")
+            return messagebox.showerror(T("title_error"), T("err_save_dir_not_exist", "Save directory does not exist"))
 
-        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         parent = self.get_backup_dir()
+        use_zip = self.var_zip.get()
+        save_dir = self.current_save_dir
 
-        # 使用性能监控器记录备份操作
         self.performance_monitor.start("backup_save")
-        
         self.is_operating = True
         self.toggle_progress(True)
         def _worker():
             try:
-                if self.var_zip.get():
-                    zip_name = f"Backup_{ts}.zip"
-                    dest_zip = os.path.join(parent, zip_name)
-                    base_path = os.path.abspath(self.current_save_dir)
-                    with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-                        base_len = len(self.current_save_dir)
-                        for root, dirs, files in os.walk(self.current_save_dir):
-                            for file in files:
-                                abs_path = os.path.join(root, file)
-                                # 安全检查：防止路径遍历攻击
-                                abs_root = os.path.abspath(root)
-                                # 使用 startswith 检查，确保路径在基准目录内
-                                if not (abs_root.startswith(base_path + os.sep) or abs_root == base_path):
-                                    logger.warning(f"Skipped path outside base directory: {abs_root}")
-                                    continue
-                                rel_path = abs_path[base_len:].lstrip(os.sep)
-                                zf.write(abs_path, rel_path)
-                    self.log(f"Backup(ZIP): {zip_name}")
-                    logger.info(f"Backup created (ZIP): {dest_zip}")
-                else:
-                    folder_name = f"Backup_{ts}"
-                    dest_folder = os.path.join(parent, folder_name)
-                    shutil.copytree(self.current_save_dir, dest_folder, symlinks=False, ignore=None)
-                    self.log(f"Backup(DIR): {folder_name}")
-                    logger.info(f"Backup created (DIR): {dest_folder}")
-
+                self.save_controller.set_log_callback(self.log)
+                self.save_controller.execute_backup(save_dir, parent, use_zip)
                 self.after(0, self.scan_saves)
                 self.after(0, lambda msg=T("msg_backup_ok"): messagebox.showinfo(T("title_success"), msg))
             except Exception as e:
                 self.log(f"Backup error: {e}")
                 self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
-                # 记录备份操作耗时
                 elapsed = self.performance_monitor.stop("backup_save")
                 logger.info(f"Backup operation took {elapsed:.3f}s")
+                self.after(0, lambda: setattr(self, 'is_operating', False))
+                self.after(0, lambda: self.toggle_progress(False))
                 
         self.async_manager.submit("backup_save_op", _worker)
 
     def do_restore_save(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         sel = self.tree.selection()
         if not sel:
             return messagebox.showwarning(T("title_warning"), T("no_backup_selected"))
         src = self.backup_paths[sel[0]]
 
         if not os.path.exists(src):
-            return messagebox.showerror(T("title_error"), T("err_backup_not_exist") if T("err_backup_not_exist") else "Backup file/folder does not exist")
+            return messagebox.showerror(T("title_error"), T("err_backup_not_exist", "Backup file/folder does not exist"))
 
         if messagebox.askyesno(T("title_confirm"), T("msg_restore_confirm")):
-            # 使用性能监控器记录还原操作
             self.performance_monitor.start("restore_save")
-            
             self.is_operating = True
             self.toggle_progress(True)
+            save_dir = self.current_save_dir
             def _w():
-                temp_dir = None
-                backup_success = False
                 try:
-                    if os.path.exists(self.current_save_dir):
-                        import tempfile
-                        temp_dir = tempfile.mkdtemp(prefix="save_backup_")
-                        shutil.copytree(self.current_save_dir, os.path.join(temp_dir, "current"))
-                        backup_success = True
-                        logger.info(f"Successfully backed up current save to: {temp_dir}")
-
-                    if os.path.isfile(src) and src.endswith(".zip"):
-                        # 清空当前存档目录（如果存在）
-                        if os.path.exists(self.current_save_dir):
-                            self._clear_save_directory()
-                        os.makedirs(self.current_save_dir, exist_ok=True)
-                        with zipfile.ZipFile(src, "r") as zf:
-                            for member in zf.infolist():
-                                # 安全检查：防止 ZIP 遍历攻击
-                                file_path = os.path.join(self.current_save_dir, member.filename)
-                                abs_save_dir = os.path.abspath(self.current_save_dir)
-                                abs_file_path = os.path.abspath(file_path)
-                                if not (abs_file_path.startswith(abs_save_dir + os.sep) or abs_file_path == abs_save_dir):
-                                    raise ValueError("Invalid path in ZIP: potential directory traversal")
-                            zf.extractall(self.current_save_dir)
-                        logger.info(f"Restored save from ZIP: {src}")
-                    else:
-                        # 清空当前存档目录（如果存在）
-                        if os.path.exists(self.current_save_dir):
-                            self._clear_save_directory()
-                        shutil.copytree(src, self.current_save_dir, dirs_exist_ok=True)
-                        logger.info(f"Restored save from folder: {src}")
-
+                    self.save_controller.set_log_callback(self.log)
+                    success, error_msg = self.save_controller.execute_restore(save_dir, src)
                     self.after(0, lambda msg=T("msg_restored"): messagebox.showinfo(T("title_success"), msg))
                     self.after(0, self.scan_saves)
                 except Exception as e:
                     logger.error(f"Restore error: {e}")
-                    if temp_dir and backup_success and os.path.exists(temp_dir):
-                        try:
-                            logger.info("Attempting to restore from backup...")
-                            shutil.rmtree(self.current_save_dir, onerror=self.core.remove_readonly)
-                            shutil.copytree(os.path.join(temp_dir, "current"), self.current_save_dir)
-                            logger.info("Successfully restored from backup")
-                        except Exception as restore_err:
-                            logger.error(f"Failed to restore from backup: {restore_err}")
-                            self.after(0, lambda err=str(restore_err), e_str=str(e): messagebox.showerror(
-                                T("title_error"),
-                                f"{e_str}\n\nFailed to restore from backup: {err}"
-                            ))
-                        else:
-                            self.after(0, lambda e_str=str(e): messagebox.showerror(
-                                T("title_error"),
-                                f"{e_str}\n\nCurrent save has been restored from backup."
-                            ))
-                    else:
-                        self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
+                    self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
                 finally:
-                    if temp_dir and os.path.exists(temp_dir):
-                        try:
-                            shutil.rmtree(temp_dir)
-                        except Exception as cleanup_err:
-                            logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
-                    # 记录还原操作耗时
                     elapsed = self.performance_monitor.stop("restore_save")
                     logger.info(f"Restore operation took {elapsed:.3f}s")
+                    self.after(0, lambda: setattr(self, 'is_operating', False))
+                    self.after(0, lambda: self.toggle_progress(False))
             
             self.async_manager.submit("restore_save_op", _w)
 
     def do_delete_backup(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         sel = self.tree.selection()
         if not sel:
             return messagebox.showwarning(T("title_warning"), T("no_backup_selected"))
@@ -867,26 +697,24 @@ class App(tk.Tk):
 
         if not messagebox.askyesno(T("title_confirm"), T("msg_delete_confirm")):
             return
-        # 使用性能监控器记录删除备份操作
+            
         self.performance_monitor.start("delete_backup")
-        
         self.is_operating = True
         def _w():
             try:
-                if os.path.isfile(src):
-                    try:
-                        os.remove(src)
-                    except Exception as e:
-                        logger.error(f"Failed to remove file {src}: {e}")
+                self.save_controller.set_log_callback(self.log)
+                success = self.save_controller.execute_delete(src)
+                if success:
+                    self.after(0, self.scan_saves)
                 else:
-                    shutil.rmtree(src, onerror=self.core.remove_readonly)
-                self.after(0, self.scan_saves)
+                    self.after(0, lambda: messagebox.showerror(T("title_error", "Error"), T("err_delete_failed", "Failed to delete. Check logs.")))
             except Exception as e:
                 self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
             finally:
-                # 记录删除备份操作耗时
                 elapsed = self.performance_monitor.stop("delete_backup")
                 logger.info(f"Delete backup operation took {elapsed:.3f}s")
+                self.after(0, lambda: setattr(self, 'is_operating', False))
+                self.after(0, lambda: self.toggle_progress(False))
                 
         self.async_manager.submit("delete_backup_op", _w)
 
@@ -927,7 +755,7 @@ class App(tk.Tk):
         box_fuse = ttk.Frame(lf2)
         box_fuse.pack(fill="x")
         ttk.Button(box_fuse, text=T("btn_locate"), command=self._auto_scan_exe).pack(side="left")
-        ttk.Button(box_fuse, text=T("btn_fuse_setting") if T("btn_fuse_setting") != "btn_fuse_setting" else "修改Fuse偏移", command=self._edit_fuse_offset).pack(side="left", padx=10)
+        ttk.Button(box_fuse, text=T("btn_fuse_setting", "修改Fuse偏移"), command=self._edit_fuse_offset).pack(side="left", padx=10)
         ttk.Button(box_fuse, text=T("btn_fuse"), command=self._tool_fuse).pack(side="right")
 
         lf3 = ttk.LabelFrame(f, text=T("grp_config"), padding=10)
@@ -995,7 +823,7 @@ class App(tk.Tk):
                 self.log(f"Found: {p}")
                 return
         self.log("app.asar not found in default locations.")
-        messagebox.showinfo(T("title_warning"), T("warn_no_file") if T("warn_no_file") != "warn_no_file" else "未找到文件")
+        messagebox.showinfo(T("title_warning"), T("warn_no_file", "未找到文件"))
 
     def _auto_scan_exe(self):
         exe_name = get_config().auto_target_exe
@@ -1005,11 +833,11 @@ class App(tk.Tk):
             self.log(f"Found: {p}")
         else:
             self.log(f"{exe_name} not found.")
-            messagebox.showinfo(T("title_warning"), f"未找到目标程序：{exe_name}\n请尝试手动选择。")
+            messagebox.showinfo(T("title_warning"), T("warn_exe_not_found").format(exe_name=exe_name))
 
     def _tool_extract(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         src = self.var_ext_src.get()
         if not src or not os.path.exists(src):
             return messagebox.showwarning(T("title_warning"), T("warn_no_file"))
@@ -1046,6 +874,8 @@ class App(tk.Tk):
                 # 记录ASAR解包操作耗时
                 elapsed = self.performance_monitor.stop("gui_extract_asar")
                 logger.info(f"GUI ASAR extraction took {elapsed:.3f}s")
+                self.after(0, lambda: setattr(self, 'is_operating', False))
+                self.after(0, lambda: self.toggle_progress(False))
                 
         self.async_manager.submit("gui_extract_asar_op", _t)
 
@@ -1066,7 +896,7 @@ class App(tk.Tk):
 
     def _tool_pack(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         src = self.var_pack_src.get()
         
         # 路径验证
@@ -1074,7 +904,7 @@ class App(tk.Tk):
             return messagebox.showwarning(T("title_warning"), T("warn_no_file"))
         
         if not os.path.exists(src):
-            return messagebox.showerror(T("title_error"), T("err_path_not_exist") if T("err_path_not_exist") else f"Path does not exist: {src}")
+            return messagebox.showerror(T("title_error"), T("err_path_not_exist", f"Path does not exist: {src}"))
         
         if not os.path.isdir(src):
             return messagebox.showwarning(T("title_warning"), T("warn_not_dir"))
@@ -1090,17 +920,17 @@ class App(tk.Tk):
                 return messagebox.showerror(T("title_error"), T("warn_empty_dir"))
         except PermissionError as e:
             logger.error(f"Permission denied when accessing directory {src}: {e}")
-            return messagebox.showerror(T("title_error"), T("err_permission_denied") if T("err_permission_denied") else f"Permission denied: {src}")
+            return messagebox.showerror(T("title_error"), T("err_permission_denied", f"Permission denied: {src}"))
         except Exception as e:
             logger.error(f"Error accessing directory {src}: {e}")
-            return messagebox.showerror(T("title_error"), T("err_cannot_access") if T("err_cannot_access") else f"Cannot access directory: {src}")
+            return messagebox.showerror(T("title_error"), T("err_cannot_access", f"Cannot access directory: {src}"))
         
         # 验证目录结构（检查是否包含必要的asar文件）
         REQUIRED_FILES = ['package.json', 'index.html']
         missing_files = [f for f in REQUIRED_FILES if not os.path.exists(os.path.join(src, f))]
         if missing_files:
             logger.warning(f"Missing required files in source directory: {missing_files}")
-            msg = T("warn_missing_files") if T("warn_missing_files") else f"Warning: Missing expected files: {', '.join(missing_files)}\n\nThis may not be a valid asar source directory.\n\nContinue anyway?"
+            msg = T("warn_missing_files", f"Warning: Missing expected files: {', '.join(missing_files)}\n\nThis may not be a valid asar source directory.\n\nContinue anyway?")
             if not messagebox.askyesno(
                 T("title_warning"),
                 msg
@@ -1147,6 +977,8 @@ class App(tk.Tk):
                 # 记录ASAR打包操作耗时
                 elapsed = self.performance_monitor.stop("gui_pack_asar")
                 logger.info(f"GUI ASAR packing took {elapsed:.3f}s")
+                self.after(0, lambda: setattr(self, 'is_operating', False))
+                self.after(0, lambda: self.toggle_progress(False))
                 
         self.async_manager.submit("gui_pack_asar_op", _t)
 
@@ -1156,13 +988,8 @@ class App(tk.Tk):
         from configparser import ConfigParser
         
         current_offset = get_config().fuse_asar_integrity_offset
-        title = T("title_fuse_setting") if T("title_fuse_setting") != "title_fuse_setting" else "修改 Fuse 偏移值"
-        prompt = (T("msg_fuse_setting") if T("msg_fuse_setting") != "msg_fuse_setting" else 
-                  "请输入针对此游戏 Electron 版本的 ASAR 完整性验证 Fuse 偏移值 (默认: 4)\n\n"
-                  "提示：\n"
-                  "- 若为标准 TyranoV8 版本，使用默认值 4 即可\n"
-                  "- 若遇到 Fuse 移除无效的情况，请根据实际需求和引擎版本修改此值\n"
-                  "- 修改将保存至 config.ini 中")
+        title = T("title_fuse_setting")
+        prompt = T("msg_fuse_setting")
                   
         new_offset = simpledialog.askinteger(title, prompt, initialvalue=current_offset, parent=self)
         
@@ -1181,37 +1008,29 @@ class App(tk.Tk):
                     
                 get_config().reload()
                 
-                success_msg = T("msg_fuse_saved").format(offset=new_offset) if T("msg_fuse_saved") != "msg_fuse_saved" else f"Fuse 偏移值已成功保存为: {new_offset}"
+                success_msg = T("msg_fuse_saved").format(offset=new_offset)
                 messagebox.showinfo(T("title_success"), success_msg)
                 self.log(f"Fuse offset updated to {new_offset}")
             except Exception as e:
-                err_msg = f"{T('err_fuse_save')} {e}" if T("err_fuse_save") != "err_fuse_save" else f"保存 Fuse 偏移设置失败: {e}"
+                err_msg = f"{T('err_fuse_save')} {e}"
                 messagebox.showerror(T("title_error"), err_msg)
                 logger.error(f"Failed to update fuse offset: {e}")
 
     def _tool_fuse(self):
         """Fuse移除工具 - 仅供开发者使用，需联网确认偏移值是否正确"""
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") != "warn_operation_in_progress" else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
             
         t = self.var_exe.get()
         if not t:
-            return messagebox.showwarning(T("title_warning"), T("warn_no_file") if T("warn_no_file") != "warn_no_file" else "请选择文件")
+            return messagebox.showwarning(T("title_warning"), T("warn_no_file", "请选择文件"))
             
         if not os.path.exists(t):
-            return messagebox.showerror(T("title_error"), T("err_path_not_exist") if T("err_path_not_exist") != "err_path_not_exist" else "路径不存在")
+            return messagebox.showerror(T("title_error"), T("err_path_not_exist", "路径不存在"))
 
         # 添加开发者工具警告确认
         current_offset = get_config().fuse_asar_integrity_offset
-        warn_msg = (T("msg_fuse_warn").format(offset=current_offset) if T("msg_fuse_warn") != "msg_fuse_warn" else 
-                    "⚠️ 开发者工具警告\n\n"
-                    "此功能用于移除游戏可执行文件的Fuse完整性校验。\n\n"
-                    "⚠️ 重要提示：\n"
-                    "1. 操作不可逆，请务必提前备份游戏执行文件！\n"
-                    f"2. 当前使用的 Fuse 偏移值为: {current_offset}\n"
-                    "3. 此偏移值需根据实际需求修改（如遇版本更新或更换引擎）。\n"
-                    "4. 可在左侧“修改Fuse偏移”中调整设置。\n\n"
-                    "确认偏移无误并继续移除 Fuse 吗？")
+        warn_msg = T("msg_fuse_warn").format(offset=current_offset)
         
         if not messagebox.askyesno(
             T("title_warning"),
@@ -1223,7 +1042,7 @@ class App(tk.Tk):
         if result:
             messagebox.showinfo(T("title_success"), T("op_success"))
         else:
-            messagebox.showinfo(T("title_warning"), "Fuse sentinel not found or already disabled.")
+            messagebox.showinfo(T("title_warning"), T("msg_fuse_disabled_or_not_found"))
 
     def _init_patch_ui(self):
         f = ttk.Frame(self.tab_patch, padding=20)
@@ -1234,145 +1053,38 @@ class App(tk.Tk):
         self.btn_p.pack(pady=10, ipady=10, fill="x", padx=50)
         ttk.Button(f, text=T("btn_to_tools"), command=lambda: self.notebook.select(self.tab_tools)).pack(pady=10)
 
+
     def _run_auto_patch_worker(self):
-        base = res = asar = bak = temp = None
+        self.performance_monitor.start("auto_patch")
+        temp = None
         try:
+            success, temp, error_msg = self.patch_controller.run_auto_patch(gui_app=self)
+            if success:
+                self.after(0, lambda msg=T("patch_done_done"): messagebox.showinfo(T("title_success"), msg))
+                
+                # 先清理临时目录，再询问退出
+                if temp and os.path.exists(temp):
+                    from utils.cleanup import force_cleanup_dir
+                    force_cleanup_dir(temp)
+                
+                def on_exit_confirm():
+                    if messagebox.askyesno(T("title_confirm"), T("msg_exit_after_patch")):
+                        if temp and os.path.exists(temp):
+                            from utils.cleanup import force_cleanup_dir
+                            force_cleanup_dir(temp)
+                        self.destroy()
+                self.after(0, on_exit_confirm)
+        except Exception as e:
             base = os.path.abspath(".")
             res = os.path.join(base, get_config().resource_dir)
             asar = os.path.join(res, "app.asar")
             bak = asar + ".bak"
-            
-            if not os.path.exists(res):
-                raise Exception(T("err_res_missing"))
-
-            # 检查 ASAR 文件是否存在，如果不存在但有备份，先恢复备份
-            if not os.path.exists(asar) and os.path.exists(bak):
-                self.log("app.asar missing, restoring from backup...")
-                shutil.copy2(bak, asar)
-                self.log("Restored app.asar from backup.")
-            
-            should_continue, cancel_or_error = handle_steam_update(
-                self.core, base, bak, asar,
-                log_callback=self.log,
-                gui_app=self
-            )
-            
-            if cancel_or_error or not should_continue:
-                return
-
-            if not os.path.exists(asar):
-                raise Exception(T("err_asar_missing"))
-
-            # Create backup if it doesn't exist
-            if not os.path.exists(bak):
-                self.log("Creating backup...")
-                try:
-                    shutil.copy2(asar, bak)
-                    self.log("Backup created successfully.")
-                except Exception as backup_err:
-                    raise Exception(f"Failed to create backup: {backup_err}")
-            else:
-                self.log("Backup already exists.")
-
-            temp = os.path.join(base, "temp_patch")
-            if os.path.exists(temp):
-                force_cleanup_dir(temp)
-
-            # 使用性能监控器记录自动补丁操作
-            self.performance_monitor.start("auto_patch")
-            
-            self.log("Extracting ASAR...")
-            self.core.run_asar("extract", asar, temp, callback=self.log)
-            
-            self.log("Applying patch...")
-            patch_zip = get_resource_path("Patch.zip")
-            patch_dir = get_resource_path("Patch")
-            
-            if os.path.exists(patch_zip):
-                self.log(f"Extracting Patch.zip...")
-                import zipfile
-                with zipfile.ZipFile(patch_zip, 'r') as zf:
-                    zf.extractall(temp)
-                self.log("Patch.zip extracted successfully.")
-            elif os.path.exists(patch_dir):
-                self.log(f"Copying Patch directory...")
-                shutil.copytree(patch_dir, temp, dirs_exist_ok=True)
-                self.log("Patch files copied.")
-            else:
-                raise Exception("Patch data not found (neither Patch.zip nor Patch directory exists)")
-
-            self.log("Packing ASAR...")
-            self.core.run_asar("pack", temp, asar, callback=self.log, unpack_pattern="*.{node,dll,exe}")
-
-            self.log("Saving patch information...")
-            save_patch_info(base, asar, bak)
-            save_patch_meta(base, temp)
-
-            # 清理旧的临时备份文件
-            temp_bak = bak + ".old"
-            patch_info_file = get_config().patch_info_file
-            temp_info = os.path.join(base, patch_info_file + ".old")
-            for tmp_file in [temp_bak, temp_info]:
-                if os.path.exists(tmp_file):
-                    try:
-                        os.remove(tmp_file)
-                        logger.debug(f"Removed old temp file: {tmp_file}")
-                    except Exception as e:
-                        logger.warning(f"Failed to remove temp backup file {tmp_file}: {e}")
-
-            self.log("Patch applied successfully. (Fuse removal is now manual)")
-            self.log(T("patch_done"))
-            self.after(0, lambda msg=T("patch_done_done"): messagebox.showinfo(T("title_success"), msg))
-            
-            # 先清理临时目录，再询问退出
-            if temp and os.path.exists(temp):
-                force_cleanup_dir(temp)
-            
-            # 使用 callback 继续处理 UI
-            def on_exit_confirm():
-                if messagebox.askyesno(T("title_confirm"), T("msg_exit_after_patch")):
-                    if temp and os.path.exists(temp):
-                        force_cleanup_dir(temp)
-                    self.destroy()
-            self.after(0, on_exit_confirm)
-            return
-        except Exception as e:
-            self.log(f"Error: {e}")
-            logger.error(f"Patch error: {e}")
-            
-            # 尝试恢复备份
-            if bak and os.path.exists(bak):
-                try:
-                    temp_bak = bak + ".old"
-                    patch_info_file = get_config().patch_info_file
-                    temp_info = os.path.join(base, patch_info_file + ".old") if base else None
-                    
-                    if os.path.exists(temp_bak):
-                        self.log("Restoring backup due to error...")
-                        if os.path.exists(bak):
-                            try:
-                                os.remove(bak)
-                            except Exception as e:
-                                logger.error(f"Failed to remove corrupted backup: {e}")
-                        shutil.move(temp_bak, bak)
-                    
-                    if os.path.exists(asar):
-                        try:
-                            os.remove(asar)
-                        except Exception as e:
-                            logger.error(f"Failed to remove corrupted ASAR: {e}")
-                    shutil.copy2(bak, asar)
-                    self.log("Restored app.asar from backup.")
-                except Exception as be:
-                    logger.error(f"Backup restore error: {be}")
-                    self.log(f"Failed to restore backup: {be}")
-
+            self.patch_controller.handle_error(base, asar, bak, e)
             self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
         finally:
-            # 只在出错时执行清理（成功时已在前面清理）
-            # 但为确保万无一失，仍做一次检查
             if temp and os.path.exists(temp):
                 try:
+                    from utils.cleanup import force_cleanup_dir
                     force_cleanup_dir(temp)
                 except Exception:
                     pass
@@ -1385,13 +1097,14 @@ class App(tk.Tk):
                         except tk.TclError:
                             pass
                 self.after(0, _enable_btn)
-            # 记录自动补丁操作耗时
             elapsed = self.performance_monitor.stop("auto_patch")
             logger.info(f"Auto patch operation took {elapsed:.3f}s")
+            self.after(0, lambda: setattr(self, 'is_operating', False))
+            self.after(0, lambda: self.toggle_progress(False))
 
     def run_auto_patch(self):
         if self.is_operating:
-            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress") if T("warn_operation_in_progress") else "Operation in progress...")
+            return messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress", "Operation in progress..."))
         self.is_operating = True
         self.btn_p.state(["disabled"])
         self.toggle_progress(True)

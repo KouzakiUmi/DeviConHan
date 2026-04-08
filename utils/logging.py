@@ -4,10 +4,11 @@ import os
 import sys
 import logging
 from logging.handlers import RotatingFileHandler
+from typing import Optional
 
 
-def setup_logging(log_dir=None, log_file="tyrano_patcher.log", 
-                  max_bytes=10*1024*1024, backup_count=5, verbose=False, quiet=False):
+def setup_logging(log_dir: Optional[str] = None, log_file: str = "tyrano_patcher.log", 
+                  max_bytes: int = 10*1024*1024, backup_count: int = 5, verbose: bool = False, quiet: bool = False) -> logging.Logger:
     """
     设置日志系统，支持控制台和文件输出，带日志轮转功能
     

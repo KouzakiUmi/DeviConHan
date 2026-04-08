@@ -73,11 +73,20 @@ class PatcherPermissionError(PatcherError):
 
 class AsarCorruptedError(PatcherError):
     """ASAR文件损坏异常"""
-    
+
     def __init__(self, message: str, asar_path: Optional[str] = None):
         details = {'asar_path': asar_path} if asar_path else {}
         super().__init__(message, ErrorCategory.CORRUPTED_DATA, ErrorSeverity.ERROR, details)
         self.asar_path = asar_path
+
+
+class NodeNotFoundError(PatcherError):
+    """Node.js未找到异常"""
+
+    def __init__(self, message: str, node_path: Optional[str] = None):
+        details = {'node_path': node_path} if node_path else {}
+        super().__init__(message, ErrorCategory.UNKNOWN_ERROR, ErrorSeverity.ERROR, details)
+        self.node_path = node_path
 
 
 class ConfigError(PatcherError):
@@ -96,23 +105,28 @@ class ErrorHandler:
     MESSAGE_TEMPLATES = {
         ErrorCategory.FILE_NOT_FOUND: {
             'cn': "文件未找到: {file_path}",
-            'en': "File not found: {file_path}"
+            'en': "File not found: {file_path}",
+            'jp': "ファイルが見つかりません: {file_path}"
         },
         ErrorCategory.PERMISSION_DENIED: {
             'cn': "权限不足，无法{operation}: {path}",
-            'en': "Permission denied for {operation}: {path}"
+            'en': "Permission denied for {operation}: {path}",
+            'jp': "権限が不足しているため、{operation} できません: {path}"
         },
         ErrorCategory.CORRUPTED_DATA: {
             'cn': "数据损坏: {detail}",
-            'en': "Data corrupted: {detail}"
+            'en': "Data corrupted: {detail}",
+            'jp': "データが破損しています: {detail}"
         },
         ErrorCategory.CONFIG_ERROR: {
             'cn': "配置错误: {detail}",
-            'en': "Configuration error: {detail}"
+            'en': "Configuration error: {detail}",
+            'jp': "設定エラー: {detail}"
         },
         ErrorCategory.NETWORK_ERROR: {
             'cn': "网络错误: {detail}",
-            'en': "Network error: {detail}"
+            'en': "Network error: {detail}",
+            'jp': "ネットワークエラー: {detail}"
         }
     }
     

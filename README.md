@@ -24,6 +24,7 @@
 | ⚙️ **独立配置系统** | 支持热重载与合法性验证，自动隔离用户配置与内置模板，保障长期运行稳定 |
 | 🔒 **操作保护** | 智能并发锁、备份迁移确认、Hash 安全校验，多重保障确保数据万无一失 |
 | 🌐 **多语言支持** | 内置中文/英文/日文，运行时自由切换，无需重启 |
+| 📚 **API 文档** | 提供了自动生成的项目 API 手册 [API_DOCS.md](API_DOCS.md) 供开发者参考 |
 
 ---
 
@@ -75,12 +76,9 @@ python -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
-    --add-data "tools/bundled_asar:tools/bundled_asar" \
+    --add-data "tools/bundled_asar:tools\bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "core:core" \
-    --add-data "gui:gui" \
-    --add-data "utils:utils" \
     --name "DevilConnection_Patch" \
     main.py
 ```
@@ -136,10 +134,14 @@ main.py (入口)
 
     │
     ├── core/            │  gui/                │  utils/
-    │   ├── patcher.py│  │  └── main_window.py  │  ├── language.py
-    │   └── config.py │                         │  ├── paths.py
-    │                 │                         │  ├── file_ops.py
-    │                 │                         │  └── logging.py
+    │   ├── patcher.py   │  ├── main_window.py  │  ├── language.py
+    │   └── config.py    │  └── about_dialog.py │  ├── paths.py
+    │                    │                      │  ├── file_ops.py
+    │                    │                      │  ├── async_ops.py
+    │                    │                      │  ├── performance.py
+    │                    │                      │  ├── error_handler.py
+    │                    │                      │  ├── cleanup.py
+    │                    │                      │  └── logging.py
     │
     └── tools/
         ├── node.exe
@@ -159,11 +161,16 @@ main.py (入口)
 │   └── config.py        # 配置管理类 AppConfig，封装 ConfigParser
 │
 ├── gui/                 # 图形界面模块
-│   └── main_window.py   # 主窗口类 App(tk.Tk)，包含所有 UI 组件
+│   ├── main_window.py   # 主窗口类 App(tk.Tk)，包含主 UI 组件
+│   └── about_dialog.py  # 独立的“关于”对话框视图模块
 │
-├── utils/               # 工具模块
+├── utils/               # 工具模块 (全支持 Type Hints 类型推断)
 │   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言
 │   ├── file_ops.py      # 文件操作模块（包含 Hash 校验与安全迁移）
+│   ├── async_ops.py     # 后台异步操作线程池管理
+│   ├── cleanup.py       # 文件强力清除与释放工具
+│   ├── error_handler.py # 全局错误抛出拦截与分类
+│   ├── performance.py   # 运行时性能打点模块
 │   ├── logging.py       # 日志系统配置
 │   └── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
 │
@@ -279,6 +286,46 @@ handle_steam_update() 状态:
 | `run_asar(action, src, dest)` | 执行 ASAR 解包/打包操作 |
 | `remove_fuse(exe_path)` | 移除游戏 Fuse 完整性校验 |
 | `_find_script()` | 查找 ASAR CLI 脚本 |
+
+#### SaveService 类 (`core/save_service.py`)
+存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作：
+
+| 方法 | 功能 |
+|------|------|
+| `backup_save(save_dir, backup_dir, use_zip)` | 创建存档备份 |
+| `clear_save_directory(save_dir)` | 清空存档目录 |
+| `restore_save(save_dir, backup_src)` | 还原存档 |
+| `delete_backup(backup_src)` | 删除备份 |
+| `migrate_backups(old_dir, new_dir)` | 平滑迁移备份 |
+
+#### PatchService 类 (`core/patch_service.py`)
+补丁服务类，提供自动补丁安装的完整流程封装：
+
+| 方法 | 功能 |
+|------|------|
+| `run_auto_patch(log_callback, gui_app)` | 执行自动补丁安装 |
+| `handle_patch_error(e, log_callback)` | 处理补丁失败的还原逻辑 |
+
+#### SaveManagerController 类 (`controllers/save_manager_controller.py`)
+存档管理控制器，封装存档扫描、备份、还原、删除和平滑迁移等业务逻辑，将 GUI 代码与业务逻辑分离：
+
+| 方法 | 功能 |
+|------|------|
+| `scan_save_directory()` | 扫描并返回存档目录路径 |
+| `scan_backups(save_root, backup_dir)` | 扫描备份目录 |
+| `execute_backup(save_dir, backup_dir, use_zip)` | 执行存档备份 |
+| `execute_restore(save_dir, backup_src)` | 执行存档还原 |
+| `execute_delete(backup_src)` | 删除备份 |
+| `migrate_backups(old_dir, new_dir)` | 平滑迁移备份 |
+
+#### PatchController 类 (`controllers/patch_controller.py`)
+补丁安装控制器，封装补丁安装的完整流程，包括 Steam 更新检测、ASAR 操作等：
+
+| 方法 | 功能 |
+|------|------|
+| `check_prerequisites()` | 检查补丁安装的前置条件 |
+| `run_auto_patch(gui_app)` | 执行自动补丁安装 |
+| `handle_error(base_dir, asar_path, bak_path, error)` | 处理补丁失败的还原逻辑 |
 
 #### App 类 (`gui/main_window.py`)
 主窗口类，继承 `tk.Tk`：
@@ -402,9 +449,6 @@ python -m PyInstaller -F -w --clean \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "core:core" \
-    --add-data "gui:gui" \
-    --add-data "utils:utils" \
     --name "Tyrano_Toolbox" \
     main.py
 
@@ -421,9 +465,6 @@ python -m PyInstaller -F -w --clean \
     --add-data "tools/bundled_asar:tools/bundled_asar" \
     --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
-    --add-data "core:core" \
-    --add-data "gui:gui" \
-    --add-data "utils:utils" \
     --add-data "Patch.zip:." \
     --name "DevilConnection_Patch" \
     main.py

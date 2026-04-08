@@ -16,7 +16,7 @@ from utils.language import init_lang
 def parse_arguments() -> argparse.Namespace:
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        prog=get_config().app_name,
+        prog="TyranoPatcher",
         description="Tyrano Game Patcher - A tool for applying patches and managing game files",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -43,22 +43,22 @@ def main() -> int:
         int: 退出码 (0=成功, 非0=错误)
     """
     args = parse_arguments()
-    # 初始化语言必须在获取配置之前，因为配置可能需要本地化的错误消息
-    init_lang()
-    # 初始化日志系统（在配置之前，以便记录配置加载过程）
+    
+    # 1. 初始化日志系统（最先初始化，确保后续操作都能记录日志）
     if args.log_file:
         logger = setup_logging(log_file=args.log_file)
     else:
         logger = setup_logging()
 
-    # 获取配置（现在日志和语言都已初始化）
+    # 2. 初始化语言设置（依赖日志系统）
+    init_lang()
+
+    # 3. 获取配置（依赖日志系统和语言设置）
     config = get_config()
     config_valid, issues = config.validate_config()
     if not config_valid:
-        logger.error(f"Configuration validation failed: {issues}")
-        # 在批处理模式下，配置验证失败应该退出
-        if args.batch:
-            return 1
+        logger.critical(f"Configuration validation failed: {issues}")
+        return 1
 
     if args.batch:
         return batch_mode(args)
@@ -72,11 +72,14 @@ def main() -> int:
     # Windows 下动态分配控制台用于 Debug
     if sys.platform.startswith("win") and not args.batch:
         if config.get_gui_config("show_console", False):
-            import ctypes
-            # 如果 AllocConsole 返回 1，说明成功分配了新的控制台
-            if ctypes.windll.kernel32.AllocConsole():
-                sys.stdout = open("CONOUT$", "w", encoding="utf-8")
-                sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+            try:
+                import ctypes
+                # 如果 AllocConsole 返回 1，说明成功分配了新的控制台
+                if ctypes.windll.kernel32.AllocConsole():
+                    sys.stdout = open("CONOUT$", "w", encoding="utf-8")
+                    sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"Failed to allocate console: {e}")
 
     # 启动GUI模式
     try:

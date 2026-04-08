@@ -2,7 +2,9 @@
 
 `asar_cli.mjs` 是一个针对 `bundled_asar` 的 Node.js 命令行包装工具。它为 Python 主程序（`core/patcher.py` 等）提供了一个统一、稳定且跨平台的接口，用于直接操作 ASAR 归档文件（读取、解包、打包、哈希计算等）。
 
-由于 Python 直接处理 ASAR 格式较为复杂且性能不佳，本工具通过调用打包好的 Node.js ASAR 库来完成底层操作，并通过 **标准输出 (stdout)** 返回严格的 **JSON 格式** 数据供 Python 解析。
+由于 Python 直接处理 ASAR 格式较为复杂且性能不佳，本工具通过调用打包好的 Node.js ASAR 库 (`bundled_asar/index.mjs`) 来完成底层操作，并通过 **标准输出 (stdout)** 返回严格的 **JSON 格式** 数据供 Python 解析。
+
+`bundled_asar/` 目录包含 ASAR Node.js 核心库 (`index.mjs`)，这是程序自带的 ASAR 操作依赖库，脱离系统环境限制。
 
 ---
 

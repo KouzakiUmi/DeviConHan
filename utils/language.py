@@ -3,18 +3,21 @@
 import os
 import sys
 import logging
+from typing import Optional, Tuple, Union, Dict, Any
 
 from utils.paths import get_user_config_path
 
 logger = logging.getLogger(__name__)
 
 # ================= 跨平台适配 / Cross-Platform =================
-IS_WIN = sys.platform.startswith("win")
+IS_WIN: bool = sys.platform.startswith("win")
 
 # ================= 多语言字典 =================
-LANG_DICT = {
+LANG_DICT: Dict[str, Dict[str, str]] = {
     'cn': {
         'menu_lang': "语言 (Language)",
+        'menu_about': "关于 (About)",
+        'menu_about_app': "关于本程序",
         'app_title': "Tyrano 游戏工具箱 (跨平台版)",
         'tab_main': "安装补丁",
         'tab_tools': "开发者工具",
@@ -31,6 +34,11 @@ LANG_DICT = {
         'chk_zip': "📦 直接保存为 ZIP (推荐)",
         'col_name': "备份名称 (时间戳)",
         'col_type': "备份类型",
+        'title_select_directory': "选择文件夹",
+        'title_select_file': "选择文件",
+        'file_type_all': "所有文件",
+        'file_type_exe': "执行文件",
+        'file_type_asar': "Asar文件",
         'msg_restore_confirm': "确定要还原吗？\n当前进度的存档将被覆盖！",
         'msg_delete_confirm': "确定要永久删除该备份吗？",
         'msg_migrate_confirm': "是否将旧目录中的备份文件迁移到新位置？\n\n程序会安全地进行复制、校验哈希后删除原文件。",
@@ -74,6 +82,7 @@ LANG_DICT = {
         'msg_fuse_saved': "Fuse 偏移值已成功保存为: {offset}",
         'err_fuse_save': "保存 Fuse 偏移设置失败:",
         'msg_fuse_warn': "⚠️ 开发者工具警告\n\n此功能用于移除游戏可执行文件的Fuse完整性校验。\n\n⚠️ 重要提示：\n1. 操作不可逆，请务必提前备份游戏执行文件！\n2. 当前使用的 Fuse 偏移值为: {offset}\n3. 此偏移值需根据实际需求修改（如遇版本更新或更换引擎）。\n4. 可在左侧“修改Fuse偏移”中调整设置。\n\n确认偏移无误并继续移除 Fuse 吗？",
+        'msg_fuse_disabled_or_not_found': "未找到 Fuse 标记或已被禁用。",
         # Auto Patcher
         'lbl_patch_info': "检测到内置汉化补丁。点击下方按钮开始安装。",
         'btn_start_patch': "🚀 开始安装 (Start Patch)",
@@ -96,6 +105,7 @@ LANG_DICT = {
         'warn_empty_dir': "❌ 错误: 目标文件夹是空的！无法打包。",
         'warn_no_extracted': "暂无解包记录。请先执行一次解包。",
         'warn_asar_unpacked': "请不要直接打包 'app.asar.unpacked'，请选择源码目录。",
+        'warn_exe_not_found': "未找到目标程序：{exe_name}\n请尝试手动选择。",
         'op_success': "操作成功！",
         'confirm_overwrite': "目标已存在，是否覆盖？",
         'no_backup_selected': "未选择备份。",
@@ -112,6 +122,8 @@ LANG_DICT = {
         'msg_game_files_missing': "app.asar 和备份文件都不存在。\n这可能表明：\n1. 游戏安装损坏\n2. 游戏下载不完整\n3. 文件被手动删除\n\n请通过 Steam 验证游戏完整性或重新安装游戏。",
         'title_asar_missing': "ASAR 文件缺失",
         'msg_asar_missing_valid_backup': "app.asar 文件缺失，但存在有效的备份。\n这可能由于：\n1. Steam 更新了游戏\n2. 文件被手动删除\n\n是否继续打补丁？备份将自动恢复。",
+        'title_backup_is_patched': "备份包含已打补丁的文件",
+        'msg_backup_is_patched': "检测到备份文件包含已打补丁的内容，这意味着 Steam 已删除了您已打补丁的 ASAR 文件。\n\n请通过 Steam 验证游戏文件完整性来恢复原始游戏文件，然后再重新打补丁。",
         'title_backup_corrupted': "备份文件损坏",
         'msg_backup_corrupted': "备份文件存在但似乎已损坏。\n这可能由于：\n1. 不完整的备份过程\n2. 文件系统损坏\n3. 磁盘错误\n\n请通过 Steam 验证游戏完整性或重新安装游戏。",
         'title_backup_corrupted_asar_valid': "备份损坏但 ASAR 有效",
@@ -133,9 +145,16 @@ LANG_DICT = {
         'msg_third_party_patch_detected': "ASAR 文件已被未知的补丁修改，或者 Steam 进行了重大更新。\n\n是否要删除现有备份，使用当前的 ASAR 重建备份并强制安装本补丁？",
         'title_first_time_patch': "首次安装补丁提醒",
         'msg_first_time_patch_warn': "未检测到原始备份文件，这似乎是您首次安装本补丁。\n\n⚠️ 警告：如果您之前安装过其他汉化工具，您当前的 app.asar 可能已被篡改。继续操作将把已被篡改的文件作为您的“原版”基准备份。\n\n💡 强烈建议：如果您不确定，请在继续之前先在 Steam 中验证游戏文件的完整性。\n\n是否确认原版文件纯净，并继续备份打补丁？",
+        # About Dialog
+        'about_desc': "《でびるコネクション》非营利性个人本地化工具。\nTyranoV8通用工具箱\n\n==== 技术致谢 ====\n• 核心语言: Python 3, JavaScript (Node.js)\n• 图形界面: Tkinter (Tcl/Tk)\n• 封包引擎: @electron/asar\n• 构建工具: PyInstaller\n\n==== 开发人员 ====\n作者：KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== 许可证 ====\n本项目仅限非营利目的使用。\n游戏内容的所有权利均归原作者 ばやちゃお 所有。\n",
+        'about_version': "版本: 1.0 Release",
+        'about_github_link': "访问 GitHub 主页",
+        'btn_ok': "确定",
     },
     'en': {
         'menu_lang': "Language",
+        'menu_about': "About",
+        'menu_about_app': "About This App",
         'app_title': "Tyrano Toolbox (Cross-Platform)",
         'tab_main': "Install Patch",
         'tab_tools': "Dev Tools",
@@ -152,6 +171,11 @@ LANG_DICT = {
         'chk_zip': "Save as ZIP (Direct)",
         'col_name': "Backup Name (Timestamp)",
         'col_type': "Backup Type",
+        'title_select_directory': "Select Directory",
+        'title_select_file': "Select File",
+        'file_type_all': "All Files",
+        'file_type_exe': "Executable",
+        'file_type_asar': "Asar File",
         'msg_restore_confirm': "Restore this backup?\nCurrent save will be overwritten!",
         'msg_delete_confirm': "Delete this backup permanently?",
         'msg_migrate_confirm': "Migrate existing backups from the old directory to the new one?\n\nThe program will safely copy, verify hashes, and then delete original files.",
@@ -195,6 +219,7 @@ LANG_DICT = {
         'msg_fuse_saved': "Fuse offset successfully saved as: {offset}",
         'err_fuse_save': "Failed to save Fuse offset setting:",
         'msg_fuse_warn': "⚠️ Developer Tool Warning\n\nThis function removes the Fuse integrity validation from the game executable.\n\n⚠️ IMPORTANT:\n1. This operation is irreversible, PLEASE backup the executable first!\n2. The currently used Fuse offset is: {offset}\n3. This offset should be modified according to your needs (e.g. engine updates).\n4. You can adjust the setting via the 'Fuse Offset' button on the left.\n\nConfirm offset is correct and continue removing Fuse?",
+        'msg_fuse_disabled_or_not_found': "Fuse sentinel not found or already disabled.",
         # Auto Patcher
         'lbl_patch_info': "Patch detected. Click button to install.",
         'btn_start_patch': "🚀 Start Patch",
@@ -216,6 +241,7 @@ LANG_DICT = {
         'warn_empty_dir': "❌ Error: Source directory is empty!",
         'warn_no_extracted': "No extraction history found.",
         'warn_asar_unpacked': "Cannot pack 'app.asar.unpacked'. Select source dir.",
+        'warn_exe_not_found': "Target executable not found: {exe_name}\nPlease select it manually.",
         'op_success': "Operation Success!",
         'confirm_overwrite': "Target exists, overwrite?",
         'no_backup_selected': "No backup selected.",
@@ -231,6 +257,8 @@ LANG_DICT = {
         'msg_game_files_missing': "Neither app.asar nor backup file exists.\nThis could indicate:\n1. Corrupted game installation\n2. Incomplete game download\n3. Files were manually deleted\n\nPlease verify game integrity through Steam or reinstall the game.",
         'title_asar_missing': "ASAR File Missing",
         'msg_asar_missing_valid_backup': "The app.asar file is missing, but a valid backup exists.\nThis could be due to:\n1. Steam updated the game\n2. The file was manually deleted\n\nDo you want to continue patching? The backup will be restored automatically.",
+        'title_backup_is_patched': "Backup Contains Patched Files",
+        'msg_backup_is_patched': "The backup contains patched files, meaning Steam has removed your patched ASAR file.\n\nPlease verify game files integrity through Steam to restore the original game files, then apply the patch again.",
         'title_backup_corrupted': "Backup Corrupted",
         'msg_backup_corrupted': "The backup file exists but appears to be corrupted.\nThis could be due to:\n1. Incomplete backup process\n2. File system corruption\n3. Disk errors\n\nPlease verify game integrity through Steam or reinstall the game.",
         'title_backup_corrupted_asar_valid': "Backup Corrupted but ASAR Valid",
@@ -252,9 +280,16 @@ LANG_DICT = {
         'msg_third_party_patch_detected': "The ASAR file has been modified by an unknown third-party patch, or a major Steam update has occurred.\n\nDo you want to delete the current backup, rebuild it from this ASAR, and force install the patch?",
         'title_first_time_patch': "First Time Patching Notice",
         'msg_first_time_patch_warn': "No original backup detected. This appears to be your first time installing this patch.\n\n⚠️ WARNING: If you have previously installed other translation tools, your current app.asar may already be modified. Continuing will backup this modified file as your 'original' baseline.\n\n💡 STRONGLY RECOMMENDED: If you are unsure, please verify integrity of game files in Steam first before proceeding.\n\nDo you want to continue backing up the current state and apply the patch?",
+        # About Dialog
+        'about_desc': "A non-profit personal localization tool for 《でびるコネクション》.\nUniversal Toolbox for TyranoV8\n\n==== Technical Credits ====\n• Core Language: Python 3, JavaScript (Node.js)\n• GUI Framework: Tkinter (Tcl/Tk)\n• Packaging Engine: @electron/asar\n• Build Tool: PyInstaller\n\n==== Developers ====\nAuthor: KouzakiUmi\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== License ====\nFor non-profit purposes only.\nAll rights to the game content belong to the original author, Bayachao.\n",
+        'about_version': "Version: 1.0 Release",
+        'about_github_link': "Visit GitHub Page",
+        'btn_ok': "OK",
     },
     'jp': {
         'menu_lang': "言語 (Language)",
+        'menu_about': "ヘルプ (Help)",
+        'menu_about_app': "このアプリについて",
         'app_title': "Tyrano ツールボックス (Cross-Platform)",
         'tab_main': "パッチ適用",
         'tab_tools': "開発ツール",
@@ -271,6 +306,11 @@ LANG_DICT = {
         'chk_zip': "🗑️ 直接 ZIP 保存（推奨）",
         'col_name': "バックアップ名 (日時)",
         'col_type': "バックアップ型",
+        'title_select_directory': "フォルダを選択",
+        'title_select_file': "ファイルを選択",
+        'file_type_all': "すべてのファイル",
+        'file_type_exe': "実行ファイル",
+        'file_type_asar': "Asarファイル",
         'msg_restore_confirm': "復元しますか？\n現在のセーブデータは上書きされます！",
         'msg_delete_confirm': "このバックアップを完全に削除しますか？",
         'msg_migrate_confirm': "旧フォルダから新フォルダへバックアップを移行しますか？\n\nコピーとハッシュ検証を行った後、安全に元のファイルを削除します。",
@@ -314,6 +354,7 @@ LANG_DICT = {
         'msg_fuse_saved': "Fuse オフセットが {offset} として保存されました。",
         'err_fuse_save': "Fuseオフセット設定の保存に失敗しました：",
         'msg_fuse_warn': "⚠️ 開発者ツール警告\n\nこの機能は、ゲームの実行可能ファイルからFuse整合性検証を削除します。\n\n⚠️ 重要：\n1. この操作は元に戻せません。必ず実行ファイルをバックアップしてください！\n2. 現在使用中のFuseオフセット値は: {offset}\n3. このオフセット値は、エンジンのバージョン更新などに合わせて変更する必要があります。\n4. 左側の「Fuseオフセット」ボタンで設定を変更できます。\n\nオフセット値が正しいことを確認し、Fuseの解除を続行しますか？",
+        'msg_fuse_disabled_or_not_found': "Fuseマークが見つからないか、すでに無効になっています。",
         # Auto Patcher
         'lbl_patch_info': "パッチが見つかりました。",
         'btn_start_patch': "🚀 インストール開始",
@@ -335,6 +376,7 @@ LANG_DICT = {
         'warn_empty_dir': "❌ エラー: フォルダが空です！",
         'warn_no_extracted': "解凍履歴がありません。",
         'warn_asar_unpacked': "'app.asar.unpacked' は圧縮できません。",
+        'warn_exe_not_found': "実行ファイルが見つかりません: {exe_name}\n手動で選択してください。",
         'op_success': "成功しました！",
         'confirm_overwrite': "既に存在します。上書きしますか？",
         'no_backup_selected': "バックアップが選択されていません。",
@@ -344,6 +386,8 @@ LANG_DICT = {
         'msg_game_files_missing': "app.asar もバックアップファイルも存在しません。\nこれは以下の可能性があります：\n1. ゲームのインストールが破損している\n2. ゲームのダウンロードが不完全\n3. ファイルが手動で削除された\n\nSteam でゲームの整合性を確認するか、ゲームを再インストールしてください。",
         'title_asar_missing': "ASAR ファイルが見つかりません",
         'msg_asar_missing_valid_backup': "app.asar ファイルは存在しませんが、有効なバックアップが存在します。\nこれは以下の可能性があります：\n1. Steam がゲームを更新した\n2. ファイルが手動で削除された\n\nパッチを適用し続けますか？バックアップが自動的に復元されます。",
+        'title_backup_is_patched': "バックアップにはパッチ適用済みファイルが含まれています",
+        'msg_backup_is_patched': "バックアップファイルにはパッチ適用済みの内容が含まれているため、Steam がパッチ適用済みの ASAR ファイルを削除した可能性があります。\n\nSteam でゲームの整合性を検証して元のゲームファイルを復元してから、パッチを再度適用してください。",
         'title_backup_corrupted': "バックアップが破損しています",
         'msg_backup_corrupted': "バックアップファイルは存在しますが、破損しているようです。\nこれは以下の可能性があります：\n1. 不完全なバックアッププロセス\n2. ファイルシステムの破損\n3. ディスクエラー\n\nSteam でゲームの整合性を確認するか、ゲームを再インストールしてください。",
         'title_backup_corrupted_asar_valid': "バックアップが破損していますが ASAR は有効",
@@ -365,13 +409,18 @@ LANG_DICT = {
         'msg_third_party_patch_detected': "ASARファイルが不明なサードパーティ製パッチによって変更されたか、Steamの大規模な更新が行われました。\n\n現在のバックアップを削除し、このASARから再構築してパッチを強制適用しますか？",
         'title_first_time_patch': "初回パッチ適用の注意",
         'msg_first_time_patch_warn': "元のバックアップが検出されませんでした。今回が初めてのパッチ適用のようです。\n\n⚠️ 警告: 過去に他の翻訳ツールをインストールしたことがある場合、現在の app.asar はすでに変更されている可能性があります。続行すると、この変更されたファイルが基準となる「オリジナル」としてバックアップされます。\n\n💡 強く推奨: 不確かな場合は、続行する前にSteamでゲームファイルの整合性を確認してください。\n\n現在のファイルをバックアップしてパッチの適用を続行しますか？",
+        # About Dialog
+        'about_desc': "《でびるコネクション》非営利の個人用ローカライズツール。\nTyranoV8 用 汎用ツールボックス\n\n==== 技術提供 ====\n• コア言語: Python 3, JavaScript (Node.js)\n• GUI: Tkinter (Tcl/Tk)\n• パッケージエンジン: @electron/asar\n• ビルドツール: PyInstaller\n\n==== 開発者 ====\n作者: KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== ライセンス ====\n本プロジェクトは非営利目的の使用に限られます。\nゲームのすべての権利は原作者である「ばやちゃお」様に帰属します。\n",
+        'about_version': "バージョン: 1.0 Release",
+        'about_github_link': "GitHub ページを開く",
+        'btn_ok': "OK",
     }
 }
 
 # 默认语言设置
-CURRENT_LANG_CODE = 'en'
+CURRENT_LANG_CODE: str = 'en'
 
-def detect_lang():
+def detect_lang() -> None:
     global CURRENT_LANG_CODE
     try:
         if IS_WIN:
@@ -394,7 +443,7 @@ def detect_lang():
         logger.error(f"Language detection error: {e}")
         CURRENT_LANG_CODE = 'en'
 
-def detect_lang_fallback():
+def detect_lang_fallback() -> None:
     """使用环境变量检测语言（跨平台）"""
     try:
         lang = os.environ.get('LANG', '').lower()
@@ -408,19 +457,31 @@ def detect_lang_fallback():
         logger.warning(f"Language detection fallback failed: {e}")
         CURRENT_LANG_CODE = 'en'
 
-def T(key):
+def T(key: str, default: str = "") -> str:
     """
     多语言翻译函数
     
     Args:
         key: 翻译键
+        default: 当找不到翻译时返回的默认文本，如果为空则返回键名
         
     Returns:
         对应语言的文本
     """
-    return LANG_DICT.get(CURRENT_LANG_CODE, LANG_DICT.get("en")).get(key, key)
+    # 先尝试从当前语言中获取
+    current_dict = LANG_DICT.get(CURRENT_LANG_CODE, {})
+    if key in current_dict:
+        return current_dict[key]
+        
+    # 如果当前语言没有，回退到英语
+    en_dict = LANG_DICT.get("en", {})
+    if key in en_dict:
+        return en_dict[key]
+        
+    # 如果都没有，如果有传入 default 则返回 default，否则返回 key 本身
+    return default if default else key
 
-def get_font(size=9, weight="normal"):
+def get_font(size: int = 9, weight: str = "normal") -> Union[Tuple[str, int], Tuple[str, int, str]]:
     """
     根据平台和语言返回合适的 UI 字体
     """
@@ -451,7 +512,7 @@ def get_font(size=9, weight="normal"):
     else:
         return (family, size, weight)
 
-def get_mono_font(size=9):
+def get_mono_font(size: int = 9) -> Tuple[str, int]:
     """
     返回合适的等宽字体（用于日志等）
     """
@@ -463,7 +524,7 @@ def get_mono_font(size=9):
         family = "monospace"
     return (family, size)
 
-def set_language(code):
+def set_language(code: str) -> None:
     """
     设置界面语言（推荐使用此函数而非直接修改 CURRENT_LANG_CODE）
     
@@ -474,12 +535,20 @@ def set_language(code):
     if code in LANG_DICT:
         CURRENT_LANG_CODE = code
         logger.debug(f"Language changed to: {code}")
+        
+        # 同步报错模块的语言设置
+        try:
+            from utils.error_handler import set_error_language
+            set_error_language(code)
+        except ImportError as e:
+            logger.warning(f"Failed to sync error language: {e}")
+            
         # 自动保存到配置文件
         _save_language_to_config(code)
     else:
         logger.warning(f"Unknown language code: {code}")
 
-def init_lang():
+def init_lang() -> None:
     """初始化语言设置，优先从配置文件读取用户偏好"""
     # 首先尝试从配置文件加载用户保存的语言偏好
     saved_lang = _load_saved_language()
@@ -490,7 +559,7 @@ def init_lang():
     # 如果没有保存的偏好，则自动检测系统语言
     detect_lang()
 
-def _load_saved_language():
+def _load_saved_language() -> Optional[str]:
     """从配置文件加载保存的语言偏好"""
     try:
         from configparser import ConfigParser
@@ -507,11 +576,11 @@ def _load_saved_language():
         logger.warning(f"Failed to load saved language: {e}")
     return None
 
-def _get_config_path():
+def _get_config_path() -> str:
     """获取配置文件路径（使用统一的路径函数）"""
     return get_user_config_path()
 
-def _save_language_to_config(code):
+def _save_language_to_config(code: str) -> None:
     """保存语言偏好到配置文件"""
     try:
         from configparser import ConfigParser

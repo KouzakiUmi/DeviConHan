@@ -24,14 +24,20 @@
 * **`core/`** (核心业务层)
   * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**、**Fuse 移除逻辑**。这里是所有底层文件级变动的执行者。
   * `config.py`：`AppConfig` 配置管理单例。支持内存热加载，优先读取用户个人空间配置。
+  * `save_service.py`：`SaveService` 存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作。
+  * `patch_service.py`：`PatchService` 补丁服务类，提供自动补丁安装的完整流程封装。
 * **`gui/`** (表示层)
-  * `main_window.py`：基于 `tkinter` 和 `ttk` 的图形界面。严格**禁止在 UI 线程中执行耗时操作**，必须通过 `async_manager` 提交后台任务。
-* **`utils/`** (通用工具层)
+  * `main_window.py`：基于 `tkinter` 和 `ttk` 的图形界面主入口。复杂视图已被独立拆分为内部辅助方法或外部模块以提高可读性。
+  * `about_dialog.py`：独立的“关于”对话框视图模块，解决原先 `App` 类过于臃肿的问题。
+* **`controllers/`** (业务控制器层)
+  * `save_manager_controller.py`：存档管理控制器，封装存档扫描、备份、还原、删除和平滑迁移等业务逻辑，将 GUI 代码与业务逻辑分离。
+  * `patch_controller.py`：补丁安装控制器，封装补丁安装的完整流程，包括 Steam 更新检测、ASAR 操作等。
+* **`utils/`** (通用工具层) —— *本层全面应用了 Python Type Hints 以确保调用安全*
   * `language.py`：多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。
   * `paths.py`：安全处理资源路径解析（兼容 PyInstaller 的 `sys._MEIPASS`）。
   * `file_ops.py`：高级文件操作，提供如 **Hash 校验迁移 (`migrate_backup`)** 等高阶数据安全方法。
   * `cleanup.py`：包含 `force_cleanup_dir`，用于处理顽固的只读文件清理及 Windows 特有的权限占用问题。
-  * `async_ops.py`：封装了 `ThreadPoolExecutor` 的 `AsyncOperationManager`，统筹 GUI 进度条、任务状态与后台线程。
+  * `async_ops.py`：封装了 `ThreadPoolExecutor` 的 `AsyncOperationManager`，统筹 GUI 进度条、任务状态与后台线程，并支持通过下发 `_check_cancelled` 实现文件级的真实线程中断。
   * `performance.py`：用于性能打点和日志耗时统计。
   * `logging.py`：初始化滚动日志（Rotating File Handler），默认输出至 `~/.tyranopatcher/tyrano_patcher.log`。
 * **`tools/`** (外部依赖库)
@@ -95,8 +101,10 @@
 当需要修改工具或扩展功能时：
 1. **修改界面语言**：不要在代码中直接写中文字符串用于提示！去 `utils/language.py` 添加一个 Key，并在三语字典（`cn`/`en`/`jp`）中补齐翻译。在 UI 代码中使用 `T("your_key")` 调用。如果是带变量的字符串，请在 Python 层调用 `.format(var=xxx)`。
 2. **新增配置项**：在 `core/config.py -> AppConfig` 添加对应的 `@property` 及 fallback 值。无需手动解析类型，使用 `get_int` / `get_bool`。如果有 GUI 设置需求，利用 `set_gui_config` 写入 `[preferences]`。
-3. **增加耗时后台任务**：使用 `self.async_manager.submit("task_id", _worker_func)`，在 `_worker_func` 中切勿直接操作 tkinter 组件，遇到 UI 刷新时需包在 `self.after(0, lambda: ...)` 内。
+3. **增加耗时后台任务**：使用 `self.async_manager.submit("task_id", _worker_func)`，在 `_worker_func` 中切勿直接操作 tkinter 组件。如果任务非常耗时，应通过 `**kwargs` 接收 `_check_cancelled` 回调，在底层循环中检测中断事件。
 4. **编译与打包**：确保 `Patch/` 目录存在后，在 Windows 执行 `Pack.cmd`，即可生成 `DevilConnection_Patch.exe`。
+5. **类型安全 (Type Hints)**：在扩展 `utils` 或 `core` 等底层库的方法时，建议尽可能包含 Python 的静态类型提示 (`from typing import Optional, Dict` 等)，并在复杂函数上补充完备的文档注释。
+6. **自动化脚本与参数补全**：若要对 `--auto` 以及其他 CLI 命令参数进行扩充，在 `main.py` 的 `parse_arguments` 中先完成定义，然后必须在批处理流和 GUI 流同时做好回退处理。
 
 --- 
 *End of Specs*

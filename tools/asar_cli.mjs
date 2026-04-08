@@ -11,12 +11,16 @@
  *   node asar_cli.mjs pack <src_dir> <dest_file> [--unpack <pattern>]
  */
 
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import util from 'util';
+import crypto from 'crypto';
+
+const execFileAsync = util.promisify(execFile);
 
 // 调试模式标志
 const DEBUG = process.env.DEBUG === '1';
@@ -45,14 +49,26 @@ function warnLog(...args) {
 }
 
 /**
- * 清理临时目录（带日志）
+ * 异步检查文件或目录是否存在
  */
-function cleanupTempDir(tempDir, operation) {
-    if (tempDir && fs.existsSync(tempDir)) {
+async function fileExists(p) {
+    try {
+        await fs.promises.access(p);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * 异步清理临时目录（带日志）
+ */
+async function cleanupTempDir(tempDir, operation) {
+    if (tempDir && await fileExists(tempDir)) {
         try {
             // 在 Windows 上，防病毒软件可能会短暂锁定刚刚提取的文件
             // 使用 maxRetries 选项来重试删除
-            fs.rmSync(tempDir, { 
+            await fs.promises.rm(tempDir, { 
                 recursive: true, 
                 force: true, 
                 maxRetries: 10, 
@@ -93,17 +109,17 @@ function getScriptDir() {
 }
 
 // 尝试多种方法获取 node 可执行文件路径
-function findNodeExe() {
+async function findNodeExe(scriptDir) {
     // 方法1：使用 process.execPath（在 PyInstaller 打包后指向临时目录的 node.exe）
     if (process.platform === 'win32') {
         const execDir = path.dirname(process.execPath);
         const nodeExePath = path.join(execDir, 'tools', 'node.exe');
-        if (fs.existsSync(nodeExePath)) {
+        if (await fileExists(nodeExePath)) {
             return nodeExePath;
         }
         // 方法2：在脚本同目录下查找 node.exe
         const scriptNodeExe = path.join(scriptDir, 'node.exe');
-        if (fs.existsSync(scriptNodeExe)) {
+        if (await fileExists(scriptNodeExe)) {
             return scriptNodeExe;
         }
         // 方法3：尝试系统 node
@@ -112,39 +128,6 @@ function findNodeExe() {
     return 'node';
 }
 
-let scriptDir;
-try {
-    scriptDir = getScriptDir();
-} catch (e) {
-    console.error(JSON.stringify({
-        success: false,
-        error: `Failed to determine script directory: ${e.message}`,
-        error_type: 'invalid_asar',
-        debug: {
-            argv: process.argv,
-            platform: process.platform
-        }
-    }));
-    process.exit(1);
-}
-
-// 找到正确的 node 可执行文件
-const nodeExe = findNodeExe();
-
-// 在 PyInstaller 打包后，asarCli 需要相对于 _MEIPASS 目录
-// 使用 argv[1] 来确定脚本的实际位置
-let asarCli;
-if (process.argv[1] && fs.existsSync(process.argv[1])) {
-    // 使用 argv[1] 的目录
-    asarCli = path.join(path.dirname(process.argv[1]), 'bundled_asar', 'index.mjs');
-} else {
-    // 回退到 scriptDir
-    asarCli = path.join(scriptDir, 'bundled_asar', 'index.mjs');
-}
-
-const command = process.argv[2];
-const argsRaw = process.argv.slice(3);
-
 // 规范化路径（处理 Windows 反斜杠和前导斜杠问题）
 function normalizePath(p) {
     if (!p) return p;
@@ -152,10 +135,6 @@ function normalizePath(p) {
     // 移除不必要的前缀如 / 或 \，但不能破坏绝对路径
     return path.normalize(p);
 }
-
-// 规范化所有传入的路径参数
-const args = argsRaw.map(normalizePath);
-
 
 /**
  * 显示使用帮助
@@ -176,19 +155,18 @@ function showUsage() {
 /**
  * 执行 ASAR CLI 命令
  */
-function runAsarCommand(cliArgs) {
+async function runAsarCommand(nodeExe, asarCli, cliArgs) {
     try {
-        const result = execFileSync(nodeExe, [asarCli, ...cliArgs], {
-            stdio: ['pipe', 'pipe', 'pipe'],
+        const { stdout, stderr } = await execFileAsync(nodeExe, [asarCli, ...cliArgs], {
             encoding: 'utf8',
             windowsHide: true
         });
-        return { stdout: result, stderr: '', exitCode: 0 };
+        return { stdout, stderr: stderr || '', exitCode: 0 };
     } catch (error) {
         return {
             stdout: error.stdout || '',
             stderr: error.stderr || error.message,
-            exitCode: error.status || 1
+            exitCode: error.code !== undefined ? error.code : (error.status || 1)
         };
     }
 }
@@ -216,6 +194,39 @@ function parseListOutput(output) {
  * 主函数
  */
 async function main() {
+    let scriptDir;
+    try {
+        scriptDir = getScriptDir();
+    } catch (e) {
+        console.error(JSON.stringify({
+            success: false,
+            error: `Failed to determine script directory: ${e.message}`,
+            error_type: 'invalid_asar',
+            debug: {
+                argv: process.argv,
+                platform: process.platform
+            }
+        }));
+        process.exit(1);
+    }
+
+    // 找到正确的 node 可执行文件
+    const nodeExe = await findNodeExe(scriptDir);
+
+    // 在 PyInstaller 打包后，asarCli 需要相对于 _MEIPASS 目录
+    // 使用 argv[1] 来确定脚本的实际位置
+    let asarCli;
+    if (process.argv[1] && await fileExists(process.argv[1])) {
+        // 使用 argv[1] 的目录
+        asarCli = path.join(path.dirname(process.argv[1]), 'bundled_asar', 'index.mjs');
+    } else {
+        // 回退到 scriptDir
+        asarCli = path.join(scriptDir, 'bundled_asar', 'index.mjs');
+    }
+
+    const command = process.argv[2];
+    const argsRaw = process.argv.slice(3);
+
     try {
         if (!command) {
             showUsage();
@@ -224,7 +235,9 @@ async function main() {
 
         switch (command) {
             case 'stat': {
-                const [asarPath, filePath] = args;
+                const [asarPathRaw, filePathRaw] = argsRaw;
+                const asarPath = normalizePath(asarPathRaw);
+                const filePath = normalizePath(filePathRaw);
                 debugLog(`stat command: asar=${asarPath}, file=${filePath}`);
                 
                 if (!asarPath || !filePath) {
@@ -237,12 +250,12 @@ async function main() {
                 }
                 
                 const basename = path.basename(filePath);
-                const tempDir = path.join(os.tmpdir(), `__temp_stat_${Date.now()}__`);
+                const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), '__temp_stat_'));
                 
                 try {
                     // 使用 list 命令检查文件是否在包中
                     debugLog(`Checking if file exists in ASAR: ${asarPath}`);
-                    const result = runAsarCommand(['list', asarPath]);
+                    const result = await runAsarCommand(nodeExe, asarCli, ['list', asarPath]);
                     
                     if (result.exitCode !== 0) {
                         let errorType = 'unknown';
@@ -278,27 +291,21 @@ async function main() {
                         process.exit(1);
                     }
                     
-                    // 清理并创建临时目录
-                    cleanupTempDir(tempDir, 'stat-prepare');
-                    fs.mkdirSync(tempDir, { recursive: true });
-                    debugLog(`Created temp directory: ${tempDir}`);
-                    
                     // 在临时目录中运行 ASAR CLI
                     debugLog(`Extracting file for stat: ${filePath}`);
-                    execFileSync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
+                    await execFileAsync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
                         cwd: tempDir,
-                        stdio: ['pipe', 'pipe', 'pipe'],
                         encoding: 'utf8',
                         windowsHide: true
                     });
                     
                     const outputFile = path.join(tempDir, basename);
-                    if (fs.existsSync(outputFile)) {
-                        const stats = fs.statSync(outputFile);
+                    if (await fileExists(outputFile)) {
+                        const stats = await fs.promises.stat(outputFile);
                         debugLog(`File stat: ${outputFile}, size=${stats.size}`);
                         
                         // 清理临时目录
-                        cleanupTempDir(tempDir, 'stat-complete');
+                        await cleanupTempDir(tempDir, 'stat-complete');
                         
                         // 返回与 Python 代码期望格式一致的响应
                         console.log(JSON.stringify({
@@ -310,7 +317,7 @@ async function main() {
                             atime: null
                         }));
                     } else {
-                        cleanupTempDir(tempDir, 'stat-fail');
+                        await cleanupTempDir(tempDir, 'stat-fail');
                         console.error(JSON.stringify({
                             success: false,
                             error: 'Failed to extract file to temp directory',
@@ -319,7 +326,7 @@ async function main() {
                         process.exit(1);
                     }
                 } catch (error) {
-                    cleanupTempDir(tempDir, 'stat-error');
+                    await cleanupTempDir(tempDir, 'stat-error');
                     
                     console.error(JSON.stringify({
                         success: false,
@@ -332,7 +339,9 @@ async function main() {
             }
             
             case 'extract-file': {
-                const [asarPath, filePath] = args;
+                const [asarPathRaw, filePathRaw] = argsRaw;
+                const asarPath = normalizePath(asarPathRaw);
+                const filePath = normalizePath(filePathRaw);
                 debugLog(`extract-file command: asar=${asarPath}, file=${filePath}`);
                 
                 if (!asarPath || !filePath) {
@@ -345,19 +354,13 @@ async function main() {
                 }
                 
                 const basename = path.basename(filePath);
-                const tempDir = path.join(os.tmpdir(), `__temp_extract_${Date.now()}__`);
+                const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), '__temp_extract_'));
                 
                 try {
-                    // 清理并创建临时目录
-                    cleanupTempDir(tempDir, 'extract-prepare');
-                    fs.mkdirSync(tempDir, { recursive: true });
-                    debugLog(`Created temp directory: ${tempDir}`);
-                    
                     // 在临时目录中运行 ASAR CLI
                     debugLog(`Extracting file: ${asarPath} -> ${filePath}`);
-                    const result = execFileSync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
+                    await execFileAsync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
                         cwd: tempDir,
-                        stdio: ['pipe', 'pipe', 'pipe'],
                         encoding: 'utf8',
                         windowsHide: true
                     });
@@ -365,13 +368,13 @@ async function main() {
                     
                     // 读取提取的文件
                     const outputFile = path.join(tempDir, basename);
-                    if (fs.existsSync(outputFile)) {
-                        const content = fs.readFileSync(outputFile, 'utf8');
+                    if (await fileExists(outputFile)) {
+                        const content = await fs.promises.readFile(outputFile, 'utf8');
                         // 清理临时目录
-                        cleanupTempDir(tempDir, 'extract-complete');
+                        await cleanupTempDir(tempDir, 'extract-complete');
                         console.log(content);
                     } else {
-                        cleanupTempDir(tempDir, 'extract-fail');
+                        await cleanupTempDir(tempDir, 'extract-fail');
                         console.error(JSON.stringify({
                             success: false,
                             error: 'Failed to extract file',
@@ -380,7 +383,7 @@ async function main() {
                         process.exit(1);
                     }
                 } catch (error) {
-                    cleanupTempDir(tempDir, 'extract-error');
+                    await cleanupTempDir(tempDir, 'extract-error');
                     
                     let errorType = 'unknown';
                     const errorMsg = (error.stderr || error.message || '').toLowerCase();
@@ -404,7 +407,9 @@ async function main() {
             }
             
             case 'hash-file': {
-                const [asarPath, filePath] = args;
+                const [asarPathRaw, filePathRaw] = argsRaw;
+                const asarPath = normalizePath(asarPathRaw);
+                const filePath = normalizePath(filePathRaw);
                 debugLog(`hash-file command: asar=${asarPath}, file=${filePath}`);
                 
                 if (!asarPath || !filePath) {
@@ -417,35 +422,27 @@ async function main() {
                 }
                 
                 const basename = path.basename(filePath);
-                const tempDir = path.join(os.tmpdir(), `__temp_hash_${Date.now()}__`);
+                const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), '__temp_hash_'));
                 
                 try {
-                    // 清理并创建临时目录
-                    cleanupTempDir(tempDir, 'hash-prepare');
-                    fs.mkdirSync(tempDir, { recursive: true });
-                    debugLog(`Created temp directory: ${tempDir}`);
-                    
                     // 在临时目录中运行 ASAR CLI 提取文件
                     debugLog(`Extracting file for hash: ${asarPath} -> ${filePath}`);
-                    execFileSync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
+                    await execFileAsync(nodeExe, [asarCli, 'extract-file', asarPath, filePath], {
                         cwd: tempDir,
-                        stdio: ['pipe', 'pipe', 'pipe'],
                         encoding: 'utf8',
                         windowsHide: true
                     });
                     
                     const outputFile = path.join(tempDir, basename);
-                    if (fs.existsSync(outputFile)) {
-                        // 使用 require/import 计算 SHA256，既然是 ES Module 直接 import
-                        const crypto = await import('crypto');
-                        const fileBuffer = fs.readFileSync(outputFile);
+                    if (await fileExists(outputFile)) {
+                        const fileBuffer = await fs.promises.readFile(outputFile);
                         const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
                         
                         // 清理临时目录
-                        cleanupTempDir(tempDir, 'hash-complete');
+                        await cleanupTempDir(tempDir, 'hash-complete');
                         console.log(JSON.stringify({ success: true, hash: hash }));
                     } else {
-                        cleanupTempDir(tempDir, 'hash-fail');
+                        await cleanupTempDir(tempDir, 'hash-fail');
                         console.error(JSON.stringify({
                             success: false,
                             error: 'Failed to extract file',
@@ -454,7 +451,7 @@ async function main() {
                         process.exit(1);
                     }
                 } catch (error) {
-                    cleanupTempDir(tempDir, 'hash-error');
+                    await cleanupTempDir(tempDir, 'hash-error');
                     
                     let errorType = 'unknown';
                     const errorMsg = (error.stderr || error.message || '').toLowerCase();
@@ -478,7 +475,9 @@ async function main() {
             }
 
             case 'extract': {
-                const [asarPath, destDir] = args;
+                const [asarPathRaw, destDirRaw] = argsRaw;
+                const asarPath = normalizePath(asarPathRaw);
+                const destDir = normalizePath(destDirRaw);
                 debugLog(`extract command: asar=${asarPath}, dest=${destDir}`);
                 
                 if (!asarPath || !destDir) {
@@ -492,14 +491,14 @@ async function main() {
                 
                 try {
                     // 确保目标目录存在
-                    if (!fs.existsSync(destDir)) {
-                        fs.mkdirSync(destDir, { recursive: true });
+                    if (!(await fileExists(destDir))) {
+                        await fs.promises.mkdir(destDir, { recursive: true });
                         debugLog(`Created destination directory: ${destDir}`);
                     }
                     
                     // 使用 extract 命令
                     infoLog(`Extracting ASAR: ${asarPath} -> ${destDir}`);
-                    const result = runAsarCommand(['extract', asarPath, destDir]);
+                    const result = await runAsarCommand(nodeExe, asarCli, ['extract', asarPath, destDir]);
                     
                     if (result.exitCode !== 0) {
                         let errorType = 'unknown';
@@ -535,7 +534,12 @@ async function main() {
             }
             
             case 'pack': {
-                const [srcDir, destFile, ...optionsArgs] = args;
+                const srcDirRaw = argsRaw[0];
+                const destFileRaw = argsRaw[1];
+                const optionsArgs = argsRaw.slice(2);
+                
+                const srcDir = normalizePath(srcDirRaw);
+                const destFile = normalizePath(destFileRaw);
                 debugLog(`pack command: src=${srcDir}, dest=${destFile}`);
                 
                 if (!srcDir || !destFile) {
@@ -550,8 +554,8 @@ async function main() {
                 try {
                     // 确保目标目录存在
                     const destDir = path.dirname(destFile);
-                    if (destDir && !fs.existsSync(destDir)) {
-                        fs.mkdirSync(destDir, { recursive: true });
+                    if (destDir && !(await fileExists(destDir))) {
+                        await fs.promises.mkdir(destDir, { recursive: true });
                         debugLog(`Created destination directory: ${destDir}`);
                     }
                     
@@ -574,7 +578,7 @@ async function main() {
                     
                     // 使用子进程调用 ASAR CLI
                     infoLog(`Packing ASAR: ${srcDir} -> ${destFile}`);
-                    const result = runAsarCommand(cliArgs);
+                    const result = await runAsarCommand(nodeExe, asarCli, cliArgs);
                     
                     if (result.exitCode !== 0) {
                         let errorType = 'unknown';
@@ -612,7 +616,8 @@ async function main() {
             }
             
             case 'list': {
-                const [asarPath] = args;
+                const asarPathRaw = argsRaw[0];
+                const asarPath = normalizePath(asarPathRaw);
                 debugLog(`list command: asar=${asarPath}`);
                 
                 if (!asarPath) {
@@ -625,7 +630,7 @@ async function main() {
                 }
                 
                 try {
-                    const result = runAsarCommand(['list', asarPath]);
+                    const result = await runAsarCommand(nodeExe, asarCli, ['list', asarPath]);
                     
                     if (result.exitCode !== 0) {
                         let errorType = 'unknown';

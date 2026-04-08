@@ -33,6 +33,7 @@ class ProgressInfo:
         self.message = ""
         self.result = None
         self.error = None
+        self.cancel_event = threading.Event()
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -93,6 +94,10 @@ class AsyncOperationManager:
         Returns:
             Future: 异步任务Future对象
         """
+        # 增加防积压逻辑：若超过阈值主动清理
+        if len(self._operations) >= 50:
+            self.cleanup_completed()
+            
         with self._lock:
             progress_info = ProgressInfo(operation_id)
             progress_info.state = OperationState.RUNNING
@@ -101,11 +106,29 @@ class AsyncOperationManager:
         
         self._notify_progress(progress_info)
         
+        # 用于检查函数是否接受 cancel_event 参数
+        import inspect
+        sig = inspect.signature(func)
+        accepts_cancel = 'cancel_event' in sig.parameters
+        
         def wrapped_func():
             try:
                 # 更新进度
                 progress_info.message = "In progress..."
                 self._notify_progress(progress_info)
+                
+                # 检查 func 的签名，看是否需要 cancel_event
+                if accepts_cancel:
+                    kwargs['cancel_event'] = progress_info.cancel_event
+                
+                # 检查取消标志的辅助函数 - 可在长时间操作中定期调用
+                def check_cancelled():
+                    if progress_info.cancel_event.is_set():
+                        raise CancelledError("Operation cancelled by user")
+                
+                # 将 check_cancelled 加入 kwargs，供需要定期检查的函数使用
+                if accepts_cancel:
+                    kwargs['_check_cancelled'] = check_cancelled
                 
                 # 执行实际函数
                 result = func(*args, **kwargs)
@@ -176,6 +199,11 @@ class AsyncOperationManager:
                 return False
             
             progress_info = self._operations[operation_id]
+            
+            # 设置 cancel_event
+            if hasattr(progress_info, 'cancel_event'):
+                progress_info.cancel_event.set()
+                
             if hasattr(progress_info, 'future'):
                 cancelled = progress_info.future.cancel()
                 if cancelled:

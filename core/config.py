@@ -245,6 +245,26 @@ class AppConfig:
         return self.get("main", "RESOURCE_DIR", fallback="resources")
     
     @property
+    def target_asar_name(self):
+        """目标 asar 文件名"""
+        return self.get("main", "TARGET_ASAR_NAME", fallback="app.asar")
+    
+    @property
+    def temp_patch_dir(self):
+        """临时补丁解压目录名"""
+        return self.get("main", "TEMP_PATCH_DIR", fallback="temp_patch")
+    
+    @property
+    def patch_zip_name(self):
+        """补丁压缩包文件名"""
+        return self.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip")
+    
+    @property
+    def patch_dir_name(self):
+        """补丁目录名"""
+        return self.get("main", "PATCH_DIR_NAME", fallback="Patch")
+    
+    @property
     def app_name(self):
         """程序名称"""
         return self.get("main", "APP_NAME", fallback="TyranoV8_Patcher")

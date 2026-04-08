@@ -3,6 +3,7 @@
 import os
 import sys
 import logging
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,15 @@ def normalize_path(path: str) -> str:
         if len(path) > 260:
             logger.warning(f"Path too long: {len(path)} chars")
 
+        if sys.platform == 'win32' and len(path) >= 260:
+            if not path.startswith('\\\\?\\'):
+                if path.startswith('\\\\'):
+                    # Network path
+                    path = '\\\\?\\UNC\\' + path[2:]
+                else:
+                    # Local path
+                    path = '\\\\?\\' + path
+
         return path
     except (TypeError, ValueError, AttributeError) as e:
         logger.exception(f"Path normalization failed due to invalid input: {e}")
@@ -46,7 +56,7 @@ def normalize_path(path: str) -> str:
         return ""
 
 
-def validate_path_exists(path: str, path_type: str = "Resource") -> tuple[bool, str]:
+def validate_path_exists(path: str, path_type: str = "Resource") -> Tuple[bool, str]:
     """
     验证路径是否存在
     

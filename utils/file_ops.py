@@ -10,6 +10,8 @@ import shutil
 import hashlib
 import logging
 
+from utils.cleanup import force_cleanup_dir
+
 logger = logging.getLogger(__name__)
 
 def compute_file_hash(file_path: str) -> str:
@@ -100,14 +102,12 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                     
             if all_match:
                 # 校验通过，删除源目录
-                from utils.cleanup import force_cleanup_dir
                 force_cleanup_dir(src)
                 logger.info(f"Successfully migrated backup directory: {src} -> {dest_path}")
                 return True
             else:
                 logger.error(f"Hash mismatch after migrating directory: {src}")
                 # 清理损坏的副本目录
-                from utils.cleanup import force_cleanup_dir
                 if os.path.exists(dest_path):
                     force_cleanup_dir(dest_path)
                 return False
@@ -124,7 +124,6 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                 if os.path.isfile(dest_path):
                     os.remove(dest_path)
                 else:
-                    from utils.cleanup import force_cleanup_dir
                     force_cleanup_dir(dest_path)
             except Exception:
                 pass
