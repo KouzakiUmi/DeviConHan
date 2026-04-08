@@ -25,7 +25,10 @@
   * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**、**Fuse 移除逻辑**。这里是所有底层文件级变动的执行者。
   * `config.py`：`AppConfig` 配置管理单例。支持内存热加载，优先读取用户个人空间配置。
   * `save_service.py`：`SaveService` 存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作。
-  * `patch_service.py`：`PatchService` 补丁服务类，提供自动补丁安装的完整流程封装。
+  * `steam.py`：Steam 更新状态机及 Hash 校验检测。
+  * `patch_info.py`：补丁元数据存储管理。
+  * `fuse.py`：移除游戏底层 Electron 的防篡改锁。
+  * `batch.py`：非 GUI 的静默批处理安装模式。
 * **`gui/`** (表示层)
   * `main_window.py`：基于 `tkinter` 和 `ttk` 的图形界面主入口。复杂视图已被独立拆分为内部辅助方法或外部模块以提高可读性。
   * `about_dialog.py`：独立的“关于”对话框视图模块，解决原先 `App` 类过于臃肿的问题。

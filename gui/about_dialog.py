@@ -10,6 +10,7 @@ import logging
 
 from utils.language import T, get_font
 from utils.paths import get_resource_path
+from utils.constants import GITHUB_REPO_URL
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ def _create_about_info(parent_frame, dlg):
     # 链接标签
     def open_url(event):
         import webbrowser
-        webbrowser.open("https://github.com/KouzakiUmi/DeviConHan")
+        webbrowser.open(GITHUB_REPO_URL)
         
     about_github_link = T("about_github_link")
     lbl_link = ttk.Label(info_frame, text=about_github_link, foreground="blue", cursor="hand2")

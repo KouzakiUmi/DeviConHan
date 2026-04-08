@@ -135,12 +135,15 @@ main.py (入口)
     │
     ├── core/            │  gui/                │  utils/
     │   ├── patcher.py   │  ├── main_window.py  │  ├── language.py
-    │   └── config.py    │  └── about_dialog.py │  ├── paths.py
-    │                    │                      │  ├── file_ops.py
-    │                    │                      │  ├── async_ops.py
-    │                    │                      │  ├── performance.py
-    │                    │                      │  ├── error_handler.py
-    │                    │                      │  ├── cleanup.py
+    │   ├── config.py    │  └── about_dialog.py │  ├── paths.py
+    │   ├── steam.py     │                      │  ├── file_ops.py
+    │   ├── fuse.py      │  controllers/        │  ├── async_ops.py
+    │   ├── save_service.py │  ├── patch_controller.py│├── performance.py
+    │   ├── patch_info.py│  └── save_manager_controller.py│├── error_handler.py
+    │   └── batch.py     │                      │  ├── cleanup.py
+    │                    │                      │  ├── constants.py
+    │                    │                      │  ├── validators.py
+    │                    │                      │  ├── asar_utils.py
     │                    │                      │  └── logging.py
     │
     └── tools/
@@ -165,14 +168,16 @@ main.py (入口)
 │   └── about_dialog.py  # 独立的“关于”对话框视图模块
 │
 ├── utils/               # 工具模块 (全支持 Type Hints 类型推断)
-│   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言
+│   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言（线程安全缓存）
 │   ├── file_ops.py      # 文件操作模块（包含 Hash 校验与安全迁移）
 │   ├── async_ops.py     # 后台异步操作线程池管理
-│   ├── cleanup.py       # 文件强力清除与释放工具
+│   ├── cleanup.py       # 文件强力清除与释放工具（支持 TempDirectoryManager）
 │   ├── error_handler.py # 全局错误抛出拦截与分类
 │   ├── performance.py   # 运行时性能打点模块
 │   ├── logging.py       # 日志系统配置
-│   └── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
+│   ├── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
+│   ├── constants.py     # 全局常量定义（2026-04 新增）
+│   └── validators.py    # 输入验证装饰器（2026-04 新增）
 │
 ├── tools/               # 内置运行时工具
 │   ├── node.exe         # Windows 内置 Node.js 运行时
@@ -297,14 +302,6 @@ handle_steam_update() 状态:
 | `restore_save(save_dir, backup_src)` | 还原存档 |
 | `delete_backup(backup_src)` | 删除备份 |
 | `migrate_backups(old_dir, new_dir)` | 平滑迁移备份 |
-
-#### PatchService 类 (`core/patch_service.py`)
-补丁服务类，提供自动补丁安装的完整流程封装：
-
-| 方法 | 功能 |
-|------|------|
-| `run_auto_patch(log_callback, gui_app)` | 执行自动补丁安装 |
-| `handle_patch_error(e, log_callback)` | 处理补丁失败的还原逻辑 |
 
 #### SaveManagerController 类 (`controllers/save_manager_controller.py`)
 存档管理控制器，封装存档扫描、备份、还原、删除和平滑迁移等业务逻辑，将 GUI 代码与业务逻辑分离：

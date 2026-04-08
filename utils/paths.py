@@ -1,11 +1,21 @@
 # -*- coding: utf-8 -*-
 
+__all__ = [
+    "get_resource_path",
+    "normalize_path",
+    "safe_path_within",
+    "validate_path_exists",
+    "ensure_directory",
+    "get_user_config_path",
+]
+
 import os
 import sys
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
 
 def get_resource_path(relative_path: str) -> str:
     """
@@ -15,7 +25,7 @@ def get_resource_path(relative_path: str) -> str:
     Returns:
         绝对路径
     """
-    base_path = getattr(sys, '_MEIPASS', None)
+    base_path = getattr(sys, "_MEIPASS", None)
     if base_path is None:
         base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -26,26 +36,58 @@ def get_resource_path(relative_path: str) -> str:
 
     return path
 
+
 def normalize_path(path: str) -> str:
-    """规范化路径，处理各种边界情况"""
+    """
+    规范化路径，处理各种边界情况。
+
+    修复说明（路径遍历安全漏洞 P0）：
+    原实现通过字符串替换移除 ".." 来防止路径遍历，但该方法存在绕过风险：
+    - "....//foo" 经过 replace("..", "") 得到 "//foo"，仍然是有效的遍历路径；
+    - URL 编码（%2e%2e/）不会被 ".." 检测命中；
+    - 在 replace 之后再调用 abspath 会把残留的 "/" 解析为绝对路径。
+
+    正确做法：直接调用 os.path.abspath + os.path.normpath，由操作系统层面
+    解析所有遍历序列，产生规范绝对路径；不手动剔除字符串。
+    若需要限制路径必须在某个目录内，请使用 safe_path_within()。
+
+    注意：本函数不对路径做边界限制（沙箱），仅做格式规范化。
+    """
     if not path:
         return ""
-    try:
-        path = path.strip()
-        path = os.path.abspath(path)
-        path = os.path.normpath(path)
 
-        if len(path) > 260:
+    try:
+        # 基本清理：去除首尾空白
+        path = path.strip()
+
+        # 安全检查：展开 Windows 环境变量引用（%VAR%）为实际值
+        # 使用 os.path.expandvars 而非直接删除，避免破坏包含 % 字符的合法路径
+        if "%" in path and sys.platform.startswith("win"):
+            logger.debug(f"Expanding environment variables in path: {path}")
+            path = os.path.expandvars(path)
+
+        # 直接规范化，让 OS 解析所有 ./ 和 ../ 序列
+        # 不在规范化前手动移除 ".."，避免产生格式错误的路径
+        path = os.path.normpath(os.path.abspath(path))
+
+        from utils.constants import MAX_PATH_LENGTH
+
+        # 检查路径长度
+        if len(path) > MAX_PATH_LENGTH:
             logger.warning(f"Path too long: {len(path)} chars")
 
-        if sys.platform == 'win32' and len(path) >= 260:
-            if not path.startswith('\\\\?\\'):
-                if path.startswith('\\\\'):
-                    # Network path
-                    path = '\\\\?\\UNC\\' + path[2:]
+        # Windows 长路径支持（>= MAX_PATH 时加 \\?\ 前缀）
+        # 注意：\\?\ 前缀要求路径使用反斜杠，且不支持正斜杠
+        if sys.platform == "win32" and len(path) >= MAX_PATH_LENGTH:
+            if not path.startswith("\\\\?\\"):
+                # 确保路径使用反斜杠（\\?\ 前缀不支持正斜杠）
+                path = path.replace("/", "\\")
+                if path.startswith("\\\\"):
+                    # 网络路径：\\server\share -> \\?\UNC\server\share
+                    path = "\\\\?\\UNC\\" + path[2:]
                 else:
-                    # Local path
-                    path = '\\\\?\\' + path
+                    # 本地路径
+                    path = "\\\\?\\" + path
 
         return path
     except (TypeError, ValueError, AttributeError) as e:
@@ -56,33 +98,75 @@ def normalize_path(path: str) -> str:
         return ""
 
 
+def safe_path_within(path: str, base_dir: str) -> Optional[str]:
+    """
+    规范化路径并验证其位于指定基础目录内（防路径遍历沙箱）。
+
+    修复说明（路径遍历安全漏洞 P0）：
+    对于需要限制路径必须在某个目录内的场景（如解压 ZIP、写入目标目录），
+    应使用本函数代替单独的 normalize_path。本函数在规范化后进行边界检查，
+    确保结果路径以 base_dir 为前缀，从根本上杜绝路径遍历绕过。
+
+    Args:
+        path:     待验证的路径（可以是相对路径或绝对路径）
+        base_dir: 允许的根目录（绝对路径）
+
+    Returns:
+        规范化后的绝对路径字符串（若在 base_dir 内），否则返回 None。
+    """
+    if not path or not base_dir:
+        return None
+
+    try:
+        abs_base = os.path.normpath(os.path.abspath(base_dir))
+        # 先 join 再 normpath/abspath，让 OS 解析所有 ../ 遍历
+        abs_path = os.path.normpath(os.path.abspath(os.path.join(abs_base, path)))
+
+        # 边界检查：确保结果严格位于 base_dir 内
+        # 确保 base_dir 有尾随分隔符，避免 /foo/bar 被误判为 /foo/barbaz 的子路径
+        # 同时处理根目录 (如 C:\) 的边缘情况
+        base_with_sep = abs_base if abs_base.endswith(os.sep) else abs_base + os.sep
+
+        if abs_path != abs_base and not abs_path.startswith(base_with_sep):
+            logger.warning(
+                f"Path traversal detected: '{path}' resolves to '{abs_path}' "
+                f"which is outside base '{abs_base}'"
+            )
+            return None
+
+        return abs_path
+    except Exception as e:
+        logger.exception(f"safe_path_within failed: {e}")
+        return None
+
+
 def validate_path_exists(path: str, path_type: str = "Resource") -> Tuple[bool, str]:
     """
     验证路径是否存在
-    
+
     Args:
         path: 路径字符串
         path_type: 路径类型描述（用于日志）
-        
+
     Returns:
         tuple[bool, str]: (是否存在, 错误消息)
     """
     if not path:
         return False, f"{path_type} path is empty"
-    
+
     if not os.path.exists(path):
         return False, f"{path_type} not found: {path}"
-    
+
     return True, ""
 
 
 def ensure_directory(dir_path: str) -> bool:
     """
     确保目录存在，不存在则创建
-    
+
     Args:
         dir_path: 目录路径
-        
+
     Returns:
         bool: 是否成功
     """
@@ -99,10 +183,10 @@ def ensure_directory(dir_path: str) -> bool:
 def get_user_config_path(filename: str = "config.ini") -> str:
     """
     获取用户配置文件路径（跨平台）
-    
+
     Args:
         filename: 配置文件名
-        
+
     Returns:
         str: 完整的配置文件路径
     """

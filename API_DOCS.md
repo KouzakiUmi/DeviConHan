@@ -841,79 +841,6 @@ def migrate_backups(old_dir, new_dir, progress_callback=None, log_callback=None)
 - `new_dir` - 新备份目录
 - `progress_callback` - 进度回调函数
 - `log_callback` - 日志回调函数
-
-<a id="core.patch_service"></a>
-
-# core.patch\_service
-
-恶魔链接补丁工具 - 补丁服务模块
-
-提供自动补丁安装的完整流程封装。
-
-<a id="core.patch_service.PatchService"></a>
-
-## PatchService Objects
-
-```python
-class PatchService()
-```
-
-补丁服务类
-
-提供自动补丁安装的完整流程封装，包括 Steam 更新检测、ASAR 操作等。
-
-<a id="core.patch_service.PatchService.__init__"></a>
-
-#### \_\_init\_\_
-
-```python
-def __init__(core_logic)
-```
-
-初始化补丁服务
-
-**Arguments**:
-
-- `core_logic` - CoreLogic 实例
-
-<a id="core.patch_service.PatchService.run_auto_patch"></a>
-
-#### run\_auto\_patch
-
-```python
-def run_auto_patch(log_callback, gui_app=None)
-```
-
-执行自动补丁安装
-
-**Arguments**:
-
-- `log_callback` - 日志回调函数
-- `gui_app` - GUI 应用实例（用于显示对话框）
-
-**Returns**:
-
-- `tuple[bool, str]` - (是否成功, 临时目录)
-
-**Raises**:
-
-- `Exception` - 如果补丁安装失败
-
-<a id="core.patch_service.PatchService.handle_patch_error"></a>
-
-#### handle\_patch\_error
-
-```python
-def handle_patch_error(e, log_callback=None)
-```
-
-处理补丁失败的还原逻辑
-
-**Arguments**:
-
-- `e` - 异常对象
-- `log_callback` - 日志回调函数
-
 <a id="gui.about_dialog"></a>
 
 # gui.about\_dialog
@@ -2252,4 +2179,186 @@ def handle_error(base_dir: str, asar_path: str, bak_path: str, error: Exception)
 - `asar_path` - ASAR 文件路径
 - `bak_path` - 备份文件路径
 - `error` - 异常对象
+
+---
+
+<a id="utils.constants"></a>
+
+# utils.constants
+
+全局常量定义模块
+
+集中管理所有魔法数字和配置常量。
+
+<a id="utils.constants.MAX_CONFIG_FILE_SIZE"></a>
+
+#### MAX\_CONFIG\_FILE\_SIZE
+
+配置文件大小限制 (1MB)
+
+<a id="utils.constants.DEFAULT_ASAR_TIMEOUT"></a>
+
+#### DEFAULT\_ASAR\_TIMEOUT
+
+ASAR 操作超时时间 (300秒)
+
+<a id="utils.constants.HASH_CHUNK_SIZE"></a>
+
+#### HASH\_CHUNK\_SIZE
+
+哈希计算块大小 (64KB)
+
+<a id="utils.constants.ASAR_MAGIC_NUMBER"></a>
+
+#### ASAR\_MAGIC\_NUMBER
+
+ASAR 文件魔数 (b"\x04\x00\x00\x00")
+
+<a id="utils.constants.MAX_CLEANUP_RETRIES"></a>
+
+#### MAX\_CLEANUP\_RETRIES
+
+清理重试次数 (3)
+
+---
+
+<a id="utils.validators"></a>
+
+# utils.validators
+
+输入验证装饰器模块
+
+提供路径验证、非空验证等常用验证功能。
+
+<a id="utils.validators.ValidationError"></a>
+
+## ValidationError Objects
+
+```python
+class ValidationError(Exception)
+```
+
+验证错误异常
+
+<a id="utils.validators.validate_path"></a>
+
+#### validate\_path
+
+```python
+def validate_path(should_exist: bool = True, path_type: Optional[str] = None) -> Callable
+```
+
+路径验证装饰器
+
+**Arguments**:
+
+- `should_exist` - 路径是否应该存在
+- `path_type` - 路径类型 ('file', 'dir', None)
+
+**Returns**:
+
+- 装饰器函数
+
+**Usage**:
+
+```python
+@validate_path(should_exist=True, path_type='file')
+def process_file(file_path: str):
+    pass
+```
+
+<a id="utils.validators.validate_not_empty"></a>
+
+#### validate\_not\_empty
+
+```python
+def validate_not_empty(func: Callable) -> Callable
+```
+
+非空字符串验证装饰器
+
+**Usage**:
+
+```python
+@validate_not_empty
+def process_name(name: str):
+    pass
+```
+
+<a id="utils.validators.validate_asar_source"></a>
+
+#### validate\_asar\_source
+
+```python
+def validate_asar_source(func: Callable) -> Callable
+```
+
+ASAR 源目录验证装饰器
+
+检查目录是否包含必需的 ASAR 文件
+
+---
+
+<a id="utils.cleanup.TempDirectoryManager"></a>
+
+## TempDirectoryManager Objects
+
+```python
+class TempDirectoryManager()
+```
+
+临时目录上下文管理器
+
+提供安全的临时目录创建和自动清理。
+
+<a id="utils.cleanup.TempDirectoryManager.__init__"></a>
+
+#### \_\_init\_\_
+
+```python
+def __init__(prefix: str = "temp_", suffix: str = "", parent_dir: Optional[str] = None, cleanup_on_exit: bool = True)
+```
+
+初始化临时目录管理器
+
+**Arguments**:
+
+- `prefix` - 目录名前缀
+- `suffix` - 目录名后缀
+- `parent_dir` - 父目录
+- `cleanup_on_exit` - 退出时是否清理
+
+<a id="utils.cleanup.TempDirectoryManager.keep"></a>
+
+#### keep
+
+```python
+def keep() -> None
+```
+
+保留临时目录，退出时不清理
+
+<a id="utils.cleanup.TempDirectoryManager.get_path"></a>
+
+#### get\_path
+
+```python
+def get_path() -> Optional[str]
+```
+
+获取临时目录路径
+
+<a id="utils.cleanup.TempDirectoryManager.cleanup_now"></a>
+
+#### cleanup\_now
+
+```python
+def cleanup_now() -> bool
+```
+
+立即清理临时目录
+
+**Returns**:
+
+- `bool` - 是否成功清理
 

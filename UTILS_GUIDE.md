@@ -14,6 +14,8 @@
 6. [清理工具 (utils/cleanup)](#清理工具-utilscleanup)
 7. [多语言支持 (utils/language)](#多语言支持-utilslanguage)
 8. [日志系统 (utils/logging)](#日志系统-utilslogging)
+9. [常量定义 (utils/constants)](#常量定义-utilsconstants)
+10. [输入验证 (utils/validators)](#输入验证-utilsvalidators)
 
 ---
 
@@ -25,6 +27,7 @@
 |------|------|
 | `get_resource_path(relative_path)` | 获取资源路径，支持 PyInstaller 打包 |
 | `normalize_path(path)` | 规范化路径，处理各种边界情况 |
+| `safe_path_within(path, base_dir)` | 规范化路径并验证其位于指定基础目录内（防路径遍历） |
 | `validate_path_exists(path, path_type)` | 验证路径是否存在 |
 | `ensure_directory(dir_path)` | 确保目录存在，不存在则创建 |
 | `get_user_config_path(filename)` | 获取用户配置文件路径（跨平台） |
@@ -38,10 +41,10 @@ from utils.paths import get_resource_path, normalize_path, ensure_directory
 icon_path = get_resource_path("icon.ico")
 
 # 规范化路径
-normalized = normalize_path("C:\\Users\\测试\\game")
+normalized = normalize_path("C:\Users\测试\game")
 
 # 确保目录存在
-ensure_directory("C:\\game_data\\saves")
+ensure_directory("C:\game_data\saves")
 ```
 
 ---
@@ -164,17 +167,21 @@ def my_function():
 |------|------|
 | `compute_file_hash(file_path)` | 计算文件的 SHA256 哈希值 |
 | `migrate_backup(src, dest_dir)` | 将备份文件迁移到目标目录，复制后校验哈希值 |
+| `safe_extract_zip(zip_path, dest_dir)` | 安全解压 ZIP 文件（防止路径遍历） |
 
 ### 使用示例
 
 ```python
-from utils.file_ops import compute_file_hash, migrate_backup
+from utils.file_ops import compute_file_hash, migrate_backup, safe_extract_zip
 
 # 计算文件哈希
 hash_value = compute_file_hash("game_save.dat")
 
 # 安全迁移备份（校验后删除源文件）
 success = migrate_backup("old_backup.zip", "C:/backups")
+
+# 安全解压 ZIP
+safe_extract_zip("patch.zip", "C:/game/resources")
 ```
 
 ---
@@ -185,21 +192,43 @@ success = migrate_backup("old_backup.zip", "C:/backups")
 
 处理顽固的只读文件清理及 Windows 特有的权限占用问题。
 
-| 函数 | 描述 |
-|------|------|
+| 函数/类 | 描述 |
+|--------|------|
 | `retry_operation(operation, max_retries, delay, operation_name)` | 重试可能失败的操作 |
 | `force_cleanup_dir(temp_dir, max_retries)` | 强制清理临时目录（处理只读文件） |
+| `TempDirectoryManager` | 临时目录上下文管理器（自动清理） |
+| `temp_directory()` | 临时目录上下文管理器（函数式接口） |
+| `schedule_delayed_cleanup()` | 延迟清理调度 |
 
 ### 使用示例
 
 ```python
-from utils.cleanup import retry_operation, force_cleanup_dir
+from utils.cleanup import (
+    retry_operation, 
+    force_cleanup_dir,
+    TempDirectoryManager,
+    temp_directory
+)
 
 # 重试操作
 success = retry_operation(lambda: risky_operation(), max_retries=3)
 
 # 强制清理目录
 force_cleanup_dir("C:\\temp\\game_patch")
+
+# 使用 TempDirectoryManager（推荐）
+with TempDirectoryManager(prefix="patch_") as temp_dir:
+    # temp_dir 是临时目录路径
+    process_files(temp_dir)
+    
+    # 如果需要保留目录用于调试
+    if debug_mode:
+        manager.keep()
+# 自动清理
+
+# 函数式接口
+with temp_directory(prefix="test_") as temp:
+    run_tests(temp)
 ```
 
 ---
@@ -208,12 +237,12 @@ force_cleanup_dir("C:\\temp\\game_patch")
 
 ### 主要功能
 
-多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。
+多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。**线程安全**：使用版本号缓存机制，语言切换时自动刷新所有线程的缓存。
 
 | 函数 | 描述 |
 |------|------|
-| `T(key)` | 多语言翻译函数 |
-| `set_language(code)` | 设置界面语言 |
+| `T(key)` | 多语言翻译函数（线程安全，带缓存） |
+| `set_language(code)` | 设置界面语言（线程安全） |
 | `init_lang()` | 初始化语言设置 |
 | `detect_lang_fallback()` | 使用环境变量检测语言 |
 | `get_font(size, weight)` | 根据平台和语言返回合适的 UI 字体 |
@@ -227,13 +256,16 @@ from utils.language import T, set_language, init_lang
 # 初始化语言
 init_lang()
 
-# 设置语言
+# 设置语言（自动通知所有线程刷新）
 set_language("cn")  # 中文
 set_language("en")  # 英文
 set_language("jp")  # 日文
 
-# 翻译
+# 翻译（自动使用线程本地缓存）
 message = T("save_success")  # "存档成功"
+
+# 带默认值的翻译
+message = T("unknown_key", "Default Text")
 ```
 
 ---
@@ -271,6 +303,77 @@ logger.error("发生错误")
 
 ---
 
+## 常量定义 (utils/constants)
+
+### 主要功能
+
+集中管理所有魔法数字和配置常量，提高代码可维护性。
+
+| 常量类别 | 示例 |
+|---------|------|
+| `MAX_CONFIG_FILE_SIZE` | 配置文件大小限制 (1MB) |
+| `DEFAULT_ASAR_TIMEOUT` | ASAR操作超时 (300秒) |
+| `HASH_CHUNK_SIZE` | 哈希计算块大小 (64KB) |
+| `ASAR_MAGIC_NUMBER` | ASAR文件魔数 |
+| `MAX_CLEANUP_RETRIES` | 清理重试次数 (3次) |
+
+### 使用示例
+
+```python
+from utils.constants import MAX_CONFIG_FILE_SIZE, HASH_CHUNK_SIZE
+
+# 检查配置文件大小
+if file_size > MAX_CONFIG_FILE_SIZE:
+    logger.warning("Config file too large")
+
+# 计算文件哈希
+sha256_hash = hashlib.sha256()
+with open(file_path, "rb") as f:
+    for chunk in iter(lambda: f.read(HASH_CHUNK_SIZE), b""):
+        sha256_hash.update(chunk)
+```
+
+---
+
+## 输入验证 (utils/validators)
+
+### 主要功能
+
+提供输入验证装饰器，简化参数校验逻辑。
+
+| 装饰器 | 描述 |
+|--------|------|
+| `@validate_path(should_exist, path_type)` | 路径存在性和类型验证 |
+| `@validate_not_empty` | 非空字符串验证 |
+| `@validate_asar_source` | ASAR源目录必需文件验证 |
+
+### 使用示例
+
+```python
+from utils.validators import validate_path, validate_not_empty, ValidationError
+
+@validate_path(should_exist=True, path_type='file')
+@validate_not_empty
+def process_asar_file(asar_path: str) -> None:
+    """处理ASAR文件（带验证）"""
+    # 路径已通过装饰器验证
+    pass
+
+@validate_path(should_exist=True, path_type='dir')
+def backup_directory(dir_path: str) -> bool:
+    """备份目录（带验证）"""
+    # 目录已验证存在
+    return True
+
+# 处理验证错误
+try:
+    process_asar_file("")
+except ValidationError as e:
+    logger.error(f"Validation failed: {e}")
+```
+
+---
+
 ## 配置管理 (core/config)
 
 虽然不在 utils 目录，但这是一个重要的配置管理工具：
@@ -279,11 +382,20 @@ logger.error("发生错误")
 
 | 函数/属性 | 描述 |
 |-----------|------|
-| `AppConfig` | 配置管理类 |
+| `AppConfig` | 配置管理类（线程安全） |
 | `get_config()` | 获取全局配置实例 |
 | `auto_target_exe` | 游戏可执行文件名 |
 | `fuse_sentinel` | Fuse 校验特征码 |
 | `backup_prefix` | 备份文件名前缀 |
+| `validate_config()` | 验证配置有效性（使用快照） |
+| `reload()` | 重新加载配置（原子操作） |
+
+### 线程安全特性
+
+配置模块已实现线程安全：
+- **RLock 读写锁**：支持并发读取，独占写入
+- **配置快照**：验证时使用快照，避免长时间持有锁
+- **原子操作**：配置保存和重载均为原子操作
 
 ### 使用示例
 
@@ -292,7 +404,7 @@ from core.config import get_config
 
 config = get_config()
 
-# 读取配置
+# 读取配置（线程安全）
 exe_name = config.auto_target_exe
 sentinel = config.fuse_sentinel
 
@@ -300,3 +412,12 @@ sentinel = config.fuse_sentinel
 value = config.get("preferences", "language", fallback="en")
 value_int = config.get_int("advanced", "timeout", fallback=30)
 value_bool = config.get_bool("settings", "auto_backup", fallback=True)
+
+# 验证配置（使用快照，无锁竞争）
+valid, messages = config.validate_config()
+if not valid:
+    logger.error(f"Config validation failed: {messages}")
+
+# 设置配置值（自动加锁）
+config.set_gui_config("language", "cn")
+```

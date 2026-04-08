@@ -5,45 +5,147 @@
 提供复制目录并校验哈希值等高级文件操作。
 """
 
+__all__ = ["compute_file_hash", "migrate_backup", "safe_extract_zip"]
+
 import os
 import shutil
 import hashlib
 import logging
+import zipfile
+from typing import Optional, Callable
 
 from utils.cleanup import force_cleanup_dir
+from utils.paths import safe_path_within
+from utils.constants import HASH_CHUNK_SIZE
 
 logger = logging.getLogger(__name__)
 
-def compute_file_hash(file_path: str) -> str:
-    """计算文件的 SHA256 哈希值"""
+
+def compute_file_hash(file_path: str, chunk_size: int = HASH_CHUNK_SIZE) -> str:
+    """
+    计算文件的 SHA256 哈希值
+
+    当 chunk_size 为默认值时，根据文件大小动态调整块大小以优化性能；
+    当调用方显式指定 chunk_size 时，尊重调用方的设置。
+
+    Args:
+        file_path: 文件路径
+        chunk_size: 读取块大小（默认64KB，优化大文件性能）
+
+    Returns:
+        str: 哈希值，失败返回空字符串
+    """
     try:
         if not os.path.exists(file_path) or not os.path.isfile(file_path):
             return ""
-        
+
+        # 仅在使用默认值时做动态调整，显式传入的 chunk_size 保持不变
+        if chunk_size == HASH_CHUNK_SIZE:
+            file_size = os.path.getsize(file_path)
+            actual_chunk = min(4 * 1024 * 1024, max(65536, file_size // 100))
+        else:
+            actual_chunk = chunk_size
+
         sha256_hash = hashlib.sha256()
         with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
+            for byte_block in iter(lambda: f.read(actual_chunk), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
     except Exception as e:
         logger.error(f"Failed to compute hash for {file_path}: {e}")
         return ""
 
+
+def safe_extract_zip(
+    zip_path: str, dest_dir: str, check_cancelled: Optional[Callable] = None
+) -> bool:
+    """
+    安全地解压ZIP文件，防止路径遍历攻击
+
+    Args:
+        zip_path: ZIP文件路径
+        dest_dir: 目标目录
+        check_cancelled: 取消检查回调函数
+
+    Returns:
+        bool: 是否成功解压
+
+    Raises:
+        ValueError: 如果检测到恶意路径
+    """
+    if not os.path.exists(zip_path):
+        logger.error(f"ZIP file not found: {zip_path}")
+        return False
+
+    try:
+        abs_dest_dir = os.path.normpath(os.path.abspath(dest_dir))
+
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for member in zf.infolist():
+                # 检查取消标志
+                if check_cancelled:
+                    check_cancelled()
+
+                # 额外检查：拒绝绝对路径（ZIP 规范本不允许，但需明确防御）
+                if os.path.isabs(member.filename):
+                    raise ValueError(
+                        f"Absolute path not allowed in ZIP file: {member.filename}"
+                    )
+
+                # 使用 safe_path_within 做路径遍历检测
+                # 该函数先 join 再 normpath/abspath，能防御 ....// 等所有变体
+                abs_member_path = safe_path_within(member.filename, abs_dest_dir)
+                if abs_member_path is None:
+                    raise ValueError(
+                        f"Path traversal detected in ZIP file: {member.filename}"
+                    )
+
+                # 检查是否为目录
+                if member.filename.endswith("/"):
+                    os.makedirs(abs_member_path, exist_ok=True)
+                else:
+                    # 确保父目录存在
+                    parent_dir = os.path.dirname(abs_member_path)
+                    os.makedirs(parent_dir, exist_ok=True)
+
+                    # 解压文件（使用分块读取避免大文件内存溢出）
+                    with (
+                        zf.open(member) as source,
+                        open(abs_member_path, "wb") as target,
+                    ):
+                        # 分块读取，每块 64KB，避免大文件一次性读入内存
+                        while True:
+                            chunk = source.read(65536)
+                            if not chunk:
+                                break
+                            target.write(chunk)
+
+        logger.info(f"Successfully extracted ZIP file: {zip_path}")
+        return True
+
+    except ValueError as e:
+        logger.error(f"Security violation in ZIP file: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract ZIP file {zip_path}: {e}")
+        return False
+
+
 def migrate_backup(src: str, dest_dir: str) -> bool:
     """
     将备份文件或目录迁移到目标目录，
     复制后校验哈希值，如果校验通过则删除源文件/目录。
-    
+
     Args:
         src: 源路径 (文件或目录)
         dest_dir: 目标目录的父路径 (备份将被放置于此目录中)
-        
+
     Returns:
         bool: 迁移是否完全成功
     """
     basename = os.path.basename(src)
     dest_path = os.path.join(dest_dir, basename)
-    
+
     # 防止同名文件或目录已经存在
     if os.path.exists(dest_path):
         logger.warning(f"Destination path already exists: {dest_path}")
@@ -58,11 +160,11 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
         if os.path.isfile(src):
             # 复制单个文件
             shutil.copy2(src, dest_path)
-            
+
             # 校验哈希
             src_hash = compute_file_hash(src)
             dest_hash = compute_file_hash(dest_path)
-            
+
             if src_hash and dest_hash and src_hash == dest_hash:
                 os.remove(src)
                 logger.info(f"Successfully migrated backup file: {src} -> {dest_path}")
@@ -73,11 +175,11 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                 if os.path.exists(dest_path):
                     os.remove(dest_path)
                 return False
-                
+
         elif os.path.isdir(src):
             # 复制目录
             shutil.copytree(src, dest_path)
-            
+
             # 校验目录下所有文件哈希
             all_match = True
             for root, _, files in os.walk(src):
@@ -85,25 +187,27 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                     src_file = os.path.join(root, name)
                     rel_path = os.path.relpath(src_file, src)
                     dest_file = os.path.join(dest_path, rel_path)
-                    
+
                     if not os.path.exists(dest_file):
                         all_match = False
                         break
-                        
+
                     src_hash = compute_file_hash(src_file)
                     dest_hash = compute_file_hash(dest_file)
-                    
+
                     if not src_hash or src_hash != dest_hash:
                         all_match = False
                         break
-                
+
                 if not all_match:
                     break
-                    
+
             if all_match:
                 # 校验通过，删除源目录
                 force_cleanup_dir(src)
-                logger.info(f"Successfully migrated backup directory: {src} -> {dest_path}")
+                logger.info(
+                    f"Successfully migrated backup directory: {src} -> {dest_path}"
+                )
                 return True
             else:
                 logger.error(f"Hash mismatch after migrating directory: {src}")
@@ -111,11 +215,11 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                 if os.path.exists(dest_path):
                     force_cleanup_dir(dest_path)
                 return False
-                
+
         else:
             logger.error(f"Source path is not a valid file or directory: {src}")
             return False
-            
+
     except Exception as e:
         logger.exception(f"Exception occurred during migration of {src}: {e}")
         # 如果复制过程出错，尝试清理不完整的目标
