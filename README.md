@@ -1,11 +1,14 @@
 # Devil Connection Localization Tool / 恶魔链接本地化工具
 
-![Status](https://img.shields.io/badge/Status-Stable-green?style=flat-square)
+![Status](https://img.shields.io/badge/Status-RC-orange?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Win%20|%20Mac%20|%20Linux-blue?style=flat-square)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey?style=flat-square)
 ![Build](https://img.shields.io/badge/Build-Automated-success?style=flat-square)
 
 > **By KouzakiUmi (呜咪 / 神前海)**
+
+> [!NOTE]
+> 心血来潮用AI重构花了我HKD$1500 💸
 
 ---
 
@@ -161,11 +164,20 @@ main.py (入口)
 │
 ├── core/                # 核心模块
 │   ├── patcher.py       # 核心逻辑类 CoreLogic，包含所有补丁操作函数
-│   └── config.py        # 配置管理类 AppConfig，封装 ConfigParser
+│   ├── config.py        # 配置管理类 AppConfig，封装 ConfigParser
+│   ├── steam.py         # Steam 更新状态机及 Hash 校验检测
+│   ├── fuse.py          # Electron Fuse 移除逻辑
+│   ├── save_service.py  # 存档服务类，底层存档操作
+│   ├── patch_info.py    # 补丁元数据存储管理
+│   └── batch.py         # 非 GUI 的静默批处理安装模式
 │
 ├── gui/                 # 图形界面模块
 │   ├── main_window.py   # 主窗口类 App(tk.Tk)，包含主 UI 组件
 │   └── about_dialog.py  # 独立的“关于”对话框视图模块
+│
+├── controllers/         # 业务控制器层
+│   ├── patch_controller.py          # 补丁安装控制器
+│   └── save_manager_controller.py   # 存档管理控制器
 │
 ├── utils/               # 工具模块 (全支持 Type Hints 类型推断)
 │   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言（线程安全缓存）
@@ -176,8 +188,9 @@ main.py (入口)
 │   ├── performance.py   # 运行时性能打点模块
 │   ├── logging.py       # 日志系统配置
 │   ├── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
-│   ├── constants.py     # 全局常量定义（2026-04 新增）
-│   └── validators.py    # 输入验证装饰器（2026-04 新增）
+│   ├── constants.py     # 全局常量定义
+│   ├── validators.py    # 输入验证装饰器
+│   └── asar_utils.py    # ASAR 格式解析工具（Hash 读取）
 │
 ├── tools/               # 内置运行时工具
 │   ├── node.exe         # Windows 内置 Node.js 运行时

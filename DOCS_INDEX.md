@@ -1,5 +1,7 @@
 # 文档索引
 
+> **项目状态：RC (Release Candidate)**
+
 本文档汇总了项目中的所有说明文档，帮助您快速找到需要的信息。
 
 ---
@@ -27,13 +29,6 @@
 |------|------|----------|
 | [PACK.md](PACK.md) | 打包和分发指南 | 发布者 |
 | [tools/ASAR_CLI.md](tools/ASAR_CLI.md) | ASAR CLI 工具说明 | 开发者 |
-
-### 改进与维护
-
-| 文档 | 说明 | 目标读者 |
-|------|------|----------|
-| [IMPROVEMENT_PLAN.md](IMPROVEMENT_PLAN.md) | 代码改进方案 | 维护者 |
-| [IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md) | 改进摘要和总结 | 维护者 |
 
 ---
 
@@ -69,8 +64,9 @@
 - 清理工具 (`utils/cleanup`)
 - 多语言支持 (`utils/language`)
 - 日志系统 (`utils/logging`)
-- 常量定义 (`utils/constants`) ⭐ 2026-04 新增
-- 输入验证 (`utils/validators`) ⭐ 2026-04 新增
+- 常量定义 (`utils/constants`)
+- 输入验证 (`utils/validators`)
+- ASAR 工具 (`utils/asar_utils`)
 - 配置管理 (`core/config`)
 
 **适用场景**：
@@ -130,52 +126,17 @@
 
 ---
 
-### IMPROVEMENT_PLAN.md
-
-**内容**：
-- 高优先级改进
-- 中优先级改进
-- 低优先级改进
-- 测试策略
-- 实施计划
-- 风险评估
-
-**适用场景**：
-- 规划代码改进
-- 了解技术债务
-- 制定开发计划
-
----
-
-### IMPROVEMENT_SUMMARY.md
-
-**内容**：
-- 已完成的改进总结
-- 改进效果评估
-- 使用指南
-- 文件变更清单
-- 后续建议
-
-**适用场景**：
-- 了解最新改进
-- 学习新功能用法
-- 维护代码
-
----
-
 ## 按主题查找
 
 ### 线程安全
 
 相关文档：
-- [IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md) - 线程安全改进说明
 - [UTILS_GUIDE.md](UTILS_GUIDE.md) - 多语言、配置管理模块的线程安全特性
 
 ### 性能优化
 
 相关文档：
 - [UTILS_GUIDE.md](UTILS_GUIDE.md) - 性能监控模块
-- [IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md) - 性能提升说明
 
 ### 文件操作
 
@@ -188,7 +149,6 @@
 相关文档：
 - [README.md](README.md) - 配置文件详解
 - [UTILS_GUIDE.md](UTILS_GUIDE.md) - 配置管理工具
-- [IMPROVEMENT_SUMMARY.md](IMPROVEMENT_SUMMARY.md) - 配置线程安全改进
 
 ### 打包发布
 
@@ -202,13 +162,14 @@
 
 | 日期 | 更新内容 |
 |------|----------|
+| 2026-04-09 | 更新文档索引，移除已弃用的改进文档 |
+| 2026-04-09 | 添加 RC 阶段状态说明 |
+| 2026-04-09 | 补充 `asar_utils` 模块说明 |
 | 2026-04-09 | 创建文档索引 |
 | 2026-04-09 | 添加 PACK.md 打包指南 |
 | 2026-04-09 | 更新 UTILS_GUIDE.md，添加 constants 和 validators 模块 |
 | 2026-04-09 | 更新 API_DOCS.md，添加新模块 API 文档 |
 | 2026-04-09 | 更新 README.md，添加新模块到目录结构 |
-| 2026-04-09 | 创建 IMPROVEMENT_SUMMARY.md |
-| 2026-04-09 | 创建 IMPROVEMENT_PLAN.md |
 
 ---
 
@@ -223,5 +184,5 @@
 
 ---
 
-*文档版本：1.0*  
+*文档版本：2.0*  
 *最后更新：2026-04-09*

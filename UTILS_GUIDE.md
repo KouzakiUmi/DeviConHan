@@ -16,6 +16,7 @@
 8. [日志系统 (utils/logging)](#日志系统-utilslogging)
 9. [常量定义 (utils/constants)](#常量定义-utilsconstants)
 10. [输入验证 (utils/validators)](#输入验证-utilsvalidators)
+11. [ASAR 工具 (utils/asar_utils)](#asar-工具-utilasar_utils)
 
 ---
 
@@ -371,6 +372,37 @@ try:
 except ValidationError as e:
     logger.error(f"Validation failed: {e}")
 ```
+
+---
+
+## ASAR 工具 (utils/asar_utils)
+
+### 主要功能
+
+提供纯 Python 的 ASAR 格式解析能力，支持在不解包的情况下读取 ASAR 内部文件的 Hash 值。
+
+| 函数 | 描述 |
+|------|------|
+|  | 读取 ASAR 头部大小 |
+|  | 读取 ASAR 头部 JSON 元数据 |
+|  | 获取 ASAR 内部文件的 SHA256 Hash |
+
+### 核心特性
+
+- **纯 Python 实现**：无需 Node.js，直接读取 ASAR 二进制格式
+- **内存映射**：使用  进行高效文件读取
+- **Hash 验证**：支持 Steam 更新检测，快速比对文件完整性
+
+### 使用示例
+
+
+
+### 实现原理
+
+1. 读取 ASAR 头部（4 字节 uint32，小端序）获取 JSON 元数据大小
+2. 解析 JSON 获取文件偏移量和大小
+3. 使用  定位到指定偏移量
+4. 直接在内存中计算 SHA256
 
 ---
 
