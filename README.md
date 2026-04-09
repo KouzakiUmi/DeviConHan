@@ -158,48 +158,48 @@ main.py (入口)
 ### 📁 Directory Structure / 目录结构 / ディレクトリ構造
 
 ```
-├── main.py              # 程序入口，支持 --batch 批处理模式和 GUI 模式
-├── config.ini           # 全局配置文件，定义游戏参数和文件校验列表
-├── Pack.cmd             # Windows 构建脚本，使用 PyInstaller 打包
+main.py                  # 程序入口
+config.ini               # 配置文件
+Pack.cmd                 # 构建脚本
 │
-├── core/                # 核心模块
-│   ├── patcher.py       # 核心逻辑类 CoreLogic，包含所有补丁操作函数
-│   ├── config.py        # 配置管理类 AppConfig，封装 ConfigParser
-│   ├── steam.py         # Steam 更新状态机及 Hash 校验检测
-│   ├── fuse.py          # Electron Fuse 移除逻辑
-│   ├── save_service.py  # 存档服务类，底层存档操作
-│   ├── patch_info.py    # 补丁元数据存储管理
-│   └── batch.py         # 非 GUI 的静默批处理安装模式
+core/                    # 核心模块
+│   ├── patcher.py       # 核心逻辑
+│   ├── config.py        # 配置管理
+│   ├── steam.py         # Steam检测
+│   ├── fuse.py          # Fuse移除
+│   ├── save_service.py  # 存档服务
+│   ├── patch_info.py    # 补丁元数据
+│   └── batch.py         # 批处理
 │
-├── gui/                 # 图形界面模块
-│   ├── main_window.py   # 主窗口类 App(tk.Tk)，包含主 UI 组件
-│   └── about_dialog.py  # 独立的“关于”对话框视图模块
+gui/                     # 图形界面
+│   ├── main_window.py   # 主窗口
+│   └── about_dialog.py  # 关于对话框
 │
-├── controllers/         # 业务控制器层
-│   ├── patch_controller.py          # 补丁安装控制器
-│   └── save_manager_controller.py   # 存档管理控制器
+controllers/             # 业务控制器
+│   ├── patch_controller.py       # 补丁安装
+│   └── save_manager_controller.py# 存档管理
 │
-├── utils/               # 工具模块 (全支持 Type Hints 类型推断)
-│   ├── language.py      # 多语言系统，支持 CN/EN/JP 三种语言（线程安全缓存）
-│   ├── file_ops.py      # 文件操作模块（包含 Hash 校验与安全迁移）
-│   ├── async_ops.py     # 后台异步操作线程池管理
-│   ├── cleanup.py       # 文件强力清除与释放工具（支持 TempDirectoryManager）
-│   ├── error_handler.py # 全局错误抛出拦截与分类
-│   ├── performance.py   # 运行时性能打点模块
-│   ├── logging.py       # 日志系统配置
-│   ├── paths.py         # 路径处理，支持 PyInstaller 打包后的资源路径
-│   ├── constants.py     # 全局常量定义
-│   ├── validators.py    # 输入验证装饰器
-│   └── asar_utils.py    # ASAR 格式解析工具（Hash 读取）
+utils/                   # 工具模块
+│   ├── language.py      # 多语言
+│   ├── file_ops.py      # 文件操作
+│   ├── async_ops.py     # 异步操作
+│   ├── cleanup.py       # 清理工具
+│   ├── error_handler.py # 错误处理
+│   ├── performance.py   # 性能监控
+│   ├── logging.py       # 日志系统
+│   ├── paths.py         # 路径处理
+│   ├── constants.py     # 常量定义
+│   ├── validators.py    # 输入验证
+│   └── asar_utils.py    # ASAR解析
 │
-├── tools/               # 内置运行时工具
-│   ├── node.exe         # Windows 内置 Node.js 运行时
-│   ├── asar_cli.mjs     # ASAR 文件操作 CLI 工具
-│   └── bundled_asar/    # ASAR Node.js 依赖库
-│       └── index.mjs    # ASAR 核心库
+tools/                   # 运行时工具
+│   ├── node.exe         # Node.js
+│   ├── asar_cli.mjs     # ASAR CLI
+│   └── bundled_asar/    # ASAR依赖
 │
-├── Patch.zip            # 汉化补丁数据压缩包（由 Pack.cmd 从 Patch/ 目录自动生成）
+Patch.zip                # 汉化补丁
 ```
+
 
 ### ⚙️ Configuration File / 配置文件详解 / 設定ファイル
 
