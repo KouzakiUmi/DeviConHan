@@ -195,7 +195,8 @@ utils/                                  # 工具模块
 tools/                                  # 运行时工具
 │   ├── node.exe                        # Node.js
 │   ├── asar_cli.mjs                    # ASAR CLI
-│   └── bundled_asar/                   # ASAR依赖
+│   └── bundled_asar/
+│       └── index.mjs                   # ASAR核心库
 │
 Patch.zip                               # 汉化补丁
 ```
