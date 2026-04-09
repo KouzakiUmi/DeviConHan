@@ -136,18 +136,18 @@ main.py (入口)
 └── Batch Mode (--batch CLI)
 
     │
-    ├── core/            │  gui/                │  utils/
-    │   ├── patcher.py   │  ├── main_window.py  │  ├── language.py
-    │   ├── config.py    │  └── about_dialog.py │  ├── paths.py
-    │   ├── steam.py     │                      │  ├── file_ops.py
-    │   ├── fuse.py      │  controllers/        │  ├── async_ops.py
-    │   ├── save_service.py │  ├── patch_controller.py│├── performance.py
-    │   ├── patch_info.py│  └── save_manager_controller.py│├── error_handler.py
-    │   └── batch.py     │                      │  ├── cleanup.py
-    │                    │                      │  ├── constants.py
-    │                    │                      │  ├── validators.py
-    │                    │                      │  ├── asar_utils.py
-    │                    │                      │  └── logging.py
+    ├── core/            │  gui/                          │  utils/
+    │   ├── patcher.py   │  ├── main_window.py            │  ├── language.py
+    │   ├── config.py    │  └── about_dialog.py           │  ├── paths.py
+    │   ├── steam.py     │                                │  ├── file_ops.py
+    │   ├── fuse.py      │  controllers/                  │  ├── async_ops.py
+    │   ├── save_service.py │  ├── patch_controller.py    │  ├── performance.py
+    │   ├── patch_info.py│  └── save_manager_controller.py│  ├── error_handler.py
+    │   └── batch.py     │                                │  ├── cleanup.py
+    │                    │                                │  ├── constants.py
+    │                    │                                │  ├── validators.py
+    │                    │                                │  ├── asar_utils.py
+    │                    │                                │  └── logging.py
     │
     └── tools/
         ├── node.exe
@@ -158,46 +158,46 @@ main.py (入口)
 ### 📁 Directory Structure / 目录结构 / ディレクトリ構造
 
 ```
-main.py                  # 程序入口
-config.ini               # 配置文件
-Pack.cmd                 # 构建脚本
+main.py                                 # 程序入口
+config.ini                              # 配置文件
+Pack.cmd                                # 构建脚本
 │
-core/                    # 核心模块
-│   ├── patcher.py       # 核心逻辑
-│   ├── config.py        # 配置管理
-│   ├── steam.py         # Steam检测
-│   ├── fuse.py          # Fuse移除
-│   ├── save_service.py  # 存档服务
-│   ├── patch_info.py    # 补丁元数据
-│   └── batch.py         # 批处理
+core/                                   # 核心模块
+│   ├── patcher.py                      # 核心逻辑
+│   ├── config.py                       # 配置管理
+│   ├── steam.py                        # Steam检测
+│   ├── fuse.py                         # Fuse移除
+│   ├── save_service.py                 # 存档服务
+│   ├── patch_info.py                   # 补丁元数据
+│   └── batch.py                        # 批处理
 │
-gui/                     # 图形界面
-│   ├── main_window.py   # 主窗口
-│   └── about_dialog.py  # 关于对话框
+gui/                                    # 图形界面
+│   ├── main_window.py                  # 主窗口
+│   └── about_dialog.py                 # 关于对话框
 │
-controllers/             # 业务控制器
-│   ├── patch_controller.py       # 补丁安装
-│   └── save_manager_controller.py# 存档管理
+controllers/                            # 业务控制器
+│   ├── patch_controller.py             # 补丁安装
+│   └── save_manager_controller.py      # 存档管理
 │
-utils/                   # 工具模块
-│   ├── language.py      # 多语言
-│   ├── file_ops.py      # 文件操作
-│   ├── async_ops.py     # 异步操作
-│   ├── cleanup.py       # 清理工具
-│   ├── error_handler.py # 错误处理
-│   ├── performance.py   # 性能监控
-│   ├── logging.py       # 日志系统
-│   ├── paths.py         # 路径处理
-│   ├── constants.py     # 常量定义
-│   ├── validators.py    # 输入验证
-│   └── asar_utils.py    # ASAR解析
+utils/                                  # 工具模块
+│   ├── language.py                     # 多语言
+│   ├── file_ops.py                     # 文件操作
+│   ├── async_ops.py                    # 异步操作
+│   ├── cleanup.py                      # 清理工具
+│   ├── error_handler.py                # 错误处理
+│   ├── performance.py                  # 性能监控
+│   ├── logging.py                      # 日志系统
+│   ├── paths.py                        # 路径处理
+│   ├── constants.py                    # 常量定义
+│   ├── validators.py                   # 输入验证
+│   └── asar_utils.py                   # ASAR解析
 │
-tools/                   # 运行时工具
-│   ├── node.exe         # Node.js
-│   ├── asar_cli.mjs     # ASAR CLI
-│   └── bundled_asar/    # ASAR依赖
+tools/                                  # 运行时工具
+│   ├── node.exe                        # Node.js
+│   ├── asar_cli.mjs                    # ASAR CLI
+│   └── bundled_asar/                   # ASAR依赖
 │
-Patch.zip                # 汉化补丁
+Patch.zip                               # 汉化补丁
 ```
 
 
