@@ -26,6 +26,7 @@ from utils.cleanup import force_cleanup_dir
 from utils.file_ops import safe_extract_zip
 from utils.language import T
 from utils.paths import get_resource_path, safe_path_within
+from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 from utils.transaction import FileTransaction, TransactionError
 from utils.operation_lock import with_operation_lock, OperationType
 from utils.disk_utils import (
@@ -89,7 +90,13 @@ class PatchController:
         """
         base = os.path.abspath(".")
         cfg = get_config()
-        res = os.path.join(base, cfg.resource_dir)
+
+        # 跨平台资源路径处理
+        if is_app_bundle(base):
+            res = os.path.join(base, "Contents", "Resources")
+        else:
+            res = get_resources_path(base, get_platform_info().system)
+
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
 
@@ -194,7 +201,13 @@ class PatchController:
         """实际的补丁安装逻辑"""
         base = os.path.abspath(".")
         cfg = get_config()
-        res = os.path.join(base, cfg.resource_dir)
+
+        # 跨平台资源路径处理
+        if is_app_bundle(base):
+            res = os.path.join(base, "Contents", "Resources")
+        else:
+            res = get_resources_path(base, get_platform_info().system)
+
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
         temp = None

@@ -10,6 +10,7 @@ import logging
 from core.config import get_config
 from core.fuse import remove_fuse
 from utils.language import T
+from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 from utils.constants import (
     UNPACKED_DIR_NAME,
     PACKED_DIR_NAME,
@@ -222,7 +223,13 @@ class ToolsTab(ttk.Frame):
             messagebox.showerror(T("title_error"), T("msg_reset_error").format(error=e))
 
     def _auto_scan_asar(self):
-        cands = [os.path.join(get_config().resource_dir, "app.asar"), "app.asar"]
+        base = os.path.abspath(".")
+        # 跨平台资源路径处理
+        if is_app_bundle(base):
+            res_path = os.path.join(base, "Contents", "Resources")
+        else:
+            res_path = get_resources_path(base, get_platform_info().system)
+        cands = [os.path.join(res_path, "app.asar"), "app.asar"]
         for c in cands:
             p = os.path.abspath(c)
             if os.path.exists(p):

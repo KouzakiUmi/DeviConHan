@@ -23,6 +23,7 @@ from enum import Enum
 from core.config import get_config
 from utils.asar_utils import get_file_hash_in_asar
 from utils.file_ops import compute_file_hash
+from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class FileState:
 class StateValidator:
     """
     系统状态验证器
-    
+
     检查以下文件的状态一致性：
     - app.asar (当前游戏资源)
     - app.asar.bak (原始备份)
@@ -68,24 +69,33 @@ class StateValidator:
     - .patch_meta (补丁元数据)
     - Patch.zip/Patch/ (补丁数据源)
     """
-    
+
     def __init__(self, base_dir: Optional[str] = None):
         """
         初始化验证器
-        
+
         Args:
             base_dir: 基础目录，默认当前目录
         """
         self.base_dir = base_dir or os.path.abspath(".")
         self.config = get_config()
-        
-        # 初始化路径
-        self.res_dir = os.path.join(self.base_dir, self.config.resource_dir)
+
+        # 获取平台信息
+        self.platform_info = get_platform_info()
+
+        # 跨平台资源路径处理
+        if is_app_bundle(self.base_dir):
+            # macOS .app bundle 情况
+            self.res_dir = os.path.join(self.base_dir, "Contents", "Resources")
+        else:
+            # Windows/Linux: 使用平台检测
+            self.res_dir = get_resources_path(self.base_dir, self.platform_info.system)
+
         self.asar_path = os.path.join(self.res_dir, self.config.target_asar_name)
         self.bak_path = self.asar_path + ".bak"
         self.patch_info_path = os.path.join(self.base_dir, self.config.patch_info_file)
         self.patch_meta_path = os.path.join(self.base_dir, self.config.patch_meta_file)
-        
+
         self.errors: List[StateValidationError] = []
         self.warnings: List[StateValidationError] = []
         self.infos: List[StateValidationError] = []

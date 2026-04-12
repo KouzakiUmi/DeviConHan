@@ -29,6 +29,42 @@ class SystemBootstrapError(Exception):
     pass
 
 
+def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
+    """
+    尝试自动检测游戏目录
+
+    Args:
+        base_dir: 基础目录（如果指定则直接使用）
+
+    Returns:
+        str: 游戏目录路径，未找到返回 None
+    """
+    from utils.platform import find_game_in_steam, get_platform_info, get_steam_library_paths
+
+    config = get_config()
+
+    # 如果手动指定了游戏目录
+    if base_dir:
+        return base_dir
+
+    if not config.auto_detect_game:
+        # 手动模式
+        if config.game_path and os.path.exists(config.game_path):
+            return config.game_path
+        return None
+
+    # 自动检测模式
+    info = get_platform_info()
+    logger.info(f"Detected platform: {info.system}")
+    logger.info(f"Steam library search path: {info.steam_common_path}")
+
+    # 在 Steam 目录中查找游戏
+    search_paths = get_steam_library_paths()
+    game_path = find_game_in_steam(config.game_id, search_paths)
+
+    return game_path
+
+
 def bootstrap_system(
     base_dir: Optional[str] = None,
     skip_state_check: bool = False,
@@ -49,23 +85,34 @@ def bootstrap_system(
         SystemBootstrapError: 如果关键检查失败
     """
     messages = []
-    
+
     logger.info("Starting system bootstrap...")
-    
+
+    # 0. 自动检测游戏目录
+    if not base_dir:
+        game_path = find_game_directory(base_dir)
+        if game_path:
+            base_dir = game_path
+            messages.append(f"Auto-detected game directory: {base_dir}")
+            logger.info(f"Using game directory: {base_dir}")
+        else:
+            messages.append("Warning: Could not auto-detect game directory. Using current directory.")
+            logger.warning("Could not auto-detect game directory")
+
     # 1. 初始化配置
     try:
         config = get_config()
         config_valid, errors, warnings = config.validate_config()
-        
+
         if not config_valid:
             raise SystemBootstrapError(f"Configuration validation failed: {errors}")
-            
+
         if warnings:
             messages.extend(warnings)
-            
+
     except Exception as e:
         raise SystemBootstrapError(f"Failed to initialize configuration: {e}") from e
-        
+
     # 2. 系统状态一致性检查
     if not skip_state_check:
         logger.info("Checking system state consistency...")

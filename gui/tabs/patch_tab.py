@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from core.config import get_config
 from utils.language import T, get_font
+from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
 class PatchTab(ttk.Frame):
     def __init__(self, parent, app):
@@ -53,7 +54,10 @@ class PatchTab(ttk.Frame):
                     )
         except Exception as e:
             base = os.path.abspath(".")
-            res = os.path.join(base, get_config().resource_dir)
+            if is_app_bundle(base):
+                res = os.path.join(base, "Contents", "Resources")
+            else:
+                res = get_resources_path(base, get_platform_info().system)
             asar = os.path.join(res, "app.asar")
             bak = asar + ".bak"
             self.app.patch_controller.handle_error(base, asar, bak, e)

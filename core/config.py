@@ -378,9 +378,34 @@ class AppConfig:
     # ========== 便捷访问属性 ==========
 
     @property
+    def game_id(self):
+        """游戏标识（用于在Steam目录中查找游戏）"""
+        return self.get("main", "GAME_ID", fallback="Devil Connection")
+
+    @property
+    def auto_detect_game(self):
+        """是否自动检测游戏目录"""
+        return self.get_bool("main", "AUTO_DETECT_GAME", fallback=True)
+
+    @property
+    def game_path(self):
+        """手动指定的游戏目录"""
+        return self.get("main", "GAME_PATH", fallback="")
+
+    @property
     def auto_target_exe(self):
-        """游戏可执行文件名"""
-        return self.get("main", "AUTO_TARGET_EXE", fallback="DevilConnection.exe")
+        """游戏可执行文件名（Windows）"""
+        return self.get("main", "WINDOWS_EXE", fallback="DevilConnection.exe")
+
+    @property
+    def macos_app(self):
+        """macOS App Bundle 名称"""
+        return self.get("main", "MACOS_APP", fallback="Devil Connection.app")
+
+    @property
+    def linux_binary(self):
+        """Linux 可执行文件名"""
+        return self.get("main", "LINUX_BINARY", fallback="DevilConnection")
 
     @property
     def fuse_sentinel(self):
