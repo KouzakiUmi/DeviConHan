@@ -42,6 +42,63 @@ def get_detected_game_path() -> Optional[str]:
     return _detected_game_path
 
 
+def is_game_directory(path: str, config=None) -> bool:
+    """
+    检查指定目录是否是游戏目录
+
+    检查以下任一情况存在即可：
+    - resources/app.asar (主游戏资源)
+    - resources/app.asar.bak (备份文件)
+    - resources/app.asar.unpacked/ (已解压的 ASAR 目录)
+
+    Args:
+        path: 目录路径
+        config: 配置对象
+
+    Returns:
+        bool: 是否是游戏目录
+    """
+    if not os.path.isdir(path):
+        return False
+
+    if config is None:
+        config = get_config()
+
+    from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+
+    info = get_platform_info()
+
+    # 确定 resources 目录
+    if is_app_bundle(path):
+        res_path = os.path.join(path, "Contents", "Resources")
+    else:
+        res_path = get_resources_path(path, info.system)
+
+    # 检查是否存在 resources 目录
+    if not os.path.isdir(res_path):
+        logger.debug(f"Resources directory not found: {res_path}")
+        return False
+
+    # 检查是否有游戏文件（app.asar / app.asar.bak / app.asar.unpacked）
+    asar_name = config.target_asar_name
+    asar_path = os.path.join(res_path, asar_name)
+    bak_path = asar_path + ".bak"
+    unpacked_path = os.path.join(res_path, f"{asar_name}.unpacked")
+
+    has_game_files = (
+        os.path.isfile(asar_path) or  # app.asar
+        os.path.isfile(bak_path) or  # app.asar.bak
+        os.path.isdir(unpacked_path)   # app.asar.unpacked/
+    )
+
+    if has_game_files:
+        logger.debug(f"Confirmed game directory: {path} (found ASAR or backup)")
+        return True
+
+    logger.debug(f"No game files found in: {res_path}")
+    return False
+
+
 def find_game_directory(base_dir: Optional[str] = None, auto_detect: bool = True) -> Optional[str]:
     """
     尝试自动检测游戏目录
@@ -110,24 +167,30 @@ def bootstrap_system(
     config = get_config()
 
     # 2. 确定游戏目录
-    # 优先级：明确指定 > 自动检测 > 当前目录
+    # 优先级：明确指定 > 当前目录（如果是游戏目录）> 自动检测 > 当前目录
+    current_dir = os.path.abspath(".")
+
     if base_dir:
         # 明确指定
         logger.info(f"Using specified directory: {base_dir}")
+    elif is_game_directory(current_dir, config):
+        # 当前目录是有效的游戏目录
+        base_dir = current_dir
+        logger.info(f"Current directory is valid game directory: {base_dir}")
     elif config.auto_detect_game:
         # 尝试自动检测
-        logger.info("Attempting auto-detection of game directory...")
+        logger.info("Current directory is not a game directory. Attempting auto-detection...")
         detected = find_game_directory(base_dir)
         if detected:
             base_dir = detected
             messages.append(f"Auto-detected game directory: {base_dir}")
             logger.info(f"Using auto-detected game directory: {base_dir}")
         else:
-            base_dir = os.path.abspath(".")
+            base_dir = current_dir
             logger.info(f"Auto-detection failed, using current directory: {base_dir}")
     else:
         # 使用当前目录
-        base_dir = os.path.abspath(".")
+        base_dir = current_dir
         logger.info(f"Using current directory: {base_dir}")
 
     # 更新缓存
