@@ -130,9 +130,4 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
 - ゲーム、キャラクター、デザインの全権利は原作者に帰属。
 
 参照: [作者ガイドライン](https://bayachao.com/devil-connection/guideline)
-
 ライセンス: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-
-*プロジェクトコード（パッケージングスクリプト含む）、実行ロジックを全面分析し、全MDドキュメントを更新・修正しました。他のドキュメント（PROJECT_SPECS.md、PACK.mdなど）も現在の実装（純Python ASAR、bootstrap、config隔離、原子性書き込み、プラグインシステム）と整合。*
-
-*最終更新: 2026-04-12*

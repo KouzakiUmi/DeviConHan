@@ -130,9 +130,4 @@ This project strictly follows the original author **ばやちゃお (Bayachao)**
 - All rights to game, characters, designs belong to the original author.
 
 Reference: [Author's Guideline](https://bayachao.com/devil-connection/guideline)
-
 License: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-
-*Updated based on comprehensive code analysis including packaging scripts, current running logic (pure Python ASAR, bootstrap, state validation, config isolation, atomic writes), and plugin system. All other MD documents (PROJECT_SPECS.md, PACK.md, PLUGIN_GUIDE.md, UTILS_GUIDE.md, API_DOCS.md, BUILD_SCRIPT_UPDATES.md, STANDARDIZATION_CHANGES.md, DOCS_INDEX.md) have been reviewed and aligned with current implementation.*
-
-*Last updated: 2026-04-12*

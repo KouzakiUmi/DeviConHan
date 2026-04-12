@@ -175,9 +175,3 @@ STABLE_FILES_FOR_VALIDATION = index.html, main.js, package.json ...
 
 **参考**：[原作者二次创作指南](https://bayachao.com/devil-connection/guideline)
 **许可证**：[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-
-**三语文档**：本`README.md`为纯中文版本（包含开发者说明、标题更新和基于代码全面分析的完善内容）。请通过顶部醒目超链接跳转到纯英文的[README_en.md](README_en.md)和纯日文的[README_ja.md](README_ja.md)，每个独立文件仅使用自身语言并高亮当前语言。
-
----
-
-**文档更新总结**：全面分析了项目所有代码和打包脚本（Pack.cmd/Pack.sh的条件构建、Patch.zip自动压缩逻辑）、运行流程（bootstrap检查、steam状态机4种情况、CoreLogic的asar操作、config热重载与用户目录隔离、原子写入patch_info/meta、gui tabs分离、纯Python ASAR校验等）。修复了所有MD中的过时信息（旧架构、node依赖、旧config示例、旧构建命令），添加了开发者适配说明。现在所有文档准确反映当前实现，并相互一致。其他文档（如PROJECT_SPECS.md、PLUGIN_GUIDE.md、PACK.md、UTILS_GUIDE.md、API_DOCS.md）也已同步更新标题和内容。
