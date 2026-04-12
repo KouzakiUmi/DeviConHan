@@ -27,6 +27,7 @@ jobs:
             main.py
             pyproject.toml
             requirements.txt
+            Patch.zip
             core
             gui
             controllers
