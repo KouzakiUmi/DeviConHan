@@ -17,8 +17,20 @@ from utils.error_handler import (
     PatcherError,
 )
 from utils.validators import validate_path, validate_not_empty
+from utils.constants import ASAR_UNPACK_PATTERN
+from utils.file_ops import verify_directory_safe
 
 logger = logging.getLogger(__name__)
+
+# ================== 延迟导入 ==================
+# 延迟导入asar库，避免在不支持的环境中导入失败
+try:
+    import asar
+
+    ASAR_AVAILABLE = True
+except ImportError:
+    ASAR_AVAILABLE = False
+    logger.warning("asar library not available, ASAR operations will be disabled")
 
 # ================== 配置延迟加载 ==================
 # 注意: 配置和语言初始化现在由 main.py 统一处理
@@ -41,13 +53,6 @@ class CoreLogic:
         """
         初始化核心逻辑
         """
-        try:
-            import asar  # noqa: F401  # noqa: F401  # noqa: F401
-        except ImportError:
-            raise PatcherError(
-                "Missing dependency: asar. Please install it using 'pip install asar'."
-            )
-
         logger.info("CoreLogic initialized (Pure Python ASAR mode)")
 
     @validate_not_empty("action", "src", "dest")
@@ -86,15 +91,19 @@ class CoreLogic:
             raise PatcherError(f"Source must be a file for extraction: {src}")
 
         if action == "pack" and not unpack_pattern:
-            unpack_pattern = "*.{node,dll,so,dylib,exe,bin}"
+            unpack_pattern = ASAR_UNPACK_PATTERN
 
         # 使用性能监控器记录ASAR操作
         monitor = get_performance_monitor()
         monitor.start(f"asar_{action}")
 
         try:
-            import asar  # noqa: F401  # noqa: F401  # noqa: F401
             from pathlib import Path
+
+            if not ASAR_AVAILABLE:
+                raise PatcherError(
+                    "asar library not available. Please install it using 'pip install asar'"
+                )
 
             if callback:
                 callback(f"Executing: {action}...")
@@ -104,7 +113,21 @@ class CoreLogic:
             # 强制超时终止不仅可能留下半成品的写文件，还引发过后台死锁。
             # 这里依赖上层的 AsyncOperationManager 提供对用户体验的线程分离即可。
             if action == "extract":
+                from utils.asar_utils import check_asar_path_traversal
+
+                if not check_asar_path_traversal(src):
+                    raise PatcherError(
+                        f"Security violation: Path traversal detected in ASAR file '{src}'. "
+                        f"Possible malicious ASAR file."
+                    )
                 asar.extract_archive(Path(src), Path(dest))
+
+                # 验证解压结果的安全性（防止符号链接等）
+                if not verify_directory_safe(dest):
+                    raise PatcherError(
+                        f"Security violation: ASAR extraction resulted in files "
+                        f"outside target directory '{dest}'. Possible malicious ASAR file."
+                    )
 
             elif action == "pack":
                 asar.create_archive(Path(src), Path(dest), unpack=unpack_pattern or "")

@@ -15,6 +15,68 @@ from utils.constants import ASAR_MAGIC_NUMBER
 logger = logging.getLogger(__name__)
 
 
+def check_asar_path_traversal(asar_path: str) -> bool:
+    """
+    Check if the ASAR file contains any paths that could lead to path traversal
+    (e.g., absolute paths, or paths containing '../').
+
+    Args:
+        asar_path: Path to the ASAR file
+
+    Returns:
+        bool: True if safe (no traversal found), False if potentially malicious
+    """
+    if not os.path.exists(asar_path):
+        return True
+
+    try:
+        with open(asar_path, "rb") as f:
+            magic = f.read(4)
+            if magic != ASAR_MAGIC_NUMBER:
+                return False
+
+            header_size_bytes = f.read(4)
+            if len(header_size_bytes) != 4:
+                return False
+            header_size = struct.unpack("<I", header_size_bytes)[0]
+
+            MAX_HEADER_SIZE = 50 * 1024 * 1024
+            if header_size > MAX_HEADER_SIZE:
+                return False
+
+            header_data = f.read(header_size)
+            if len(header_data) < 8:
+                return False
+
+            json_size = struct.unpack("<I", header_data[4:8])[0]
+            if json_size == 0 or (8 + json_size) > len(header_data):
+                return False
+
+            json_str = header_data[8 : 8 + json_size].decode("utf-8")
+            header_dict = json.loads(json_str)
+
+            def check_node(node):
+                if "files" in node:
+                    for name, child in node["files"].items():
+                        if (
+                            ".." in name
+                            or name.startswith("/")
+                            or name.startswith("\\")
+                            or ":" in name
+                        ):
+                            logger.error(f"Path traversal detected in ASAR: {name}")
+                            return False
+                        if not check_node(child):
+                            return False
+                return True
+
+            return check_node(header_dict)
+
+    except Exception as e:
+        logger.error(f"Failed to check ASAR path traversal: {e}")
+        return False
+
+
 def get_file_hash_in_asar(asar_path, file_path):
     """
     计算 ASAR 包内特定文件的 SHA256 哈希值
@@ -41,6 +103,14 @@ def get_file_hash_in_asar(asar_path, file_path):
             if len(header_size_bytes) != 4:
                 return None
             header_size = struct.unpack("<I", header_size_bytes)[0]
+
+            # 增加最大Header Size限制（例如50MB），防止OOM
+            MAX_HEADER_SIZE = 50 * 1024 * 1024
+            if header_size > MAX_HEADER_SIZE:
+                logger.error(
+                    f"ASAR header too large ({header_size} bytes), possible corruption in {asar_path}"
+                )
+                return None
 
             # Read the rest of the header
             header_data = f.read(header_size)
