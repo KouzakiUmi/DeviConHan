@@ -10,6 +10,7 @@ import sys
 import platform
 import logging
 import threading
+import unicodedata
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
 
@@ -174,18 +175,30 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
     if search_paths is None:
         search_paths = get_steam_library_paths()
 
-    # 规范化游戏名称
-    normalized_name = game_name.lower().strip()
+    # 规范化游戏名称 (包含日文平假名/片假名归一化)
+    def normalize_japanese(s):
+        """归一化日文：平假名转片假名，统一大小写"""
+        result = []
+        for c in s:
+            # 转换平假名为片假名
+            if '\u3040' <= c <= '\u309f':  # 平假名范围
+                result.append(chr(ord(c) + 0x60))  # 转片假名
+            else:
+                result.append(c.lower())
+        return ''.join(result)
+
+    normalized_name = normalize_japanese(game_name.strip())
     variations = [
         normalized_name,
         normalized_name.replace(" ", "_"),
         normalized_name.replace(" ", "-"),
         normalized_name.replace("_", " "),
         normalized_name.replace("-", " "),
-        # 日语变体
-        normalized_name.replace("でびるこねくしょん", "でびるコネクション"),
-        "debil connection",
+        # 日语罗马音变体
+        "devirukonenku",
         "deviru konenku",
+        "debilcon",
+        "debil con",
     ]
 
     logger.info(f"Searching for game: {game_name}")
@@ -205,10 +218,10 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
                 entries = os.listdir(common_dir)
                 logger.info(f"  -> Found {len(entries)} entries in common")
                 for entry in entries:
-                    entry_lower = entry.lower()
-                    logger.info(f"  -> Checking: {entry}")
+                    entry_normalized = normalize_japanese(entry)
+                    logger.info(f"  -> Checking: {entry} (normalized: {entry_normalized})")
                     for var in variations:
-                        if var in entry_lower or entry_lower in var:
+                        if var in entry_normalized or entry_normalized in var:
                             game_path = os.path.join(common_dir, entry)
                             logger.info(f"Found game match: '{entry}' (looking for '{var}') at {game_path}")
                             result[0] = game_path
