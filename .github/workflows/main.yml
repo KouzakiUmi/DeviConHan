@@ -51,18 +51,18 @@ jobs:
             ./Pack.sh
           fi
 
-       - name: Prepare Artifacts
-         run: |
-           mkdir -p release_artifacts
-           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-             cp dist/*.exe release_artifacts/ 2>/dev/null || true
-           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-             for app in dist/*.app; do
-               [ -d "$app" ] && zip -r "release_artifacts/$(basename "$app" .app)_macos.zip" "$app"
-             done
-           else
-             for f in dist/*; do [ -f "$f" ] && cp "$f" "release_artifacts/$(basename "$f")_linux"; done
-           fi
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p release_artifacts
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp dist/*.exe release_artifacts/ 2>/dev/null || true
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            for app in dist/*.app; do
+              [ -d "$app" ] && zip -r "release_artifacts/$(basename "$app" .app)_macos.zip" "$app"
+            done
+          else
+            for f in dist/*; do [ -f "$f" ] && cp "$f" "release_artifacts/$(basename "$f")_linux"; done
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
