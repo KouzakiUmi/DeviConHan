@@ -44,7 +44,7 @@
 
 ---
 
-## 📥 Installation / 安装 / インストール
+## 📥 安装
 
 ### 🚀 自动构建版（推荐）
 
@@ -98,7 +98,7 @@ python -m PyInstaller -F -w --clean \
 
 ---
 
-## 💾 Save Manager / 存档管理 / セーブ管理
+## 💾 存档管理
 
 ### 🇨🇳 功能介绍
 工具内置了**专业级存档管理系统**（`Save Manager` 标签页），让您再也不怕存档丢失：
@@ -135,7 +135,7 @@ python -m PyInstaller -F -w --clean \
 ### 🔧 Fuse移除与配置动态化
 TyranoV8/Electron版本迭代可能改变Fuse布局。开发者工具箱 -> 配置管理 -> 修改Fuse偏移（默认4，可配置`FUSE_ASAR_INTEGRITY_OFFSET`）支持动态调整，值实时保存到用户`config.ini`并生效。所有危险操作均有警告、文件存在检查和Hash保护。
 
-### 📁 项目架构（基于代码全面分析更新，纯中文描述）
+### 📁 项目架构
 
 - **入口**：`main.py` — 参数解析、init_lang、bootstrap_system（配置/路径/状态检查）、GUI (`gui/main_window.py` + `tabs/*`) 或 batch模式。
 - **core/**：`bootstrap.py`（系统引导）、`patcher.py`（CoreLogic，延迟`import asar`进行extract/create_archive）、`config.py`（单例、用户`~/.tyranopatcher/config.ini`优先、snapshot+TTL热重载、fallback如`TARGET_ASAR_NAME=app.asar`、`PATCH_ZIP_NAME=Patch.zip`）、`steam.py`+`state_validator.py`（4种ASAR/备份/patch_meta状态机 + 纯Python哈希验证）、`save_service.py`、`fuse.py`（可配置偏移）、`patch_info.py`（原子`_atomic_write_json`）、`batch.py`。
