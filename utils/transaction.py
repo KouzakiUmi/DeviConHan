@@ -63,14 +63,14 @@ class FileTransaction:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """退出上下文，自动回滚或清理"""
-        if exc_type is not None and not self.committed:
-            logger.warning(f"Exception in transaction, rolling back: {exc_val}")
-            self.rollback()
-        elif self.committed:
+        try:
+            if exc_type is not None and not self.committed:
+                logger.warning(f"Exception in transaction, rolling back: {exc_val}")
+                self.rollback()
+            elif not self.committed:
+                self.rollback()
+        finally:
             self.cleanup()
-        else:
-            # 正常退出但未提交，回滚
-            self.rollback()
 
     def backup_original(self, file_path: str) -> str:
         """
@@ -199,9 +199,7 @@ class FileTransaction:
                         os.remove(target_path)
                     else:
                         shutil.rmtree(target_path)
-                    logger.debug(
-                        f"Removed newly placed file during recovery: {target_path}"
-                    )
+                    logger.debug(f"Removed newly placed file during recovery: {target_path}")
             except Exception as e:
                 logger.error(f"Failed to remove new file {target_path}: {e}")
 
