@@ -1,4 +1,3 @@
-
 import os
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -38,20 +37,19 @@ class PatchTab(ttk.Frame):
                 gui_app=self.app, _check_cancelled=_check_cancelled
             )
             if success:
-                def on_exit_confirm():
-                    if messagebox.askyesno(
-                        T("title_success"), T("msg_exit_after_patch")
-                    ):
-                        self.app.destroy()
+                # 只有当实际进行了补丁安装时才显示退出确认
+                if temp is not None:  # temp不为None表示实际进行了补丁操作
 
-                self.after(0, on_exit_confirm)
+                    def on_exit_confirm():
+                        if messagebox.askyesno(T("title_success"), T("msg_exit_after_patch")):
+                            self.app.destroy()
+
+                    self.after(0, on_exit_confirm)
             else:
                 if error_msg and error_msg != "Cancelled or error":
                     self.after(
                         0,
-                        lambda msg=error_msg: messagebox.showerror(
-                            T("title_error"), msg
-                        ),
+                        lambda msg=error_msg: messagebox.showerror(T("title_error"), msg),
                     )
         except Exception as e:
             base = get_detected_game_path() or os.path.abspath(".")
@@ -62,9 +60,7 @@ class PatchTab(ttk.Frame):
             asar = os.path.join(res, "app.asar")
             bak = asar + ".bak"
             self.app.patch_controller.handle_error(base, asar, bak, e)
-            self.after(
-                0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str)
-            )
+            self.after(0, lambda e_str=str(e): messagebox.showerror(T("title_error"), e_str))
         finally:
             if temp and os.path.exists(temp):
                 try:

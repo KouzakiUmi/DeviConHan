@@ -193,9 +193,7 @@ class PatchController:
             self._is_operating = False
             lock.release(OperationType.PATCH)
 
-    def _do_run_auto_patch(
-        self, gui_app, _check_cancelled
-    ) -> Tuple[bool, Optional[str], str]:
+    def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
         base = get_detected_game_path() or os.path.abspath(".")
         cfg = get_config()
@@ -218,9 +216,7 @@ class PatchController:
 
         # 构建回调函数以解耦GUI
         on_error = getattr(gui_app, "thread_safe_showerror", None) if gui_app else None
-        on_ask_yes_no = (
-            getattr(gui_app, "thread_safe_askyesno", None) if gui_app else None
-        )
+        on_ask_yes_no = getattr(gui_app, "thread_safe_askyesno", None) if gui_app else None
         on_info = getattr(gui_app, "thread_safe_showinfo", None) if gui_app else None
 
         # 系统状态验证
@@ -238,10 +234,13 @@ class PatchController:
             self._log("Game is already patched.")
             if on_info:
                 on_info(
-                    "Already Patched",
-                    "The game is already patched. No need to apply again.",
+                    T("title_success", "Already Patched"),
+                    T(
+                        "msg_already_patched",
+                        "The game is already patched. No need to apply again.",
+                    ),
                 )
-            return False, None, "Already patched"
+            return True, None, ""
 
         # Steam 更新检测
         should_continue, cancel_or_error = handle_steam_update(
@@ -309,9 +308,7 @@ class PatchController:
 
                 # 验证解压结果
                 if not os.path.exists(temp) or not os.listdir(temp):
-                    raise PatchError(
-                        "ASAR extraction failed or resulted in empty directory"
-                    )
+                    raise PatchError("ASAR extraction failed or resulted in empty directory")
 
                 # 3.3 应用补丁
                 self._log("Applying patch...")
@@ -321,9 +318,7 @@ class PatchController:
                 if os.path.exists(patch_zip):
                     self._log("Extracting Patch.zip...")
                     try:
-                        safe_extract_zip(
-                            patch_zip, temp, check_cancelled=_check_cancelled
-                        )
+                        safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
                         self._log("Patch.zip extracted successfully.")
                     except ValueError as e:
                         raise PatchError(f"Security violation in patch ZIP: {e}")
@@ -377,12 +372,8 @@ class PatchController:
                     patch_meta_path = os.path.join(base, cfg.patch_meta_file)
 
                     # 暂存生成的元数据文件
-                    tx.stage_new_file(
-                        patch_info_path, os.path.join(tx.tx_dir, cfg.patch_info_file)
-                    )
-                    tx.stage_new_file(
-                        patch_meta_path, os.path.join(tx.tx_dir, cfg.patch_meta_file)
-                    )
+                    tx.stage_new_file(patch_info_path, os.path.join(tx.tx_dir, cfg.patch_info_file))
+                    tx.stage_new_file(patch_meta_path, os.path.join(tx.tx_dir, cfg.patch_meta_file))
                 except Exception as e:
                     logger.warning(f"Failed to save patch metadata: {e}")
                     # 非致命错误，继续
@@ -425,9 +416,7 @@ class PatchController:
             except Exception as e:
                 logger.warning(f"Failed to remove temp file {temp_info}: {e}")
 
-    def handle_error(
-        self, base_dir: str, asar_path: str, bak_path: str, error: Exception
-    ) -> None:
+    def handle_error(self, base_dir: str, asar_path: str, bak_path: str, error: Exception) -> None:
         """
         处理补丁失败的还原逻辑
 
