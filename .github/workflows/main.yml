@@ -18,6 +18,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            Pack.cmd
+            Pack.sh
+            icon.ico
+            config.ini
+            main.py
+            pyproject.toml
+            requirements.txt
+            core
+            gui
+            controllers
+            utils
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -84,6 +97,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github
+            README.md
+          sparse-checkout-cone-mode: false
 
       - name: Generate Build Info
         id: date
@@ -118,11 +136,11 @@ jobs:
             - 📅 时间: ${{ steps.date.outputs.build_time }} (CST)
             - #️⃣ 提交: ${{ github.sha }}
             - 💻 平台: Windows / macOS / Linux
-            
+
             **更新日志:**
             ${{ github.event.head_commit.message }}
           files: all_artifacts/*
           prerelease: true
-          make_latest: true
+          draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
