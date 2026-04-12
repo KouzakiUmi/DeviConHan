@@ -35,7 +35,28 @@ $PYTHON_CMD --version
 
 if ! $PYTHON_CMD -m PyInstaller --version >/dev/null 2>&1; then
     echo "[Error] PyInstaller not found. Installing dependencies..."
-    pip install pyinstaller asar
+    pip install pyinstaller asar pillow
+fi
+
+# Convert icon for macOS
+if [ "$(uname)" = "Darwin" ] && [ -f "$ROOT/icon.ico" ]; then
+    if ! command -v sips >/dev/null 2>&1 || ! command -v iconutil >/dev/null 2>&1; then
+        echo "Converting icon.ico to icon.icns using Pillow..."
+        $PYTHON_CMD -c "
+from PIL import Image
+img = Image.open('$ROOT/icon.ico')
+icns_path = '$ROOT/icon.icns'
+img.save(icns_path)
+print('Converted icon.ico to icon.icns')
+"
+        ICON_FILE="$ROOT/icon.icns"
+    else
+        # Use system tools if available
+        echo "Using system tools for icon conversion..."
+        ICON_FILE="$ROOT/icon.ico"
+    fi
+else
+    ICON_FILE="$ROOT/icon.ico"
 fi
 
 echo
@@ -45,7 +66,7 @@ echo "------------------------------------------"
 rm -rf "dist"
 
 $PYTHON_CMD -m PyInstaller -F -w --clean \
-    -i "$ROOT/icon.ico" \
+    -i "${ICON_FILE:-$ROOT/icon.ico}" \
     --distpath "dist" \
     --workpath "build_toolbox" \
     --add-data "$ROOT/icon.ico:." \
@@ -91,7 +112,7 @@ if [ "$BUILD_PATCHER" -eq 1 ]; then
     echo "------------------------------------------"
 
     $PYTHON_CMD -m PyInstaller -F -w --clean \
-        -i "$ROOT/icon.ico" \
+        -i "${ICON_FILE:-$ROOT/icon.ico}" \
         --distpath "dist" \
         --workpath "build_patcher" \
         --add-data "$ROOT/icon.ico:." \

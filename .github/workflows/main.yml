@@ -25,8 +25,20 @@ jobs:
           python-version: '3.11'
           # cache: 'pip'
 
-      - name: Install PyInstaller and asar
-        run: pip install pyinstaller asar
+      - name: Install dependencies
+        run: pip install pyinstaller asar pillow
+
+      - name: Convert icon for macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          if [ -f icon.ico ]; then
+            python3 -c "
+            from PIL import Image
+            img = Image.open('icon.ico')
+            img.save('icon.icns')
+            print('Converted icon.ico to icon.icns')
+            "
+          fi
 
       - name: Run Windows Pack Script
         if: matrix.os == 'windows-latest'
