@@ -29,6 +29,39 @@ class SystemBootstrapError(Exception):
     pass
 
 
+def is_game_directory(path: str, config=None) -> bool:
+    """
+    检查指定目录是否是游戏目录
+
+    Args:
+        path: 目录路径
+        config: 配置对象
+
+    Returns:
+        bool: 是否是游戏目录
+    """
+    if not os.path.isdir(path):
+        return False
+
+    if config is None:
+        config = get_config()
+
+    # 检查是否存在 resources 目录和 app.asar
+    from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+
+    info = get_platform_info()
+
+    if is_app_bundle(path):
+        # macOS .app bundle
+        res_path = os.path.join(path, "Contents", "Resources")
+    else:
+        res_path = get_resources_path(path, info.system)
+
+    asar_path = os.path.join(res_path, config.target_asar_name)
+
+    return os.path.isfile(asar_path)
+
+
 def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
     """
     尝试自动检测游戏目录
@@ -88,16 +121,26 @@ def bootstrap_system(
 
     logger.info("Starting system bootstrap...")
 
-    # 0. 自动检测游戏目录
-    if not base_dir:
+    # 0. 优先使用当前目录，仅当检测不到游戏文件时才自动搜索
+    config = get_config()
+    default_base = base_dir or os.path.abspath(".")
+    
+    # 检查当前目录是否是游戏目录
+    if is_game_directory(default_base, config):
+        base_dir = default_base
+        logger.info(f"Using current directory as game directory: {base_dir}")
+    else:
+        # 当前目录不是游戏目录，尝试自动检测
+        logger.info("Current directory is not a game directory. Attempting auto-detection...")
         game_path = find_game_directory(base_dir)
         if game_path:
             base_dir = game_path
             messages.append(f"Auto-detected game directory: {base_dir}")
-            logger.info(f"Using game directory: {base_dir}")
+            logger.info(f"Using auto-detected game directory: {base_dir}")
         else:
+            base_dir = default_base
             messages.append("Warning: Could not auto-detect game directory. Using current directory.")
-            logger.warning("Could not auto-detect game directory")
+            logger.warning("Could not auto-detect game directory, using current directory")
 
     # 1. 初始化配置
     try:

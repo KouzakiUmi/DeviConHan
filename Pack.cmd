@@ -31,7 +31,7 @@ python --version
 python -m PyInstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [Error] PyInstaller not found. Installing dependencies...
-    pip install pyinstaller asar
+    pip install pyinstaller asar pillow
     if %errorlevel% neq 0 (
         echo [Error] Failed to install dependencies.
         pause
