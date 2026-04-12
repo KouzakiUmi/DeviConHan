@@ -43,6 +43,55 @@ def main() -> int
 
 - `int` - 退出码 (0=成功, 非0=错误)
 
+<a id="core.bootstrap"></a>
+
+# core.bootstrap
+
+恶魔链接补丁工具 - 系统引导模块
+
+提供系统初始化、游戏目录检测和路径管理功能。
+
+<a id="core.bootstrap.bootstrap_system"></a>
+
+## bootstrap_system Objects
+
+```python
+def bootstrap_system() -> None
+```
+
+系统引导函数，初始化配置和路径
+
+<a id="core.bootstrap.find_game_directory"></a>
+
+## find_game_directory Objects
+
+```python
+def find_game_directory() -> Optional[str]
+```
+
+查找游戏目录
+
+**Returns**:
+
+- `Optional[str]` - 游戏目录路径，未找到返回None
+
+<a id="core.bootstrap.get_detected_game_path"></a>
+
+## get_detected_game_path Objects
+
+```python
+def get_detected_game_path() -> Optional[str]
+```
+
+获取检测到的游戏目录路径（缓存机制）
+
+使用智能检测算法自动识别游戏安装位置，支持缓存以提高性能。
+无论从何处运行工具都能自动定位游戏目录。
+
+**Returns**:
+
+- `Optional[str]` - 游戏目录路径，未找到返回None
+
 <a id="core.config.AppConfig"></a>
 
 ## AppConfig Objects

@@ -80,7 +80,7 @@ For patch version, prepare `Patch.zip` first using `python -c "import shutil; sh
 
 The built-in Save Manager tab provides professional backup/restore:
 
-- Automatic detection of save directories (`_storage`, `save`, etc.).
+- Automatic detection of save directories (`_storage`, `save`, etc.) with global game path detection for reliable location regardless of where the patch is run from.
 - Timestamped backups (ZIP or directory) stored independently in `~/.tyranopatcher/backups`.
 - Smooth migration when changing backup paths (with hash verification).
 - One-click restore with confirmation.
