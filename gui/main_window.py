@@ -62,6 +62,8 @@ class App(tk.Tk):
         self.is_operating: bool = False
         self.var_plat: Optional[tk.StringVar] = None
         self.var_zip: Optional[tk.BooleanVar] = None
+        self.var_console: Optional[tk.BooleanVar] = None
+        self.var_backup_dir: Optional[tk.StringVar] = None
 
         try:
             # 初始化核心逻辑（可能抛出异常）
@@ -74,8 +76,8 @@ class App(tk.Tk):
         except Exception as e:
             logger.error(f"Failed to initialize CoreLogic: {e}")
             messagebox.showerror(T("title_error", "Initialization Error"), str(e))
-            self.after(0, self.destroy)
-            return
+            self.destroy()
+            raise RuntimeError(f"Initialization failed: {e}") from e
 
         self.log_callback = log_callback  # 允许外部设置日志回调
         self.app_config = None
@@ -91,7 +93,9 @@ class App(tk.Tk):
         self.async_manager = get_async_manager()
         self.async_manager.set_progress_callback(self._on_async_progress)
 
-        self._ui_queue = queue.Queue()
+        # 修复说明：原实现无 maxsize，若后台线程高频回调则队列无限增长导致内存溢出。
+        # 修复：设置 maxsize=500，导虫入队改用 put_nowait 并在满队时少量丢弃日志更新。
+        self._ui_queue = queue.Queue(maxsize=500)
         self._process_ui_queue()
 
         self.init_ui()
@@ -146,11 +150,10 @@ class App(tk.Tk):
             label=about_app_label, command=lambda: show_about_dialog(self)
         )
 
+        # 修复说明：原实现 darwin 和 else 分支都使用 "clam"，是重复代码。已合并。
         style = ttk.Style()
         if sys.platform.startswith("win"):
             style.theme_use("vista")
-        elif sys.platform == "darwin":
-            style.theme_use("clam")
         else:
             style.theme_use("clam")
 
@@ -317,7 +320,13 @@ class App(tk.Tk):
             return False
 
     def change_lang(self, code):
-        """切换界面语言"""
+        """切换界面语言
+
+        修复说明（H4）：原实现调用 set_language() 后，
+        连续调用 set_gui_config() + save_config()，共触发三次文件写入，
+        而 set_language() 内部已通过 _save_language_to_config() 保存了一次。
+        修复：移除多余的两次写入，仅保留 set_language() 即可。
+        """
         if self.is_operating:
             from tkinter import messagebox
 
@@ -326,10 +335,8 @@ class App(tk.Tk):
 
         from utils.language import set_language
 
+        # set_language() 内部已调用 _save_language_to_config()，无需再次写入配置
         set_language(code)
-        if hasattr(self, "app_config") and self.app_config is not None:
-            self.app_config.set_gui_config("language", code)
-            self.save_config()
         self.init_ui()
 
     def log(self, msg: str, level: str = "info") -> None:
@@ -358,8 +365,11 @@ class App(tk.Tk):
                 self.log_area.config(state="normal")
 
                 # 根据日志级别添加颜色标记（如果支持）
-                level_prefix = f"[{level.upper()}]" if level != "info" else ""
-                self.log_area.insert(tk.END, f"[{ts}] {level_prefix} {msg}\n")
+                # 修复说明：原实现 level_prefix 为 "" 时保留了占位空格，
+                # 导致 info 级别日志出现 "[ts]  msg" 双空格。
+                # 修复：将空格纳入 level_prefix 内部。
+                level_prefix = f" [{level.upper()}]" if level != "info" else ""
+                self.log_area.insert(tk.END, f"[{ts}]{level_prefix} {msg}\n")
                 self.log_area.see(tk.END)
                 self.log_area.config(state="disabled")
             except tk.TclError:
@@ -367,7 +377,11 @@ class App(tk.Tk):
 
         try:
             if hasattr(self, "_ui_queue"):
-                self._ui_queue.put(_update)
+                try:
+                    self._ui_queue.put_nowait(_update)
+                except queue.Full:
+                    # 队列达到上限时丢弃本次日志更新（GUI 卡顿期间的累积消息）
+                    pass
             else:
                 self.after(0, _update)
         except tk.TclError:
@@ -505,6 +519,12 @@ class App(tk.Tk):
                 self.toggle_progress(False)
                 self.is_operating = False
 
-            # 使用队列安全地在主线程更新UI状态
-            self._ui_queue.put(update_state)
-
+            # 使用队列安全地在主线程更新UI状态，设置超时避免后台线程被无限期挂起
+            try:
+                self._ui_queue.put(update_state, timeout=1.0)
+            except queue.Full:
+                # 极端情况下如果队列仍满，尝试直接通过 tkinter 的 after 强制调度
+                try:
+                    self.after(0, update_state)
+                except Exception:
+                    pass

@@ -7,17 +7,16 @@
 """
 
 import os
-import sys
-import subprocess
 import stat
 import logging
+import threading
+from typing import Callable, Optional
 
 from utils.paths import get_resource_path, normalize_path
 from utils.performance import get_performance_monitor
 from utils.error_handler import (
     PatcherError,
     PatcherFileNotFoundError,
-    NodeNotFoundError,
 )
 from utils.validators import validate_path, validate_not_empty
 from core.config import get_config
@@ -44,57 +43,26 @@ class CoreLogic:
     def __init__(self):
         """
         初始化核心逻辑
-
-        Args:
-            log_callback: 日志回调函数，用于GUI模式
-
-        Raises:
-            PatcherFileNotFoundError: 如果必要的资源文件不存在
         """
-        self.node_path = get_resource_path(os.path.join("tools", "node.exe"))
-        self.script_path = self._find_script()
-
-        # 验证必要文件存在
-        if not os.path.exists(self.node_path):
-            raise PatcherFileNotFoundError(
-                f"Node.js executable not found: {self.node_path}"
+        try:
+            import asar
+        except ImportError:
+            raise PatcherError(
+                "Missing dependency: asar. Please install it using 'pip install asar'."
             )
 
-        if not self.script_path or not os.path.exists(self.script_path):
-            raise PatcherFileNotFoundError("Patcher script not found")
-
-        # 从配置文件读取模式设置，默认使用内置工具
-        self.mode = get_config().get("main", "ASAR_MODE", fallback="bundled")
-
-        logger.info(f"CoreLogic initialized. Mode: {self.mode}")
-        logger.debug(f"Node path: {self.node_path}")
-        logger.debug(f"Script path: {self.script_path}")
-
-    def _find_script(self):
-        """
-        查找 ASAR 命令行脚本
-
-        Returns:
-            脚本文件路径，未找到返回None
-        """
-        tools = get_resource_path("tools")
-        candidates = [
-            os.path.join(tools, "asar_cli.mjs"),  # 优先使用新的 CLI 工具
-            os.path.join(tools, "bundled_asar", "index.mjs"),
-            os.path.join(tools, "bundled_asar", "index.js"),
-        ]
-
-        for p in candidates:
-            if os.path.exists(p):
-                logger.debug(f"Found script: {p}")
-                return p
-
-        logger.warning("No ASAR script found")
-        return None
+        logger.info("CoreLogic initialized (Pure Python ASAR mode)")
 
     @validate_not_empty("action", "src", "dest")
     @validate_path("src", should_exist=True)
-    def run_asar(self, action, src, dest, callback=None, unpack_pattern=None):
+    def run_asar(
+        self,
+        action: str,
+        src: str,
+        dest: str,
+        callback: Optional[Callable] = None,
+        unpack_pattern: Optional[str] = None,
+    ) -> bool:
         """
         执行ASAR操作（解包或打包）- 固定使用内置依赖库
 
@@ -106,119 +74,62 @@ class CoreLogic:
             unpack_pattern: 排除模式（仅打包时使用）
 
         Raises:
-            NodeNotFoundError: 如果Node.js未找到
             PatcherFileNotFoundError: 如果源路径不存在
-            PatcherError: 如果操作失败或超时
+            PatcherError: 如果操作失败
 
         Returns:
             bool: 操作成功返回 True，失败则抛出异常
         """
         logger.info(f"Running ASAR {action} operation")
 
-        # 验证输入参数
         src = normalize_path(src)
         dest = normalize_path(dest)
-
-        if not src or not os.path.exists(src):
-            raise PatcherFileNotFoundError(f"Source path does not exist: {src}")
 
         if action == "extract" and not os.path.isfile(src):
             raise PatcherError(f"Source must be a file for extraction: {src}")
 
-        # 设置默认排除模式
-        if not unpack_pattern:
+        if action == "pack" and not unpack_pattern:
             unpack_pattern = "*.{node,dll,so,dylib,exe,bin}"
 
         # 使用性能监控器记录ASAR操作
         monitor = get_performance_monitor()
         monitor.start(f"asar_{action}")
 
-        from utils.constants import DEFAULT_ASAR_TIMEOUT_SECONDS
-
-        # 初始化超时值，防止在异常处理中未定义
-        timeout_seconds = get_config().get_int(
-            "main", "ASAR_OPERATION_TIMEOUT", fallback=DEFAULT_ASAR_TIMEOUT_SECONDS
-        )
-
         try:
-            # 固定使用内置工具
-            cmd = [self.node_path, self.script_path, action, src, dest]
-            if action == "pack":
-                cmd.extend(["--unpack", unpack_pattern])
+            import asar
+            from pathlib import Path
 
-            logger.debug(f"Using bundled Node.js: {self.node_path}")
-            logger.debug(f"Command: {' '.join(cmd)}")
-
-            # 确保所有命令参数都是字符串，防止类型问题
-            cmd = [str(arg) if not isinstance(arg, str) else arg for arg in cmd]
-
-            # 执行命令
             if callback:
                 callback(f"Executing: {action}...")
 
-            creationflags = 0
-            if sys.platform.startswith("win"):
-                creationflags = subprocess.CREATE_NO_WINDOW
+            # 移除背景线程和 timeout_seconds
+            # ASAR 是阻塞的 IO 操作，且因为没有安全的杀死线程的方式，
+            # 强制超时终止不仅可能留下半成品的写文件，还引发过后台死锁。
+            # 这里依赖上层的 AsyncOperationManager 提供对用户体验的线程分离即可。
+            if action == "extract":
+                asar.extract_archive(Path(src), Path(dest))
 
-            # 使用 Popen 实时读取输出，避免缓冲区溢出
-            proc = subprocess.Popen(
-                cmd,
-                shell=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-                creationflags=creationflags,
-            )
+            elif action == "pack":
+                asar.create_archive(Path(src), Path(dest), unpack=unpack_pattern or "")
 
-            stdout_lines = []
-
-            def read_output():
-                if proc.stdout:
-                    for line in iter(proc.stdout.readline, ""):
-                        stripped_line = line.rstrip()
-                        stdout_lines.append(stripped_line)
-                        logger.debug(f"ASAR: {stripped_line}")
-
-            import threading
-
-            reader_thread = threading.Thread(target=read_output, daemon=True)
-            reader_thread.start()
-
-            # 等待进程完成并检查超时
-            try:
-                returncode = proc.wait(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-                raise
-            finally:
-                reader_thread.join(timeout=1.0)
-
-            stdout_output = "\n".join(stdout_lines)
-
-            if returncode != 0:
-                error_msg = f"ASAR {action} failed with code {returncode}"
-                if stdout_output:
-                    logger.error(f"Output: {stdout_output}")
-                raise PatcherError(error_msg)
+            else:
+                raise PatcherError(f"Unknown ASAR action: {action}")
 
             logger.info(f"ASAR {action} completed successfully")
             if callback:
                 callback("Asar operation success.")
             return True
 
-        except subprocess.TimeoutExpired:
-            error_msg = f"ASAR {action} timed out after {timeout_seconds} seconds"
-            logger.error(error_msg)
-            raise PatcherError(error_msg)
-
         except Exception as e:
             logger.exception(f"ASAR operation failed: {e}")
-            if isinstance(e, (NodeNotFoundError, PatcherFileNotFoundError)):
+            # 修复说明：原实现将所有非 PatcherFileNotFoundError 的异常都包装为
+            # PatcherError(str(e))，导致具有 category/severity/details 的
+            # PatcherError 子类结构化信息丢失。
+            # 修复：已是 PatcherError 子类的直接重抛，保留结构化信息；
+            # 只将真正未预期的非 PatcherError 包装为 PatcherError。
+            if isinstance(e, PatcherError):
                 raise
-            raise PatcherError(str(e))
+            raise PatcherError(str(e)) from e
         finally:
             # 记录ASAR操作耗时
             elapsed = monitor.stop(f"asar_{action}")
