@@ -10,9 +10,13 @@ from utils.paths import get_user_config_path
 
 logger = logging.getLogger(__name__)
 
-# 线程锁，用于保护语言设置的全局状态
+# 经合锁：同时保护 CURRENT_LANG_CODE 和 _lang_version，避免两把锁之间的不一致窗口
+# 修复说明：原实现分别使用 _lang_lock 和 _version_lock 两把独立锁，
+# 语言码和版本号不在同一锁内原子更新，存在短暂不一致窗口。
+# 修复：合并为单一锁 _lang_lock，确保语言码和版本号始终同步。
 _lang_lock = threading.Lock()
-_version_lock = threading.Lock()
+# 保留 _version_lock 别名以向下兼容（指向同一对象）
+_version_lock = _lang_lock
 
 # 使用线程本地存储优化频繁读取的语言代码
 _thread_local = threading.local()
@@ -133,7 +137,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_game_files_missing": "游戏文件缺失",
         "msg_game_files_missing": "app.asar 和备份文件都不存在。\n这可能表明：\n1. 游戏安装损坏\n2. 游戏下载不完整\n3. 文件被手动删除\n\n请通过 Steam 验证游戏完整性或重新安装游戏。",
         "title_asar_missing": "ASAR 文件缺失",
-        "msg_asar_missing_valid_backup": "app.asar 文件缺失，但存在有效的备份。\n这可能由于：\n1. Steam 更新了游戏\n2. 文件被手动删除\n\n是否继续打补丁？备份将自动恢复。",
+        "msg_asar_missing_valid_backup": "app.asar 文件缺失，但存在有效的备份。\n这可能由于：\n1. 文件被手动删除\n2. 杀毒软件误删\n3. 其他工具误操作\n4. 游戏文件损坏\n\n是否继续打补丁？备份将自动恢复。",
         "title_backup_is_patched": "备份包含已打补丁的文件",
         "msg_backup_is_patched": "检测到备份文件包含已打补丁的内容，这意味着 Steam 已删除了您已打补丁的 ASAR 文件。\n\n请通过 Steam 验证游戏文件完整性来恢复原始游戏文件，然后再重新打补丁。",
         "title_backup_corrupted": "备份文件损坏",
@@ -153,12 +157,12 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_asar_corrupted": "app.asar 文件存在但似乎已损坏。\n请通过 Steam 验证游戏完整性或重新安装游戏。",
         "msg_backup_corrupted_asar_valid_rebuild": "备份文件似乎已损坏，但 ASAR 文件有效。\n这可能由于：\n1. 不完整的备份过程\n2. 文件系统损坏\n\n是否继续打补丁？将创建新备份。",
         "msg_already_patched": "游戏已经安装过本补丁，文件状态正常，无需再次安装。",
-        "title_third_party_patch_detected": "检测到未知的 ASAR 更改",
-        "msg_third_party_patch_detected": "ASAR 文件已被未知的补丁修改，或者 Steam 进行了重大更新。\n\n是否要删除现有备份，使用当前的 ASAR 重建备份并强制安装本补丁？",
+        "title_inconsistent_state": "文件状态不一致",
+        "msg_inconsistent_state": "检测到游戏文件 (app.asar) 与已有的备份文件不一致，且均未正确安装本补丁。\n\n👉 如果您刚刚在 Steam 中【验证了游戏文件的完整性】：\n说明当前的游戏文件是官方纯净版。请点击“是 (Yes)”，程序将废弃旧备份并为您重新打补丁。\n\n👉 如果您没有验证过完整性：\n当前文件可能已被其他工具修改。强烈建议您点击“否 (No)”，先去 Steam 验证完整性后再来打补丁，以免将已被篡改的文件作为基准备份！",
         "title_first_time_patch": "首次安装补丁提醒",
         "msg_first_time_patch_warn": "未检测到原始备份文件，这似乎是您首次安装本补丁。\n\n⚠ 警告：如果您之前安装过其他汉化工具，您当前的 app.asar 可能已被篡改。继续操作将把已被篡改的文件作为您的“原版”基准备份。\n\n💡 强烈建议：如果您不确定，请在继续之前先在 Steam 中验证游戏文件的完整性。\n\n是否确认原版文件纯净，并继续备份打补丁？",
         # About Dialog
-        "about_desc": "《でびるコネクション》非营利性个人本地化工具。\nTyranoV8通用工具箱\n\n==== 技术致谢 ====\n• 核心语言: Python 3, JavaScript (Node.js)\n• 图形界面: Tkinter (Tcl/Tk)\n• 封包引擎: @electron/asar\n• 构建工具: PyInstaller\n\n==== 开发人员 ====\n作者：KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== 许可证 ====\n本项目仅限非营利目的使用。\n游戏内容的所有权利均归原作者 ばやちゃお 所有。\n",
+        "about_desc": "《でびるコネクション》非营利性个人本地化工具。\nTyranoV8通用工具箱\n\n==== 技术致谢 ====\n• 核心语言: Python 3 (Pure)\n• 图形界面: Tkinter (Tcl/Tk)\n• 封包引擎: asar (Python)\n• 构建工具: PyInstaller\n\n==== 开发人员 ====\n作者：KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== 许可证 ====\n本项目仅限非营利目的使用。\n游戏内容的所有权利均归原作者 ばやちゃお 所有。\n",
         "about_version": "版本: 1.0 Release",
         "about_github_link": "访问 GitHub 主页",
         "btn_ok": "确定",
@@ -269,7 +273,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_game_files_missing": "Game Files Missing",
         "msg_game_files_missing": "Neither app.asar nor backup file exists.\nThis could indicate:\n1. Corrupted game installation\n2. Incomplete game download\n3. Files were manually deleted\n\nPlease verify game integrity through Steam or reinstall the game.",
         "title_asar_missing": "ASAR File Missing",
-        "msg_asar_missing_valid_backup": "The app.asar file is missing, but a valid backup exists.\nThis could be due to:\n1. Steam updated the game\n2. The file was manually deleted\n\nDo you want to continue patching? The backup will be restored automatically.",
+        "msg_asar_missing_valid_backup": "The app.asar file is missing, but a valid backup exists.\nThis could be due to:\n1. File manually deleted\n2. Antivirus software removed it\n3. Other tools misoperated\n4. Game files corrupted\n\nDo you want to continue patching? The backup will be restored automatically.",
         "title_backup_is_patched": "Backup Contains Patched Files",
         "msg_backup_is_patched": "The backup contains patched files, meaning Steam has removed your patched ASAR file.\n\nPlease verify game files integrity through Steam to restore the original game files, then apply the patch again.",
         "title_backup_corrupted": "Backup Corrupted",
@@ -289,12 +293,12 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_asar_corrupted": "The app.asar file exists but appears to be corrupted.\nPlease verify game integrity through Steam or reinstall the game.",
         "msg_backup_corrupted_asar_valid_rebuild": "The backup file appears to be corrupted, but the ASAR file is valid.\nThis could be due to:\n1. Incomplete backup process\n2. File system corruption\n\nDo you want to continue patching? A new backup will be created.",
         "msg_already_patched": "The game is already successfully patched. No further action is required.",
-        "title_third_party_patch_detected": "Unknown ASAR Modifications Detected",
-        "msg_third_party_patch_detected": "The ASAR file has been modified by an unknown third-party patch, or a major Steam update has occurred.\n\nDo you want to delete the current backup, rebuild it from this ASAR, and force install the patch?",
+        "title_inconsistent_state": "Inconsistent File State",
+        "msg_inconsistent_state": "Detected an inconsistency between the game file (app.asar) and the backup, and neither matches this patch.\n\n👉 If you JUST verified game integrity in Steam:\nYour current game file is clean. Click 'Yes' to discard the old backup and apply the patch.\n\n👉 If you HAVE NOT verified integrity:\nYour file might be modified by other tools. It is STRONGLY RECOMMENDED to click 'No', go to Steam to verify integrity first, then try again. Otherwise, a modified file will be used as your base backup!",
         "title_first_time_patch": "First Time Patching Notice",
         "msg_first_time_patch_warn": "No original backup detected. This appears to be your first time installing this patch.\n\n⚠ WARNING: If you have previously installed other translation tools, your current app.asar may already be modified. Continuing will backup this modified file as your 'original' baseline.\n\n💡 STRONGLY RECOMMENDED: If you are unsure, please verify integrity of game files in Steam first before proceeding.\n\nDo you want to continue backing up the current state and apply the patch?",
         # About Dialog
-        "about_desc": "A non-profit personal localization tool for 《でびるコネクション》.\nUniversal Toolbox for TyranoV8\n\n==== Technical Credits ====\n• Core Language: Python 3, JavaScript (Node.js)\n• GUI Framework: Tkinter (Tcl/Tk)\n• Packaging Engine: @electron/asar\n• Build Tool: PyInstaller\n\n==== Developers ====\nAuthor: KouzakiUmi\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== License ====\nFor non-profit purposes only.\nAll rights to the game content belong to the original author, Bayachao.\n",
+        "about_desc": "A non-profit personal localization tool for 《でびるコネクション》.\nUniversal Toolbox for TyranoV8\n\n==== Technical Credits ====\n• Core Language: Python 3 (Pure)\n• GUI Framework: Tkinter (Tcl/Tk)\n• Packaging Engine: asar (Python)\n• Build Tool: PyInstaller\n\n==== Developers ====\nAuthor: KouzakiUmi\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== License ====\nFor non-profit purposes only.\nAll rights to the game content belong to the original author, Bayachao.\n",
         "about_version": "Version: 1.0 Release",
         "about_github_link": "Visit GitHub Page",
         "btn_ok": "OK",
@@ -406,7 +410,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_game_files_missing": "ゲームファイルが見つかりません",
         "msg_game_files_missing": "app.asar もバックアップファイルも存在しません。\nこれは以下の可能性があります：\n1. ゲームのインストールが破損している\n2. ゲームのダウンロードが不完全\n3. ファイルが手動で削除された\n\nSteam でゲームの整合性を確認するか、ゲームを再インストールしてください。",
         "title_asar_missing": "ASAR ファイルが見つかりません",
-        "msg_asar_missing_valid_backup": "app.asar ファイルは存在しませんが、有効なバックアップが存在します。\nこれは以下の可能性があります：\n1. Steam がゲームを更新した\n2. ファイルが手動で削除された\n\nパッチを適用し続けますか？バックアップが自動的に復元されます。",
+        "msg_asar_missing_valid_backup": "app.asar ファイルは存在しませんが、有効なバックアップが存在します。\nこれは以下の可能性があります：\n1. ファイルが手動で削除された\n2. アンチウイルスソフトが誤って削除した\n3. 他のツールが誤操作した\n4. ゲームファイルが破損した\n\nパッチを適用し続けますか？バックアップが自動的に復元されます。",
         "title_backup_is_patched": "バックアップにはパッチ適用済みファイルが含まれています",
         "msg_backup_is_patched": "バックアップファイルにはパッチ適用済みの内容が含まれているため、Steam がパッチ適用済みの ASAR ファイルを削除した可能性があります。\n\nSteam でゲームの整合性を検証して元のゲームファイルを復元してから、パッチを再度適用してください。",
         "title_backup_corrupted": "バックアップが破損しています",
@@ -426,12 +430,12 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_asar_corrupted": "app.asar ファイルは存在しますが、破損しているようです。\nSteam でゲームの整合性を確認するか、ゲームを再インストールしてください。",
         "msg_backup_corrupted_asar_valid_rebuild": "バックアップファイルは破損しているようですが、ASAR ファイルは有効です。\nこれは以下の可能性があります：\n1. 不完全なバックアッププロセス\n2. ファイルシステムの破損\n\nパッチを適用し続けますか？新しいバックアップが作成されます。",
         "msg_already_patched": "ゲームにはすでにパッチが適用されています。追加の操作は必要ありません。",
-        "title_third_party_patch_detected": "不明なASARの変更が検出されました",
-        "msg_third_party_patch_detected": "ASARファイルが不明なサードパーティ製パッチによって変更されたか、Steamの大規模な更新が行われました。\n\n現在のバックアップを削除し、このASARから再構築してパッチを強制適用しますか？",
+        "title_inconsistent_state": "ファイル状態の不一致",
+        "msg_inconsistent_state": "ゲームファイル (app.asar) とバックアップが一致せず、どちらもこのパッチと一致しません。\n\n👉 Steamでゲームファイルの整合性を【確認した直後】の場合：\n現在のゲームファイルはクリーンです。「はい (Yes)」をクリックすると、古いバックアップを破棄してパッチを適用します。\n\n👉 整合性を確認していない場合：\nファイルが他のツールによって変更されている可能性があります。「いいえ (No)」をクリックしてパッチ適用を中止し、Steamで整合性を確認してから再試行することを強くお勧めします！",
         "title_first_time_patch": "初回パッチ適用の注意",
         "msg_first_time_patch_warn": "元のバックアップが検出されませんでした。今回が初めてのパッチ適用のようです。\n\n⚠ 警告: 過去に他の翻訳ツールをインストールしたことがある場合、現在の app.asar はすでに変更されている可能性があります。続行すると、この変更されたファイルが基準となる「オリジナル」としてバックアップされます。\n\n💡 強く推奨: 不確かな場合は、続行する前にSteamでゲームファイルの整合性を確認してください。\n\n現在のファイルをバックアップしてパッチの適用を続行しますか？",
         # About Dialog
-        "about_desc": "《でびるコネクション》非営利の個人用ローカライズツール。\nTyranoV8 用 汎用ツールボックス\n\n==== 技術提供 ====\n• コア言語: Python 3, JavaScript (Node.js)\n• GUI: Tkinter (Tcl/Tk)\n• パッケージエンジン: @electron/asar\n• ビルドツール: PyInstaller\n\n==== 開発者 ====\n作者: KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== ライセンス ====\n本プロジェクトは非営利目的の使用に限られます。\nゲームのすべての権利は原作者である「ばやちゃお」様に帰属します。\n",
+        "about_desc": "《でびるコネクション》非営利の個人用ローカライズツール。\nTyranoV8 用 汎用ツールボックス\n\n==== 技術提供 ====\n• コア言語: Python 3 (Pure)\n• GUI: Tkinter (Tcl/Tk)\n• パッケージエンジン: asar (Python)\n• ビルドツール: PyInstaller\n\n==== 開発者 ====\n作者: KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== ライセンス ====\n本プロジェクトは非営利目的の使用に限られます。\nゲームのすべての権利は原作者である「ばやちゃお」様に帰属します。\n",
         "about_version": "バージョン: 1.0 Release",
         "about_github_link": "GitHub ページを開く",
         "btn_ok": "OK",
@@ -520,6 +524,11 @@ def T(key: str, default: str = "") -> str:
             en_dict = LANG_DICT.get("en", {})
             if key in en_dict:
                 return en_dict[key]
+            # L1 修复：记录缺失的翻译键，便于开发期调试
+            logger.debug(
+                f"Missing translation key: '{key}' "
+                f"(lang={cached_code}, fallback='{default or key}')"
+            )
             return default if default else key
 
     # 缓存未命中或版本过期，重新加载
@@ -539,6 +548,11 @@ def T(key: str, default: str = "") -> str:
     if key in en_dict:
         return en_dict[key]
 
+    # L1 修复：记录缺失的翻译键，便于开发期调试
+    logger.debug(
+        f"Missing translation key: '{key}' "
+        f"(lang={lang_code}, fallback='{default or key}')"
+    )
     return default if default else key
 
 
@@ -547,28 +561,32 @@ def get_font(
 ) -> Union[Tuple[str, int], Tuple[str, int, str]]:
     """
     根据平台和语言返回合适的 UI 字体
+
+    注意：tkinter 不支持 CSS 式逗号分隔字体回退，只会使用首个字体族名。
+    因此每个平台/语言组合返回单一字体族。
+    线程安全：通过锁读取全局语言代码，避免并发修改导致的数据竞争。
     """
+    with _lang_lock:
+        lang_code = CURRENT_LANG_CODE
+
     if IS_WIN:
-        if CURRENT_LANG_CODE == "cn":
-            # 中文字体，添加emoji支持fallback
-            family = "Microsoft YaHei, Segoe UI Emoji, Segoe UI"
-        elif CURRENT_LANG_CODE == "jp":
-            # 日文字体，添加emoji支持fallback
-            family = "Meiryo, Segoe UI Emoji, Segoe UI"
+        if lang_code == "cn":
+            family = "Microsoft YaHei"
+        elif lang_code == "jp":
+            family = "Meiryo"
         else:
-            # 对于英文，使用支持emoji的字体fallback
-            family = "Segoe UI Emoji, Segoe UI, Microsoft YaHei"
+            family = "Segoe UI"
     elif sys.platform == "darwin":
-        if CURRENT_LANG_CODE == "cn":
+        if lang_code == "cn":
             family = "PingFang SC"
-        elif CURRENT_LANG_CODE == "jp":
+        elif lang_code == "jp":
             family = "Hiragino Sans"
         else:
             family = ".AppleSystemUIFont"
     else:
-        if CURRENT_LANG_CODE == "cn":
+        if lang_code == "cn":
             family = "Noto Sans CJK SC"
-        elif CURRENT_LANG_CODE == "jp":
+        elif lang_code == "jp":
             family = "Noto Sans CJK JP"
         else:
             family = "Noto Sans"
@@ -598,22 +616,28 @@ def set_language(code: str) -> None:
 
     Note: 此函数是线程安全的，会自动递增版本号通知所有线程刷新缓存
 
+    修复说明：原实现分两步加锁（先 _lang_lock 写语言码，再
+    _version_lock 递增版本号），两把锁之间有语言码已更新但
+    版本号未变的短暂窗口。其他线程在此窗口内读到新版本号
+    但旧语言码（或反之），会用错误语言重建缓存。修复：
+    _lang_lock 合并了 _version_lock（两者指向同一锁），在单一锁内
+    同时更新两个全局变量，很彻底地消除不一致窗口。
+
     Args:
         code: 语言代码 ('en', 'cn', 'jp')
     """
     global CURRENT_LANG_CODE, _lang_version
     if code in LANG_DICT:
+        # 在单一锁内同时更新语言码和版本号，避免不一致窗口
         with _lang_lock:
             CURRENT_LANG_CODE = code
-
-        # 递增版本号，触发所有线程的缓存刷新
-        with _version_lock:
             _lang_version += 1
+            _updated_version = _lang_version
 
         # 清除当前线程的缓存
         _thread_local.lang_cache = None
 
-        logger.debug(f"Language changed to: {code} (version: {_lang_version})")
+        logger.debug(f"Language changed to: {code} (version: {_updated_version})")
 
         # 同步报错模块的语言设置
         try:
@@ -642,19 +666,21 @@ def init_lang() -> None:
 
 
 def _load_saved_language() -> Optional[str]:
-    """从配置文件加载保存的语言偏好"""
-    try:
-        from configparser import ConfigParser
+    """从配置文件加载保存的语言偏好
 
-        config_path = _get_config_path()
-        if config_path and os.path.exists(config_path):
-            parser = ConfigParser()
-            parser.read(config_path, encoding="utf-8")
-            if parser.has_option("preferences", "language"):
-                lang = parser.get("preferences", "language")
-                if lang in LANG_DICT:
-                    logger.debug(f"Loaded saved language: {lang}")
-                    return lang
+    修复说明：原实现创建独立的 ConfigParser 实例重新解析同一配置文件，
+    绕过了 AppConfig 单例的缓存和锁保护，存在与 AppConfig.save() 并发
+    读取的竞态风险。修复：通过已初始化的 AppConfig 单例读取，
+    统一走 AppConfig 的并发读写项径和缓存层。
+    """
+    try:
+        # 延迟导入避免循环依赖（language -> config -> language）
+        from core.config import get_config
+
+        lang = get_config().get_gui_config("language")
+        if lang and lang in LANG_DICT:
+            logger.debug(f"Loaded saved language from AppConfig: {lang}")
+            return lang
     except Exception as e:
         logger.warning(f"Failed to load saved language: {e}")
     return None
@@ -668,12 +694,6 @@ def _get_config_path() -> str:
 def _save_language_to_config(code: str) -> None:
     """
     保存语言偏好到配置文件。
-
-    修复说明（P4 / P1 配置写入一致性）：
-    原实现直接用裸 open() + configparser.write() 写入，绕过了 AppConfig
-    提供的原子写入（先写 .tmp 再 os.replace）。修复后统一通过全局
-    AppConfig 单例的 set_gui_config() + save() 完成持久化，保证写入
-    原子性并正确使缓存失效。
     """
     try:
         # 延迟导入避免在模块顶层产生循环依赖

@@ -121,7 +121,7 @@ class CoreLogic:
             return True
 
         except Exception as e:
-            logger.exception(f"ASAR operation failed: {e}")
+            logger.exception("ASAR operation failed")
             # 修复说明：原实现将所有非 PatcherFileNotFoundError 的异常都包装为
             # PatcherError(str(e))，导致具有 category/severity/details 的
             # PatcherError 子类结构化信息丢失。

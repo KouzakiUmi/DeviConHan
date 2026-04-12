@@ -10,26 +10,8 @@ set OUT_TOOL=Tyrano_Toolbox
 set OUT_PATCH=DevilConnection_Patch
 
 echo ==========================================
-echo    Tyrano Builder 
+echo    Tyrano Builder (Windows Packager)
 echo ==========================================
-
-if not exist "%ROOT%tools\node.exe" (
-    echo [Error] File missing: tools\node.exe
-    pause
-    exit /b 1
-)
-
-if not exist "%ROOT%tools\bundled_asar" (
-    echo [Error] Folder missing: tools\bundled_asar
-    pause
-    exit /b 1
-)
-
-if not exist "%ROOT%tools\asar_cli.mjs" (
-    echo [Error] File missing: tools\asar_cli.mjs
-    pause
-    exit /b 1
-)
 
 if not exist "%ROOT%%PY_SCRIPT%" (
     echo [Error] Script missing: main.py
@@ -47,7 +29,7 @@ python --version
 
 python -m PyInstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [Error] PyInstaller not found
+    echo [Error] PyInstaller not found. Please pip install pyinstaller asar
     pause
     exit /b 1
 )
@@ -58,7 +40,7 @@ echo ------------------------------------------
 
 if exist "dist" rd /s /q "dist"
 
-python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_toolbox" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --name "%OUT_TOOL%" "%ROOT%%PY_SCRIPT%"
+python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_toolbox" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%config.ini;." --name "%OUT_TOOL%" "%ROOT%%PY_SCRIPT%"
 
 if %errorlevel% neq 0 (
     echo [Error] Toolbox build failed
@@ -110,7 +92,7 @@ if "%BUILD_PATCHER%"=="1" (
     echo - Building Patcher...
     echo ------------------------------------------
 
-    python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%tools\node.exe;tools" --add-data "%ROOT%tools\bundled_asar;tools\bundled_asar" --add-data "%ROOT%tools\asar_cli.mjs;tools" --add-data "%ROOT%config.ini;." --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
+    python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%config.ini;." --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
 
     if %errorlevel% neq 0 (
         echo [Error] Patcher build failed

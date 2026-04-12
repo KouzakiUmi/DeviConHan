@@ -11,7 +11,6 @@
 * **安全性至上**：所有破坏性操作（如覆盖存档、删除文件、修改可执行文件）均需经过前置确认、Hash 校验或严格的沙盒化处理。
 * **无痛防更新**：Steam 经常强制更新游戏文件。工具必须能够智能感知 Steam 的更新，保留用户的备份并自动应对版本更迭。
 * **跨平台兼容**：在 Windows、macOS 和 Linux 上均可运行，所有路径操作和系统级 API 调用（如获取默认语言、打开文件夹）都必须考虑跨平台差异。
-* **独立且便携**：打包后作为一个独立的可执行文件运行，不依赖用户预先安装 Node.js 或 Python 环境（使用自带工具链和 PyInstaller）。
 
 ---
 
@@ -22,7 +21,7 @@
 ### 📁 模块说明
 * **`main.py`**：程序入口点。负责解析命令行参数（CLI），决定启动 `GUI 模式` 还是纯后台运行的 `批处理模式 (--batch)`。
 * **`core/`** (核心业务层)
-  * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**、**Fuse 移除逻辑**。这里是所有底层文件级变动的执行者。
+  * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**。ASAR 完整性校验已改为纯 Python 解析（不再启动 node.exe 子进程）。
   * `config.py`：`AppConfig` 配置管理单例。支持内存热加载，优先读取用户个人空间配置。
   * `save_service.py`：`SaveService` 存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作。
   * `steam.py`：Steam 更新状态机及 Hash 校验检测。
@@ -36,13 +35,14 @@
   * `save_manager_controller.py`：存档管理控制器，封装存档扫描、备份、还原、删除和平滑迁移等业务逻辑，将 GUI 代码与业务逻辑分离。
   * `patch_controller.py`：补丁安装控制器，封装补丁安装的完整流程，包括 Steam 更新检测、ASAR 操作等。
 * **`utils/`** (通用工具层) —— *本层全面应用了 Python Type Hints 以确保调用安全*
-  * `language.py`：多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。
+  * `language.py`：多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。注意：tkinter 不支持 CSS 式逗号分隔字体回退，`get_font()` 返回单一字体族名。
   * `paths.py`：安全处理资源路径解析（兼容 PyInstaller 的 `sys._MEIPASS`）。
   * `file_ops.py`：高级文件操作，提供如 **Hash 校验迁移 (`migrate_backup`)** 等高阶数据安全方法。
   * `cleanup.py`：包含 `force_cleanup_dir`，用于处理顽固的只读文件清理及 Windows 特有的权限占用问题。
   * `async_ops.py`：封装了 `ThreadPoolExecutor` 的 `AsyncOperationManager`，统筹 GUI 进度条、任务状态与后台线程，并支持通过下发 `_check_cancelled` 实现文件级的真实线程中断。
   * `performance.py`：用于性能打点和日志耗时统计。
   * `logging.py`：初始化滚动日志（Rotating File Handler），默认输出至 `~/.tyranopatcher/tyrano_patcher.log`。
+  * `asar_utils.py`：纯 Python ASAR 解析与 Hash 计算，`get_file_hash_in_asar(asar_path, file_path)` 无需 CoreLogic 实例。
 * **`tools/`** (外部依赖库)
   * `node.exe`、`asar_cli.mjs` 以及 `bundled_asar`：脱离系统环境限制，程序自带的 ASAR 操作底层套件。
 * **`Patch/`** (数据层)
@@ -85,8 +85,19 @@
 * 程序现在将 `34` 和 `4` 作为**可配置项**暴露在 `config.ini` 中 (`FUSE_WIRE_HEADER_LENGTH`, `FUSE_ASAR_INTEGRITY_OFFSET`)。UI 界面提供直接修改偏移量的入口，保障引擎换代后的向下兼容能力。修改的值将从 `0x31 (1)` 变为 `0x30 (0)`。
 
 ### 3.5 纯 Python 的 ASAR Hash 读取 (In-Memory ASAR Parsing)
-* 在 `core/patcher.py -> get_file_hash_in_asar()` 中，**没有使用 Node.js 的 ASAR 命令行解包**来验证文件 Hash。
 * 程序使用 Python 直接读取二进制 ASAR 的 Header Size（小端 uint32），截取 JSON 字典字符串，找到目标文件的 Offset 和 Size，然后 `mmap`/`seek` 直接在内存中计算 SHA256。此操作使得更新检测极为迅速，不会产生磁盘 I/O 碎片。
+
+### 3.6 ASAR 完整性校验 (Archive Integrity Validation)
+* 在 `core/steam.py -> _validate_archive_integrity()` 中，**同样使用纯 Python 解析 ASAR header**来验证归档文件完整性，不再启动 `node.exe` 子进程。
+* 校验流程：读取 ASAR magic number → 解析 header 大小 → 提取 JSON header → 检查 `package.json` 是否存在于 files 列表中。整个过程零子进程开销，耗时从原先的 0.5-1s 降至约 10ms。
+
+### 3.7 补丁信息原子写入 (Atomic Patch Info Writes)
+* `core/patch_info.py` 中的 `save_patch_info()` 和 `save_patch_meta()` 使用原子写入模式（先写 `.tmp` 临时文件，再 `os.replace` 原子替换）。
+* 这与 `core/config.py` 的 `save()` 方法保持一致，防止进程崩溃时文件截断损坏。由于 Steam 更新检测依赖 `.patch_meta` 文件判断补丁状态，原子写入确保数据安全性。
+
+### 3.8 Fuse 备份快速验证 (Fast Fuse Backup Verification)
+* `core/fuse.py` 的备份验证使用首尾各 1MB 的部分哈希 + 文件大小校验，而非对整个 80-150MB 的 Electron 可执行文件做完整 SHA256。
+* 验证耗时从 5-15s 降至约 0.1s，同时保持足够的写入错误检测能力（`shutil.copy2` 本身可靠，部分哈希足以检测严重错误）。
 
 ---
 

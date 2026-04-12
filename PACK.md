@@ -30,9 +30,6 @@
 ├── utils/               # 工具模块
 ├── controllers/         # 控制器模块
 ├── tools/               # 运行时工具
-│   ├── node.exe         # Node.js 运行时
-│   ├── asar_cli.mjs     # ASAR CLI 工具
-│   └── bundled_asar/    # ASAR 依赖库
 └── Patch/               # 汉化补丁源文件（可选）
 ```
 
@@ -68,7 +65,6 @@ pip3 install pyinstaller
 ```
 
 Pack.cmd 会自动执行：
-1. 前置检查（Node.js、PyInstaller 等）
 2. 压缩 Patch/ 目录为 Patch.zip（如果存在）
 3. 构建纯净工具箱 (Tyrano_Toolbox.exe)
 4. 构建汉化补丁版 (DevilConnection_Patch.exe)（如果 Patch/ 存在）
@@ -83,8 +79,6 @@ python -m PyInstaller -F -w --clean ^
     -i "icon.ico" ^
     --add-data "icon.ico:." ^
     --add-data "tools/node.exe:tools" ^
-    --add-data "tools/bundled_asar:tools/bundled_asar" ^
-    --add-data "tools/asar_cli.mjs:tools" ^
     --add-data "config.ini:." ^
     --name "Tyrano_Toolbox" ^
     main.py
@@ -101,8 +95,6 @@ python -m PyInstaller -F -w --clean ^
     -i "icon.ico" ^
     --add-data "icon.ico:." ^
     --add-data "tools/node.exe:tools" ^
-    --add-data "tools/bundled_asar:tools/bundled_asar" ^
-    --add-data "tools/asar_cli.mjs:tools" ^
     --add-data "config.ini:." ^
     --add-data "Patch.zip:." ^
     --name "DevilConnection_Patch" ^
@@ -135,8 +127,6 @@ python3 -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
     --add-data "tools/node:tools" \
-    --add-data "tools/bundled_asar:tools/bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --name "Tyrano_Toolbox" \
     main.py
@@ -153,14 +143,11 @@ python3 -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
     --add-data "tools/node:tools" \
-    --add-data "tools/bundled_asar:tools/bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --name "Tyrano_Toolbox" \
     main.py
 ```
 
-**注意**：macOS/Linux 需要单独准备 Node.js 运行时。
 
 ---
 

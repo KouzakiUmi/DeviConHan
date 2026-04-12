@@ -8,21 +8,53 @@ import shutil
 import logging
 import datetime
 import zipfile
+import tempfile
+from typing import Optional, Callable, Tuple, Any
 from utils.file_ops import migrate_backup, safe_extract_zip
 from utils.paths import normalize_path
 from utils.validators import validate_path, validate_not_empty
+from utils.error_handler import PatcherError, ErrorSeverity, ErrorCategory
+from utils.constants import (
+    TEMP_FILE_SUFFIX,
+    TEMP_BACKUP_PREFIX,
+)
+
+# 注意: core.config 在方法内延迟导入以避免循环导入
 
 logger = logging.getLogger(__name__)
 
 
 class SaveService:
-    def __init__(self, core_logic):
+    def __init__(self, core_logic: Any) -> None:
         self.core = core_logic
+
+    def _cleanup_temp(self, temp_path: str, is_dir: bool = False) -> None:
+        """安全清理临时资源（文件或目录）
+
+        修复说明：原实现静默吃掉所有清理异常（bare except: pass），
+        导致清理失败（权限问题、文件被占用等）无任何可追溯记录，
+        可能积累大量磁盘垃圾。修复：保留 try-except 以确保健壮性，
+        但改为 WARNING 级别记录失败原因，便于排查。
+        """
+        if not os.path.exists(temp_path):
+            return
+        try:
+            if is_dir:
+                shutil.rmtree(temp_path, onerror=self.core.remove_readonly_handler)
+            else:
+                os.remove(temp_path)
+        except Exception as e:
+            logger.warning(f"Failed to cleanup temp path '{temp_path}': {e}")
 
     @validate_not_empty("old_dir", "new_dir")
     def migrate_backups(
-        self, old_dir, new_dir, progress_callback=None, log_callback=None, **kwargs
-    ):
+        self,
+        old_dir: str,
+        new_dir: str,
+        progress_callback: Optional[Callable] = None,
+        log_callback: Optional[Callable] = None,
+        **kwargs: Any,
+    ) -> Tuple[int, int]:
         """迁移备份文件夹"""
         migrated_count = 0
         failed_count = 0
@@ -30,6 +62,8 @@ class SaveService:
 
         old_dir = normalize_path(old_dir)
         new_dir = normalize_path(new_dir)
+
+        from core.config import get_config
 
         if os.path.exists(old_dir):
             for d in os.listdir(old_dir):
@@ -52,23 +86,41 @@ class SaveService:
     @validate_not_empty("save_dir", "backup_dir")
     @validate_path("save_dir", should_exist=True)
     def backup_save(
-        self, save_dir, backup_dir, use_zip=True, log_callback=None, **kwargs
-    ):
+        self,
+        save_dir: str,
+        backup_dir: str,
+        use_zip: bool = True,
+        log_callback: Optional[Callable] = None,
+        **kwargs: Any,
+    ) -> str:
         """执行存档备份（原子操作）"""
         _check_cancelled = kwargs.get("_check_cancelled")
         save_dir = normalize_path(save_dir)
         backup_dir = normalize_path(backup_dir)
 
+        # 确保备份目录存在，不存在则自动创建
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+        except OSError as e:
+            raise PatcherError(
+                f"Cannot create backup directory '{backup_dir}': {e}"
+            ) from e
+
         from core.config import get_config
 
-        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        # 修复说明：原实现精度为秒（%S），同一秒内触发两次备份时
+        # os.replace 会静默覆盖第一份备份，导致用户数据丢失。
+        # 修复：使用单次 now() 调用并包含毫秒（%f 取前3位），
+        # 避免两次 now() 调用的跳变问题，确保同秒内的备份名唯一。
+        _now = datetime.datetime.now()
+        ts = _now.strftime("%Y%m%d%H%M%S") + _now.strftime("%f")[:3]
         prefix = get_config().backup_prefix
 
         if use_zip:
             zip_name = f"{prefix}{ts}.zip"
             dest_zip = os.path.join(backup_dir, zip_name)
             # 原子写入：先写临时文件，完成后rename
-            temp_zip = dest_zip + ".tmp"
+            temp_zip = dest_zip + TEMP_FILE_SUFFIX
             # Bug E 修复：base_path 和 base_len 必须使用同一个规范化路径。
             # 原实现 base_path = os.path.abspath(save_dir) 但
             # base_len = len(save_dir)（未规范化），abs_path 是基于
@@ -100,11 +152,7 @@ class SaveService:
                 os.replace(temp_zip, dest_zip)
             except Exception:
                 # 清理临时文件
-                if os.path.exists(temp_zip):
-                    try:
-                        os.remove(temp_zip)
-                    except Exception:
-                        pass
+                self._cleanup_temp(temp_zip, is_dir=False)
                 raise
             if log_callback:
                 log_callback(f"Backup(ZIP): {zip_name}")
@@ -113,15 +161,14 @@ class SaveService:
         else:
             folder_name = f"{prefix}{ts}"
             dest_folder = os.path.join(backup_dir, folder_name)
-            temp_folder = dest_folder + ".tmp"
+            temp_folder = dest_folder + TEMP_FILE_SUFFIX
 
             def copy_with_cancel(src, dst):
                 if _check_cancelled:
                     _check_cancelled()
                 shutil.copy2(src, dst)
 
-            if os.path.exists(temp_folder):
-                shutil.rmtree(temp_folder, onerror=self.core.remove_readonly_handler)
+            self._cleanup_temp(temp_folder, is_dir=True)
 
             try:
                 shutil.copytree(
@@ -132,20 +179,11 @@ class SaveService:
                     copy_function=copy_with_cancel,
                 )
                 # 原子替换
-                if os.path.exists(dest_folder):
-                    shutil.rmtree(
-                        dest_folder, onerror=self.core.remove_readonly_handler
-                    )
+                self._cleanup_temp(dest_folder, is_dir=True)
                 os.rename(temp_folder, dest_folder)
             except Exception:
                 # 清理临时目录
-                if os.path.exists(temp_folder):
-                    try:
-                        shutil.rmtree(
-                            temp_folder, onerror=self.core.remove_readonly_handler
-                        )
-                    except Exception:
-                        pass
+                self._cleanup_temp(temp_folder, is_dir=True)
                 raise
             if log_callback:
                 log_callback(f"Backup(DIR): {folder_name}")
@@ -153,7 +191,7 @@ class SaveService:
             return dest_folder
 
     @validate_not_empty("save_dir")
-    def clear_save_directory(self, save_dir):
+    def clear_save_directory(self, save_dir: str) -> bool:
         """清空存档目录"""
         save_dir = normalize_path(save_dir)
         if not save_dir or not os.path.exists(save_dir):
@@ -165,11 +203,11 @@ class SaveService:
             logger.warning(f"Failed to clear save directory: {clear_err}")
             return False
 
-    def _backup_current_save(self, save_dir, copy_func):
+    def _backup_current_save(
+        self, save_dir: str, copy_func: Callable[[str, str], None]
+    ) -> Tuple[str, str]:
         """步骤1: 备份当前存档到临时目录"""
-        import tempfile
-
-        temp_dir = tempfile.mkdtemp(prefix="save_restore_")
+        temp_dir = tempfile.mkdtemp(prefix=TEMP_BACKUP_PREFIX)
         current_save_backup_path = os.path.join(temp_dir, "current")
         shutil.copytree(
             save_dir,
@@ -180,8 +218,13 @@ class SaveService:
         return temp_dir, current_save_backup_path
 
     def _prepare_restore_data(
-        self, backup_src, temp_dir, is_zip, copy_func, check_cancelled
-    ):
+        self,
+        backup_src: str,
+        temp_dir: str,
+        is_zip: bool,
+        copy_func: Callable[[str, str], None],
+        check_cancelled: Optional[Callable] = None,
+    ) -> str:
         """步骤3: 在临时目录准备要还原的内容"""
         prepared_restore_path = os.path.join(temp_dir, "to_restore")
         if is_zip:
@@ -203,13 +246,13 @@ class SaveService:
 
     def _apply_restore_data(
         self,
-        save_dir,
-        prepared_restore_path,
-        backup_src,
-        is_zip,
-        copy_func,
-        check_cancelled,
-    ):
+        save_dir: str,
+        prepared_restore_path: Optional[str],
+        backup_src: str,
+        is_zip: bool,
+        copy_func: Callable[[str, str], None],
+        check_cancelled: Optional[Callable] = None,
+    ) -> None:
         """步骤4: 原子替换目标目录"""
         if os.path.exists(save_dir):
             if not self.clear_save_directory(save_dir):
@@ -236,8 +279,12 @@ class SaveService:
                 )
 
     def _rollback_restore(
-        self, save_dir, current_save_backup_path, copy_func, original_error
-    ):
+        self,
+        save_dir: str,
+        current_save_backup_path: str,
+        copy_func: Callable[[str, str], None],
+        original_error: Exception,
+    ) -> None:
         """
         回滚逻辑：尝试恢复之前备份的当前存档
 
@@ -248,8 +295,6 @@ class SaveService:
           使用 WARNING 级别而不是 ERROR，便于调用方展示给用户。
         - 回滚失败：抛出 CRITICAL 级别的 PatcherError，提示数据可能丢失。
         """
-        from utils.error_handler import PatcherError, ErrorSeverity, ErrorCategory
-
         try:
             logger.info("Attempting rollback: restoring current save from backup...")
             if os.path.exists(save_dir):
@@ -280,7 +325,13 @@ class SaveService:
 
     @validate_not_empty("save_dir", "backup_src")
     @validate_path("backup_src", should_exist=True)
-    def restore_save(self, save_dir, backup_src, log_callback=None, **kwargs):
+    def restore_save(
+        self,
+        save_dir: str,
+        backup_src: str,
+        log_callback: Optional[Callable] = None,
+        **kwargs: Any,
+    ) -> None:
         """
         还原存档（原子事务操作）
         """
@@ -303,9 +354,7 @@ class SaveService:
                     save_dir, copy_with_cancel
                 )
             else:
-                import tempfile
-
-                temp_dir = tempfile.mkdtemp(prefix="save_restore_")
+                temp_dir = tempfile.mkdtemp(prefix=TEMP_BACKUP_PREFIX)
 
             # 步骤2: 验证备份源
             if not os.path.exists(backup_src):
@@ -344,9 +393,7 @@ class SaveService:
                     save_dir, current_save_backup_path, copy_with_cancel, e
                 )
             else:
-                from utils.error_handler import PatcherError
-
-                raise PatcherError(str(e))
+                raise PatcherError(str(e)) from e
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 try:
@@ -354,10 +401,29 @@ class SaveService:
                 except Exception as cleanup_err:
                     logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
 
-    def delete_backup(self, backup_src, **kwargs):
-        """删除备份"""
+    def delete_backup(self, backup_src: str, **kwargs: Any) -> None:
+        """
+        删除备份
+
+        修复说明（H3）：原实现在备份已被外部删除时会抛出未处理的
+        FileNotFoundError，异常会传播至 GUI 层并显示未预期的错误。
+        修复：先检查路径是否存在；若不存在则记录警告后直接返回；
+        若删除过程出错，抛出包含语义的 PatcherError 供上层统一处理。
+        """
         backup_src = normalize_path(backup_src)
-        if os.path.isfile(backup_src):
-            os.remove(backup_src)
-        else:
-            shutil.rmtree(backup_src, onerror=self.core.remove_readonly_handler)
+        if not os.path.exists(backup_src):
+            logger.warning(
+                f"Backup not found (already deleted?): {backup_src}"
+            )
+            return
+        try:
+            if os.path.isfile(backup_src):
+                os.remove(backup_src)
+            else:
+                shutil.rmtree(backup_src, onerror=self.core.remove_readonly_handler)
+        except OSError as e:
+            raise PatcherError(
+                f"Failed to delete backup '{backup_src}': {e}",
+                category=ErrorCategory.PERMISSION_DENIED,
+                severity=ErrorSeverity.ERROR,
+            ) from e

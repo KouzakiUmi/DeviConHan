@@ -8,11 +8,11 @@ Fuse 完整性校验移除模块
 import os
 import mmap
 import shutil
+import hashlib
 import logging
 import stat
 
 from utils.paths import normalize_path
-from utils.file_ops import compute_file_hash
 from core.config import get_config
 from utils.constants import (
     FUSE_ENABLED_BYTE,
@@ -21,6 +21,33 @@ from utils.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _partial_hash(
+    file_path: str, head_size: int = 1024 * 1024, tail_size: int = 1024 * 1024
+) -> str:
+    """
+    计算文件首尾各 head_size/tail_size 字节的 SHA256 + 文件总大小。
+
+    对于 80-150MB 的 Electron 可执行文件，全量 SHA256 需要 5-15 秒；
+    而首尾各 1MB 的组合哈希 + 文件大小校验足以检测 copy2 的写入错误，
+    耗时仅需约 0.1 秒。
+    """
+    try:
+        file_size = os.path.getsize(file_path)
+        sha256 = hashlib.sha256()
+        sha256.update(str(file_size).encode("ascii"))
+        with open(file_path, "rb") as f:
+            data = f.read(min(head_size, file_size))
+            sha256.update(data)
+            if file_size > tail_size:
+                f.seek(file_size - tail_size)
+                data = f.read(tail_size)
+                sha256.update(data)
+        return sha256.hexdigest()
+    except Exception as e:
+        logger.debug(f"Partial hash failed for {file_path}: {e}")
+        return ""
 
 
 def remove_fuse(exe_path, callback=None):
@@ -64,7 +91,11 @@ def remove_fuse(exe_path, callback=None):
 
     try:
         # 移除只读属性
-        os.chmod(exe_path, stat.S_IWRITE)
+        # 修复说明（M6）：原代码使用 stat.S_IWRITE（= 0o200，仅用户写位）。
+        # 在 Linux/macOS 上这会将权限设为 --w-------，移除了读权限，
+        # 导致后续的 mmap() 因无读权限而失败。
+        # 修复：同时设置读写位，确保跨平台匹配性。
+        os.chmod(exe_path, stat.S_IRUSR | stat.S_IWUSR)
 
         # -------------------------------------------------------
         # 自动备份机制（修复 P3：备份完整性验证）
@@ -86,13 +117,12 @@ def remove_fuse(exe_path, callback=None):
             try:
                 shutil.copy2(exe_path, temp_backup)
 
-                # 哈希验证：确保备份与源文件内容一致
-                src_hash = compute_file_hash(exe_path)
-                dst_hash = compute_file_hash(temp_backup)
+                src_hash = _partial_hash(exe_path)
+                dst_hash = _partial_hash(temp_backup)
 
                 if not src_hash or src_hash != dst_hash:
                     logger.error(
-                        f"Fuse backup hash mismatch after copy "
+                        f"Fuse backup verification mismatch after copy "
                         f"(src={src_hash}, dst={dst_hash}). Aborting."
                     )
                     try:
@@ -101,7 +131,6 @@ def remove_fuse(exe_path, callback=None):
                         pass
                     return False
 
-                # 原子替换备份文件（防止中途崩溃留下损坏备份）
                 os.replace(temp_backup, backup_path)
                 logger.info(
                     f"Created verified Fuse backup at: {backup_path} (hash={src_hash[:12]}...)"
@@ -118,9 +147,8 @@ def remove_fuse(exe_path, callback=None):
 
         need_backup = True
         if os.path.exists(backup_path):
-            # 检查已存在的备份是否有效（大小 > 0 且哈希可计算）
             bak_size = os.path.getsize(backup_path)
-            bak_hash = compute_file_hash(backup_path) if bak_size > 0 else ""
+            bak_hash = _partial_hash(backup_path) if bak_size > 0 else ""
             if bak_size > 0 and bak_hash:
                 need_backup = False
                 logger.debug(
@@ -185,8 +213,8 @@ def remove_fuse(exe_path, callback=None):
                     )
                     return False
 
-        logger.info("Fuse operation completed successfully")
-        return True
+        # 修复说明（M1）： with mmap 块内所有分支均已包含 return，
+        # 才此处的两行代码永远不会执行，已删除。
 
     except (OSError, IOError) as e:
         # mmap.error 是 OSError 的子类

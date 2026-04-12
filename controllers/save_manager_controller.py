@@ -7,7 +7,7 @@
 
 import os
 import logging
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple
 
 from core.save_service import SaveService
 
@@ -89,30 +89,48 @@ class SaveManagerController:
             if not os.path.exists(d_path):
                 continue
             try:
-                for d in os.listdir(d_path):
-                    fp = os.path.join(d_path, d)
-                    if os.path.isdir(fp) and d.startswith(prefix):
-                        self._add_backup_to_list(
-                            backups, d, fp, is_zip=False, prefix=prefix
-                        )
-                    elif (
-                        os.path.isfile(fp)
-                        and d.startswith(prefix)
-                        and d.endswith(".zip")
-                    ):
-                        self._add_backup_to_list(
-                            backups, d, fp, is_zip=True, prefix=prefix
-                        )
+                with os.scandir(d_path) as entries:
+                    for entry in entries:
+                        d = entry.name
+                        if not d.startswith(prefix):
+                            continue
+
+                        fp = entry.path
+                        if entry.is_dir():
+                            self._add_backup_to_list(
+                                backups, d, fp, is_zip=False, prefix=prefix
+                            )
+                        elif entry.is_file() and d.endswith(".zip"):
+                            self._add_backup_to_list(
+                                backups, d, fp, is_zip=True, prefix=prefix
+                            )
             except Exception as e:
                 logger.debug(f"Error scanning {d_path}: {e}")
 
         # 去重并按时间倒序排序
-        unique_backups = {}
+        # 先按路径去重（防止同一个文件被扫描两次），使用路径作为唯一键
+        seen_paths: dict = {}
         for name, fp, is_zip in backups:
-            if name not in unique_backups:
-                unique_backups[name] = (name, fp, is_zip)
+            if fp not in seen_paths:
+                seen_paths[fp] = (name, fp, is_zip)
 
-        return sorted(unique_backups.values(), reverse=True)
+        deduped = list(seen_paths.values())
+
+        # 若多个不同路径的备份拥有相同的显示名，则在名称后附加父目录名以区分
+        name_count: dict = {}
+        for name, fp, is_zip in deduped:
+            name_count[name] = name_count.get(name, 0) + 1
+
+        result = []
+        for name, fp, is_zip in deduped:
+            if name_count[name] > 1:
+                parent = os.path.basename(os.path.dirname(fp))
+                display = f"{name} ({parent})"
+            else:
+                display = name
+            result.append((display, fp, is_zip))
+
+        return sorted(result, reverse=True)
 
     def _add_backup_to_list(
         self,
@@ -122,15 +140,27 @@ class SaveManagerController:
         is_zip: bool,
         prefix: str = "Backup_",
     ) -> None:
-        """解析备份名称并添加到列表"""
+        """解析备份名称并添加到列表
+
+        时间戳格式支持两种：
+        - 14 位旧格式: YYYYMMDDHHMMSS
+        - 17 位新格式: YYYYMMDDHHMMSSmmm（含毫秒，由 save_service.backup_save 生成）
+        """
         try:
             name_part = filename.replace(".zip", "")
             ts = name_part[len(prefix) :]
-            if len(ts) >= 14:
-                if len(ts) == 14:
-                    display_name = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
-                else:
-                    display_name = name_part
+            if len(ts) >= 17:
+                # 新格式：含毫秒（17位）
+                display_name = (
+                    f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} "
+                    f"{ts[8:10]}:{ts[10:12]}:{ts[12:14]}.{ts[14:17]}"
+                )
+            elif len(ts) == 14:
+                # 旧格式：无毫秒（14位）
+                display_name = (
+                    f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} "
+                    f"{ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
+                )
             else:
                 display_name = name_part
             list_ref.append((display_name, fullpath, is_zip))
@@ -183,7 +213,7 @@ class SaveManagerController:
 
     def execute_restore(
         self, save_dir: str, backup_src: str, **kwargs
-    ) -> tuple[bool, str]:
+    ) -> Tuple[bool, str]:
         """
         执行存档还原
 
@@ -222,7 +252,7 @@ class SaveManagerController:
             self._log(f"Delete error: {e}", "error")
             return False
 
-    def migrate_backups(self, old_dir: str, new_dir: str, **kwargs) -> tuple[int, int]:
+    def migrate_backups(self, old_dir: str, new_dir: str, **kwargs) -> Tuple[int, int]:
         """
         迁移备份目录
 

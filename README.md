@@ -56,7 +56,6 @@ cd repo-path
 
 **前置要求**
 - Python 3.8+
-- Node.js 18+
 
 **安装步骤**
 ```bash
@@ -79,8 +78,6 @@ python -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
-    --add-data "tools/bundled_asar:tools\bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --name "DevilConnection_Patch" \
     main.py
@@ -138,21 +135,19 @@ main.py (入口)
     │
     ├── core/            │  gui/                          │  utils/
     │   ├── patcher.py   │  ├── main_window.py            │  ├── language.py
-    │   ├── config.py    │  └── about_dialog.py           │  ├── paths.py
-    │   ├── steam.py     │                                │  ├── file_ops.py
-    │   ├── fuse.py      │  controllers/                  │  ├── async_ops.py
-    │   ├── save_service.py │  ├── patch_controller.py    │  ├── performance.py
-    │   ├── patch_info.py│  └── save_manager_controller.py│  ├── error_handler.py
-    │   └── batch.py     │                                │  ├── cleanup.py
-    │                    │                                │  ├── constants.py
-    │                    │                                │  ├── validators.py
-    │                    │                                │  ├── asar_utils.py
-    │                    │                                │  └── logging.py
+    │   ├── config.py    │  └── about_dialog.py           │   ├── paths.py
+    │   ├── steam.py     │                                │   ├── file_ops.py
+    │   ├── fuse.py      │  controllers/                  │   ├── async_ops.py
+    │   ├── save_service.py │  ├── patch_controller.py    │   ├── performance.py
+    │   ├── patch_info.py│  └── save_manager_controller.py│   ├── error_handler.py
+    │   └── batch.py     │                                │   ├── cleanup.py
+    │                    │                                │   ├── constants.py
+    │                    │                                │   ├── validators.py
+    │                    │                                │   ├── asar_utils.py
+    │                    │                                │   └── logging.py
     │
     └── tools/
         ├── node.exe
-        ├── asar_cli.mjs
-        └── bundled_asar/
 ```
 
 ### 📁 Directory Structure / 目录结构 / ディレクトリ構造
@@ -193,9 +188,6 @@ utils/                                  # 工具模块
 │   └── asar_utils.py                   # ASAR解析
 │
 tools/                                  # 运行时工具
-│   ├── node.exe                        # Node.js
-│   ├── asar_cli.mjs                    # ASAR CLI
-│   └── bundled_asar/
 │       └── index.mjs                   # ASAR核心库
 │
 Patch.zip                               # 汉化补丁
@@ -292,6 +284,8 @@ handle_steam_update() 状态:
   -> 检查.patch_info文件状态
   -> 损坏/过期 -> 提示用户 -> 继续或退出
   -> 正常 -> 继续打补丁
+
+注：ASAR完整性校验已改为纯Python解析（不再启动node.exe子进程）
 ```
 
 ### 🛠️ Core Components / 核心组件 / コアコンポーネント
@@ -301,9 +295,7 @@ handle_steam_update() 状态:
 
 | 方法 | 功能 |
 |------|------|
-| `__init__()` | 初始化，验证 Node.js 和 ASAR CLI 是否存在 |
 | `run_asar(action, src, dest)` | 执行 ASAR 解包/打包操作 |
-| `remove_fuse(exe_path)` | 移除游戏 Fuse 完整性校验 |
 | `_find_script()` | 查找 ASAR CLI 脚本 |
 
 #### SaveService 类 (`core/save_service.py`)
@@ -409,7 +401,6 @@ use_zip = true
 # 确保前置条件
 # 1. 安装 Python
 # 2. pip install pyinstaller
-# 3. 确保 tools/ 目录包含 node.exe 和 bundled_asar/
 # 4. (如果需要生成补丁版) 将汉化文件放入 Patch 目录
 
 .\Pack.cmd
@@ -424,8 +415,6 @@ Pack.cmd 执行流程:
 
 1. 前置检查
    - tools/node.exe 存在?
-   - tools/bundled_asar/ 存在?
-   - tools/asar_cli.mjs 存在?
    - Python 可用?
    - PyInstaller 安装?
 
@@ -457,8 +446,6 @@ python -m PyInstaller -F -w --clean \
     --distpath "dist" \
     --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
-    --add-data "tools/bundled_asar:tools/bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --name "Tyrano_Toolbox" \
     main.py
@@ -473,8 +460,6 @@ python -m PyInstaller -F -w --clean \
     --distpath "dist" \
     --add-data "icon.ico:." \
     --add-data "tools/node.exe:tools" \
-    --add-data "tools/bundled_asar:tools/bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --add-data "Patch.zip:." \
     --name "DevilConnection_Patch" \
@@ -518,7 +503,6 @@ main.py [-h] [--batch] [--auto] [--fuse FILE] [--log-file PATH] [-v] [-q]
 #### 常见问题排查
 | 问题 | 解决方案 |
 |------|----------|
-| `Node.js not found` | 检查 tools/node.exe 是否存在 |
 | `ASAR operation failed` | 使用 `--verbose` 查看详细错误 |
 | `Permission denied` | 以管理员权限运行 |
 | `Backup corrupted` | 通过 Steam 验证游戏完整性 |

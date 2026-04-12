@@ -13,7 +13,7 @@ import threading
 import time
 from configparser import ConfigParser
 from contextlib import contextmanager
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Tuple
 
 from utils.paths import get_resource_path, get_user_config_path
 from utils.constants import TIME_DIFF_THRESHOLD_MAX_DAYS, MAX_BACKUP_PREFIX_LENGTH
@@ -49,7 +49,7 @@ class AppConfig:
         self._snapshot_version = 0
         self._snapshot_time = 0.0
 
-        with self._write_lock():
+        with self._acquire_lock():
             user_config_path_obj = get_user_config_path()
             default_config_path = get_resource_path("config.ini")
             user_config_dir = os.path.dirname(user_config_path_obj)
@@ -80,14 +80,8 @@ class AppConfig:
             logger.debug(f"Config loaded from: {self.config_file}")
 
     @contextmanager
-    def _read_lock(self):
-        """读取锁上下文管理器"""
-        with self._lock:
-            yield
-
-    @contextmanager
-    def _write_lock(self):
-        """写入锁上下文管理器"""
+    def _acquire_lock(self):
+        """线程安全锁上下文管理器（RLock 可重入，读写均通过同一锁保护）"""
         with self._lock:
             yield
 
@@ -106,68 +100,65 @@ class AppConfig:
         self._invalidate_snapshot()
 
     def _get_config_snapshot(self) -> Dict[str, Any]:
-        """获取配置快照（线程安全，带TTL刷新）"""
-        current_time = time.time()
+        """获取配置快照（线程安全，带TTL刷新）
 
-        # 增加 2.0 秒的 TTL
-        if self._config_snapshot is None or (current_time - self._snapshot_time > 2.0):
-            with self._read_lock():
-                self._config_snapshot = {
-                    "resource_dir": self.get(
-                        "main", "RESOURCE_DIR", fallback="resources"
-                    ),
-                    "app_name": self.get(
-                        "main", "APP_NAME", fallback="TyranoV8_Patcher"
-                    ),
-                    "time_threshold": self.get_int(
-                        "main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3
-                    ),
-                    "backup_prefix": self.get(
-                        "main", "BACKUP_PREFIX", fallback="Backup_"
-                    ),
-                    "patch_info_file": self.get(
-                        "main", "PATCH_INFO_FILE", fallback=".patch_info"
-                    ),
-                    "patch_meta_file": self.get(
-                        "main", "PATCH_META_FILE", fallback=".patch_meta"
-                    ),
-                    "target_asar_name": self.get(
-                        "main", "TARGET_ASAR_NAME", fallback="app.asar"
-                    ),
-                    "temp_patch_dir": self.get(
-                        "main", "TEMP_PATCH_DIR", fallback="temp_patch"
-                    ),
-                    "patch_zip_name": self.get(
-                        "main", "PATCH_ZIP_NAME", fallback="Patch.zip"
-                    ),
-                    "patch_dir_name": self.get(
-                        "main", "PATCH_DIR_NAME", fallback="Patch"
-                    ),
-                    "fuse_sentinel": self.get(
-                        "main",
-                        "FUSE_SENTINEL",
-                        fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
-                    ),
-                    "fuse_header_length": self.get_int(
-                        "main", "FUSE_WIRE_HEADER_LENGTH", fallback=34
-                    ),
-                    "fuse_asar_offset": self.get_int(
-                        "main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4
-                    ),
-                    "check_files": self.get_list("files", "CHECK_FILES_FOR_UPDATE"),
-                    "stable_files": self.get_list(
-                        "files", "STABLE_FILES_FOR_VALIDATION"
-                    ),
-                }
-                self._snapshot_time = current_time
-        return self._config_snapshot
+        修复 TOCTOU：将 TTL 检查与快照重建合并在同一个锁块内，
+        避免多线程同时通过外层检查后重复重建快照。
+        """
+        with self._acquire_lock():
+            current_time = time.time()
+            # 在锁内做 TTL 检查，确保检查和更新的原子性
+            if self._config_snapshot is not None and (
+                current_time - self._snapshot_time <= 2.0
+            ):
+                return self._config_snapshot
+
+            self._config_snapshot = {
+                "resource_dir": self.get("main", "RESOURCE_DIR", fallback="resources"),
+                "app_name": self.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
+                "time_threshold": self.get_int(
+                    "main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3
+                ),
+                "backup_prefix": self.get("main", "BACKUP_PREFIX", fallback="Backup_"),
+                "patch_info_file": self.get(
+                    "main", "PATCH_INFO_FILE", fallback=".patch_info"
+                ),
+                "patch_meta_file": self.get(
+                    "main", "PATCH_META_FILE", fallback=".patch_meta"
+                ),
+                "target_asar_name": self.get(
+                    "main", "TARGET_ASAR_NAME", fallback="app.asar"
+                ),
+                "temp_patch_dir": self.get(
+                    "main", "TEMP_PATCH_DIR", fallback="temp_patch"
+                ),
+                "patch_zip_name": self.get(
+                    "main", "PATCH_ZIP_NAME", fallback="Patch.zip"
+                ),
+                "patch_dir_name": self.get("main", "PATCH_DIR_NAME", fallback="Patch"),
+                "fuse_sentinel": self.get(
+                    "main",
+                    "FUSE_SENTINEL",
+                    fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
+                ),
+                "fuse_header_length": self.get_int(
+                    "main", "FUSE_WIRE_HEADER_LENGTH", fallback=34
+                ),
+                "fuse_asar_offset": self.get_int(
+                    "main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4
+                ),
+                "check_files": self.get_list("files", "CHECK_FILES_FOR_UPDATE"),
+                "stable_files": self.get_list("files", "STABLE_FILES_FOR_VALIDATION"),
+            }
+            self._snapshot_time = current_time
+            return self._config_snapshot
 
     def reload(self) -> None:
         """
         重新加载配置文件（热重载）
         线程安全：自动使旧快照失效
         """
-        with self._write_lock():
+        with self._acquire_lock():
             try:
                 self.config = ConfigParser()
                 self.config.read(self.config_file, encoding="utf-8")
@@ -189,7 +180,7 @@ class AppConfig:
         Returns:
             str: 配置值
         """
-        with self._read_lock():
+        with self._acquire_lock():
             result = self.config.get(section, key, fallback=fallback, **kwargs)
             return result if result is not None else fallback
 
@@ -205,7 +196,7 @@ class AppConfig:
         Returns:
             int: 配置值
         """
-        with self._read_lock():
+        with self._acquire_lock():
             try:
                 return self.config.getint(section, key)
             except Exception:
@@ -223,7 +214,7 @@ class AppConfig:
         Returns:
             bool: 配置值
         """
-        with self._read_lock():
+        with self._acquire_lock():
             try:
                 return self.config.getboolean(section, key)
             except Exception:
@@ -243,7 +234,7 @@ class AppConfig:
         Returns:
             list: 配置值列表
         """
-        with self._read_lock():
+        with self._acquire_lock():
             raw_value = self.config.get(section, key, fallback="")
         if raw_value:
             return [line.strip() for line in raw_value.split("\n") if line.strip()]
@@ -282,9 +273,39 @@ class AppConfig:
         except Exception:
             return default
 
+    def set_main_config(self, key: str, value: Any) -> bool:
+        """
+        设置 [main] 配置节的键值（线程安全）
+
+        修复说明（H1）：原 GUI 代码直接操作内部 self.config对象，
+        绕过了 _config_rw_lock 的所有保护。此方法将修改封装到锁内执行。
+
+        Args:
+            key: 配置键名（自动转为大写保持与原配置文件一致）
+            value: 配置值
+
+        Returns:
+            bool: 是否成功设置并保存
+        """
+        try:
+            with self._acquire_lock():
+                if not self.config.has_section("main"):
+                    self.config.add_section("main")
+                self.config.set("main", str(key).upper(), str(value))
+                self._invalidate_snapshot()
+            return self.save()
+        except Exception as e:
+            logger.warning(f'Failed to set main config value for "{key}": {e}')
+            return False
+
     def set_gui_config(self, key: str, value: Any) -> bool:
         """
-        设置 GUI 配置值
+        设置 GUI 配置值（线程安全）
+
+        修复说明：原实现直接操作 self.config 对象，未加锁保护，
+        且修改后未使快照缓存失效，导致并发写入竞态以及后续读取
+        可能返回旧值。修复：在锁内执行写操作并同步失效快照，
+        与 set_main_config 保持一致的模式。
 
         Args:
             key: 配置键名
@@ -294,11 +315,12 @@ class AppConfig:
             bool: 是否成功设置
         """
         try:
-            if not self.config.has_section("preferences"):
-                self.config.add_section("preferences")
-            self.config.set("preferences", key, str(value))
-            self.save()
-            return True
+            with self._acquire_lock():
+                if not self.config.has_section("preferences"):
+                    self.config.add_section("preferences")
+                self.config.set("preferences", key, str(value))
+                self._invalidate_snapshot()
+            return self.save()
         except Exception as e:
             logger.warning(f'Failed to set config value for "{key}": {e}')
             return False
@@ -318,7 +340,7 @@ class AppConfig:
         Returns:
             bool: 是否成功设置
         """
-        with self._write_lock():
+        with self._acquire_lock():
             try:
                 if not self.config.has_section("preferences"):
                     self.config.add_section("preferences")
@@ -338,7 +360,7 @@ class AppConfig:
         Returns:
             bool: 是否成功保存
         """
-        with self._write_lock():
+        with self._acquire_lock():
             temp_file = None
             try:
                 config_dir = os.path.dirname(self.config_file)
@@ -462,20 +484,22 @@ class AppConfig:
 
     # ================== 配置验证方法 ==================
 
-    def validate_config(self) -> tuple[bool, list[str]]:
+    def validate_config(self) -> Tuple[bool, List[str], List[str]]:
         """
         验证配置文件的有效性（线程安全版本）
 
         使用配置快照避免长时间持有锁，提高并发性能。
 
         Returns:
-            tuple[bool, list[str]]: (是否有效, 错误信息列表)
+            Tuple[bool, List[str], List[str]]: (是否有效, 错误列表, 警告列表)
+            - 第一个元素为 False 表示存在必须修复的错误
+            - 错误列表与警告列表分开返回，调用方可按严重程度分别处理
         """
         errors = []
         warnings = []
 
         # 第一步：快速获取配置快照（持有锁时间最短）
-        with self._read_lock():
+        with self._acquire_lock():
             # 验证必需的配置节
             required_sections = ["main", "files"]
             for section in required_sections:
@@ -563,7 +587,7 @@ class AppConfig:
         if not errors and not warnings:
             logger.info("Configuration validation passed")
 
-        return (len(errors) == 0, errors + warnings)
+        return (len(errors) == 0, errors, warnings)
 
     def validate_required_directory(
         self, dir_path: str, dir_type: str = "directory"

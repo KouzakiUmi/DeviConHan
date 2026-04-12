@@ -10,18 +10,17 @@ import json
 import struct
 import hashlib
 import logging
-from utils.constants import ASAR_MAGIC_NUMBER, HASH_CHUNK_SIZE
+from utils.constants import ASAR_MAGIC_NUMBER
 
 logger = logging.getLogger(__name__)
 
 
-def get_file_hash_in_asar(_core, asar_path, file_path):
+def get_file_hash_in_asar(asar_path, file_path):
     """
     计算 ASAR 包内特定文件的 SHA256 哈希值
     纯 Python 内存实现，不依赖外部命令行调用，速度快且不产生临时文件。
 
     Args:
-        _core: CoreLogic 实例 (保留以保持接口兼容，实际未被使用)
         asar_path: ASAR 文件路径
         file_path: ASAR 内的相对路径
 

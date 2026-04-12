@@ -16,7 +16,7 @@ from typing import Optional, Callable
 
 from utils.cleanup import force_cleanup_dir
 from utils.paths import safe_path_within
-from utils.constants import HASH_CHUNK_SIZE
+from utils.constants import HASH_CHUNK_SIZE, MAX_ZIP_EXTRACT_SIZE, MAX_ZIP_EXTRACT_FILES
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ def safe_extract_zip(
     zip_path: str, dest_dir: str, check_cancelled: Optional[Callable] = None
 ) -> bool:
     """
-    安全地解压ZIP文件，防止路径遍历攻击
+    安全地解压ZIP文件，防止路径遍历攻击并防止 ZIP 炸弹攻击
 
     Args:
         zip_path: ZIP文件路径
@@ -71,7 +71,7 @@ def safe_extract_zip(
         bool: 是否成功解压
 
     Raises:
-        ValueError: 如果检测到恶意路径
+        ValueError: 如果检测到恶意路径或超过安全限制
     """
     if not os.path.exists(zip_path):
         logger.error(f"ZIP file not found: {zip_path}")
@@ -81,6 +81,24 @@ def safe_extract_zip(
         abs_dest_dir = os.path.normpath(os.path.abspath(dest_dir))
 
         with zipfile.ZipFile(zip_path, "r") as zf:
+            # M2 修复：ZIP 炸弹防护 —— 在实际解压前对元数据做预检查
+            # ZipInfo.file_size 字段可被恶意篇改，但局内目录的这个能提前拦戚大多数普通 ZIP 炸弹。
+            total_uncompressed = 0
+            file_count = 0
+            for info in zf.infolist():
+                file_count += 1
+                total_uncompressed += info.file_size
+                if file_count > MAX_ZIP_EXTRACT_FILES:
+                    raise ValueError(
+                        f"ZIP contains too many files (>{MAX_ZIP_EXTRACT_FILES}). "
+                        "Possible ZIP bomb."
+                    )
+                if total_uncompressed > MAX_ZIP_EXTRACT_SIZE:
+                    raise ValueError(
+                        f"ZIP uncompressed size exceeds {MAX_ZIP_EXTRACT_SIZE // (1024**3)} GB limit. "
+                        "Possible ZIP bomb."
+                    )
+
             for member in zf.infolist():
                 # 检查取消标志
                 if check_cancelled:

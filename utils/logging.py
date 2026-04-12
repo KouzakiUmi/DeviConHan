@@ -8,11 +8,18 @@ from typing import Optional
 
 
 class NewlineSanitizingFormatter(logging.Formatter):
-    """格式化器，将日志消息中的换行符转义以防止日志注入"""
+    """格式化器，将日志消息中的换行符转义以防止日志注入
+
+    M5 修复：不再直接修改 LogRecord 的原始字段。
+    LogRecord 对象可能被多个 handler 共享，原地修改 .msg 是副作用。
+    修复：若消息包含换行符，就先遺制一份副本再修改，不影响原始对象。
+    """
 
     def format(self, record):
-        # 转义消息中的换行符和回车符
-        if isinstance(record.msg, str):
+        # 只在消息确实包含换行 / 回车符时才进行副本。
+        # 避免对每条日志都拷贝对象，减少不必要内存分配。
+        if isinstance(record.msg, str) and ("\n" in record.msg or "\r" in record.msg):
+            record = logging.makeLogRecord(record.__dict__)
             record.msg = record.msg.replace("\n", "\\n").replace("\r", "\\r")
         return super().format(record)
 
@@ -119,8 +126,8 @@ def setup_logging(
         file_handler.setFormatter(detailed_formatter)
         root_logger.addHandler(file_handler)
 
-        # 输出日志文件位置信息
-        if console_level <= logging.INFO:
+        # 输出日志文件位置信息（quiet 模式下不输出）
+        if not quiet and console_level <= logging.INFO:
             print(f"Logging to file: {log_path}")
 
     except (PermissionError, OSError) as e:

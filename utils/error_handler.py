@@ -12,7 +12,6 @@ __all__ = [
     "PatcherFileNotFoundError",
     "PatcherPermissionError",
     "AsarCorruptedError",
-    "NodeNotFoundError",
     "ConfigError",
     "ErrorHandler",
     "get_error_handler",
@@ -108,17 +107,6 @@ class AsarCorruptedError(PatcherError):
             message, ErrorCategory.CORRUPTED_DATA, ErrorSeverity.ERROR, details
         )
         self.asar_path = asar_path
-
-
-class NodeNotFoundError(PatcherError):
-    """Node.js未找到异常"""
-
-    def __init__(self, message: str, node_path: Optional[str] = None):
-        details = {"node_path": node_path} if node_path else {}
-        super().__init__(
-            message, ErrorCategory.UNKNOWN_ERROR, ErrorSeverity.ERROR, details
-        )
-        self.node_path = node_path
 
 
 class ConfigError(PatcherError):

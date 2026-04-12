@@ -6,31 +6,51 @@
 """
 
 import os
+from typing import List
 
 # ================= 文件限制常量 =================
 MAX_CONFIG_FILE_SIZE: int = 1024 * 1024  # 1MB
-MAX_PATH_LENGTH: int = 260  # Windows 标准路径长度
+MAX_PATH_LENGTH: int = 260
 MAX_BACKUP_PREFIX_LENGTH: int = 50
 
 # ================= 时间常量 =================
-DEFAULT_ASAR_TIMEOUT: int = 300  # 秒
-DEFAULT_CLEANUP_RETRY_DELAY: float = 0.5  # 秒
+DEFAULT_CLEANUP_RETRY_DELAY: float = 0.5
 MAX_CLEANUP_RETRIES: int = 3
-DELAYED_CLEANUP_DELAY: int = 60  # 秒
+DELAYED_CLEANUP_DELAY: int = 60
 
 # ================= 文件大小限制 =================
-MIN_ASAR_SIZE: int = 1024  # 1KB，小于此值视为损坏
-MAX_ASAR_SIZE: int = 2 * 1024 * 1024 * 1024  # 2GB，用于安全检查
+MIN_ASAR_SIZE: int = 1024
+MAX_ASAR_SIZE: int = 2 * 1024 * 1024 * 1024
 
 # ================= UI 常量 =================
 DEFAULT_FONT_SIZE: int = 9
 LARGE_FONT_SIZE: int = 11
-LOG_AREA_HEIGHT: int = 8  # 行数
+LOG_AREA_HEIGHT: int = 12
 WINDOW_MIN_WIDTH: int = 800
-WINDOW_MIN_HEIGHT: int = 620
+WINDOW_MIN_HEIGHT: int = 680
+
+# ================= 目录和文件命名常量 =================
+UNPACKED_DIR_NAME: str = "_Unpacked"
+PACKED_DIR_NAME: str = "_Packed"
+EXTRACTED_SUFFIX: str = "_extracted"
+ASAR_EXTENSION: str = ".asar"
+ZIP_EXTENSION: str = ".zip"
+TEMP_FILE_SUFFIX: str = ".tmp"
+CORRUPTED_SUFFIX: str = ".corrupted"
+
+# ================= 临时目录前缀 =================
+TEMP_BACKUP_PREFIX: str = "save_restore_"
+
+# ================= 对话框超时 =================
+DEFAULT_DIALOG_TIMEOUT: int = 3600
 
 # ================= 哈希计算常量 =================
-HASH_CHUNK_SIZE: int = 65536  # 64KB，用于大文件哈希计算
+HASH_CHUNK_SIZE: int = 65536
+
+# ================= ZIP 安全限制常量 =================
+# 防止 ZIP 炸弹攻击：限制解压后总大小和文件数量
+MAX_ZIP_EXTRACT_SIZE: int = 2 * 1024 * 1024 * 1024  # 2 GB
+MAX_ZIP_EXTRACT_FILES: int = 100_000
 
 # ================= 异步操作常量 =================
 MAX_ASYNC_WORKERS: int = 2
@@ -45,30 +65,24 @@ DEFAULT_BACKUP_DIR: str = os.path.join(
 # ================= ASAR 常量 =================
 ASAR_MAGIC_NUMBER: bytes = b"\x04\x00\x00\x00"
 ASAR_HEADER_FIXED_SIZE: int = 8
-REQUIRED_ASAR_FILES: list[str] = ["package.json", "index.html"]
+REQUIRED_ASAR_FILES: List[str] = ["package.json", "index.html"]
 
 # ================= Fuse 常量 =================
 FUSE_ENABLED_BYTE: bytes = b"\x31"
 FUSE_DISABLED_BYTE: bytes = b"\x30"
-FUSE_VALIDATION_MIN_SIZE: int = 1024  # 1KB
+FUSE_VALIDATION_MIN_SIZE: int = 1024
 
 # ================= 配置验证常量 =================
-TIME_DIFF_THRESHOLD_MAX_DAYS: int = 365  # 旧补丁时间阈值上限（天）
+TIME_DIFF_THRESHOLD_MAX_DAYS: int = 365
 
 # ================= 默认配置值 =================
-DEFAULT_RESOURCE_DIR: str = "resources"
-DEFAULT_APP_NAME: str = "TyranoV8_Patcher"
-DEFAULT_TARGET_ASAR_NAME: str = "app.asar"
-DEFAULT_TEMP_PATCH_DIR: str = "temp_patch"
-DEFAULT_PATCH_ZIP_NAME: str = "Patch.zip"
-DEFAULT_PATCH_DIR_NAME: str = "Patch"
-DEFAULT_BACKUP_PREFIX: str = "Backup_"
-DEFAULT_PATCH_INFO_FILE: str = ".patch_info"
-DEFAULT_PATCH_META_FILE: str = ".patch_meta"
-DEFAULT_FUSE_WIRE_HEADER_LENGTH: int = 34
-DEFAULT_FUSE_ASAR_INTEGRITY_OFFSET: int = 4
-DEFAULT_TIME_DIFF_THRESHOLD_DAYS: int = 3
-DEFAULT_ASAR_TIMEOUT_SECONDS: int = 300
+DEFAULT_ASAR_TIMEOUT_SECONDS: int = 300  # ASAR 操作超时时间（秒）
 
 # ================= 项目链接常量 =================
 GITHUB_REPO_URL: str = "https://github.com/KouzakiUmi/DeviConHan"
+
+# ================= 批处理模式常量 =================
+# 修复说明（M3）：batch.py 中直接用字面量字符串匹配 "Cancelled or error"，
+# 如果 PatchController 的返回字符串微有改动就会静默失效。
+# 统一定义在此处，两端均引用此常量以保持同步。
+BATCH_CANCEL_OR_ERROR_MSG: str = "Cancelled or error"

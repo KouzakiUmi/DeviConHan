@@ -9,7 +9,9 @@ import os
 import logging
 
 from utils.performance import get_performance_monitor
+from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 from core.patcher import CoreLogic
+from core.fuse import remove_fuse
 from controllers.patch_controller import PatchController
 from utils.cleanup import force_cleanup_dir
 
@@ -30,8 +32,6 @@ def batch_mode(args):
 
     # 处理 --fuse 参数：移除指定文件的 Fuse 完整性校验
     if hasattr(args, "fuse") and args.fuse:
-        from core.fuse import remove_fuse
-
         logger.info(f"Removing Fuse from: {args.fuse}")
         if not os.path.exists(args.fuse):
             logger.error(f"File not found: {args.fuse}")
@@ -63,15 +63,14 @@ def batch_mode(args):
     monitor = get_performance_monitor()
     monitor.start("batch_auto_patch")
 
+    temp_dir = None
     try:
         success, temp_dir, error_msg = controller.run_auto_patch()
         if success:
             logger.info("Batch patching completed successfully")
-            if temp_dir and os.path.exists(temp_dir):
-                force_cleanup_dir(temp_dir)
             return 0
         else:
-            if error_msg == "Cancelled or error":
+            if error_msg == BATCH_CANCEL_OR_ERROR_MSG:
                 # Cancelled or Steam update error (already logged)
                 return 1
             else:
@@ -81,5 +80,8 @@ def batch_mode(args):
         logger.exception(f"Batch patching crashed: {e}")
         return 1
     finally:
+        # 无论成功与否，都清理临时目录
+        if temp_dir and os.path.exists(temp_dir):
+            force_cleanup_dir(temp_dir)
         elapsed = monitor.stop("batch_auto_patch")
         logger.info(f"Batch auto patch operation took {elapsed:.3f}s")

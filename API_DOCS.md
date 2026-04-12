@@ -415,52 +415,6 @@ Fuse 禁用状态字节
 
 Fuse 校验最小文件大小
 
-<a id="core.patcher.UpdateStatus"></a>
-
-## UpdateStatus Objects
-
-```python
-class UpdateStatus(enum.Enum)
-```
-
-Steam 的更新检测状态，替代字符串匹配控制流
-
-<a id="core.patcher.UpdateStatus.FIRST_TIME"></a>
-
-#### FIRST\_TIME
-
-首次打补丁，无 .bak 文件
-
-<a id="core.patcher.UpdateStatus.OLD_VERSION"></a>
-
-#### OLD\_VERSION
-
-旧版本升级，缺少 .patch_info
-
-<a id="core.patcher.UpdateStatus.STEAM_UPDATED"></a>
-
-#### STEAM\_UPDATED
-
-确认被 Steam 更新
-
-<a id="core.patcher.UpdateStatus.TOOL_ISSUE"></a>
-
-#### TOOL\_ISSUE
-
-工具问题导致误判（需用户确认）
-
-<a id="core.patcher.UpdateStatus.ALL_PASSED"></a>
-
-#### ALL\_PASSED
-
-检查通过，可安全恢复备份
-
-<a id="core.patcher.UpdateStatus.NO_BACKUP"></a>
-
-#### NO\_BACKUP
-
-无 .bak 文件
-
 <a id="core.patcher.CoreLogic"></a>
 
 ## CoreLogic Objects
@@ -544,7 +498,7 @@ def run_asar(action, src, dest, callback=None, unpack_pattern=None)
 
 **Raises**:
 
-- `NodeNotFoundError` - 如果Node.js未找到
+
 - `PatcherError` - 如果操作失败
   
 
@@ -686,7 +640,9 @@ def handle_steam_update(core,
 - `bak_path` - 备份文件路径
 - `asar_path` - asar文件路径（可选，用于验证文件存在性）
 - `log_callback` - 日志回调函数
-- `gui_app` - GUI应用实例（用于显示对话框）
+- `on_error` - 错误提示回调，接收 (title, msg) 参数
+- `on_ask_yes_no` - 询问回调，接收 (title, msg) 参数并返回 bool
+- `on_info` - 信息提示回调，接收 (title, msg) 参数
   
 
 **Returns**:
@@ -1309,16 +1265,6 @@ class AsarCorruptedError(PatcherError)
 ```
 
 ASAR文件损坏异常
-
-<a id="utils.error_handler.NodeNotFoundError"></a>
-
-## NodeNotFoundError Objects
-
-```python
-class NodeNotFoundError(PatcherError)
-```
-
-Node.js未找到异常
 
 <a id="utils.error_handler.ConfigError"></a>
 

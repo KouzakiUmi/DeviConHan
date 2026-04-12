@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsTab(ttk.Frame):
+    # L2 修复：将平台包解模式定义为类常量，避免每次调用 _tool_pack 都重建字典
+    _PLATFORM_PATTERNS: dict = {
+        "win": "*.{node,dll,exe}",
+        "nix": "*.{node,dll,so,dylib,bin}",
+    }
+
     def __init__(self, parent, app):
         super().__init__(parent, padding=10)
         self.app = app
@@ -282,12 +288,19 @@ class ToolsTab(ttk.Frame):
                     ),
                 )
                 self.after(0, self._sync_extracted_path)
-                if sys.platform.startswith("win"):
-                    os.startfile(out_dir)
-                elif sys.platform == "darwin":
-                    subprocess.run(["open", out_dir], encoding="utf-8")
-                else:
-                    subprocess.run(["xdg-open", out_dir], encoding="utf-8")
+                # M3 修复：解包失败时 out_dir 可能不存在；
+                # 将打开文件管理器的操作包裹在 try/except 中，
+                # 并在销毁的父窗口上不弹对话框，仅记录日志。
+                if os.path.exists(out_dir):
+                    try:
+                        if sys.platform.startswith("win"):
+                            os.startfile(out_dir)
+                        elif sys.platform == "darwin":
+                            subprocess.run(["open", out_dir], encoding="utf-8")
+                        else:
+                            subprocess.run(["xdg-open", out_dir], encoding="utf-8")
+                    except Exception as open_err:
+                        logger.warning(f"Failed to open output directory: {open_err}")
             except Exception as e:
                 from utils.error_handler import ErrorHandler
 
@@ -409,11 +422,7 @@ class ToolsTab(ttk.Frame):
 
         out_path = self._get_out_path_for_packing(src)
 
-        PLATFORM_PATTERNS = {
-            "win": "*.{node,dll,exe}",
-            "nix": "*.{node,dll,so,dylib,bin}",
-        }
-        pat = PLATFORM_PATTERNS.get(
+        pat = self._PLATFORM_PATTERNS.get(
             self.app.var_plat.get() if self.app.var_plat else "win", "*.{node,dll,exe}"
         )
 
@@ -475,13 +484,11 @@ class ToolsTab(ttk.Frame):
         if new_offset is not None:
             try:
                 cfg = get_config()
-                if not cfg.config.has_section("main"):
-                    cfg.config.add_section("main")
-                cfg.config.set("main", "FUSE_ASAR_INTEGRITY_OFFSET", str(new_offset))
-                cfg.invalidate_cache()
-
-                if not cfg.save():
-                    raise OSError("AppConfig.save() returned False")
+                # 修复说明（H1）：原代码直接操作 cfg.config（内部 ConfigParser），
+                # 绕过了 _config_rw_lock 的所有线程安全保护。
+                # 现改为调用 set_main_config() 公开接口，确保全程持锁操作。
+                if not cfg.set_main_config("FUSE_ASAR_INTEGRITY_OFFSET", new_offset):
+                    raise OSError("set_main_config() returned False")
 
                 success_msg = T("msg_fuse_saved").format(offset=new_offset)
                 messagebox.showinfo(T("title_success"), success_msg)

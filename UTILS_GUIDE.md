@@ -98,7 +98,6 @@ async_mgr.cancel("my_task")
 | `PatcherFileNotFoundError` | 文件未找到异常 |
 | `PatcherPermissionError` | 权限异常 |
 | `AsarCorruptedError` | ASAR 文件损坏异常 |
-| `NodeNotFoundError` | Node.js 未找到异常 |
 | `ConfigError` | 配置错误异常 |
 
 ### 使用示例
@@ -197,8 +196,6 @@ safe_extract_zip("patch.zip", "C:/game/resources")
 |--------|------|
 | `retry_operation(operation, max_retries, delay, operation_name)` | 重试可能失败的操作 |
 | `force_cleanup_dir(temp_dir, max_retries)` | 强制清理临时目录（处理只读文件） |
-| `TempDirectoryManager` | 临时目录上下文管理器（自动清理） |
-| `temp_directory()` | 临时目录上下文管理器（函数式接口） |
 | `schedule_delayed_cleanup()` | 延迟清理调度 |
 
 ### 使用示例
@@ -207,8 +204,7 @@ safe_extract_zip("patch.zip", "C:/game/resources")
 from utils.cleanup import (
     retry_operation, 
     force_cleanup_dir,
-    TempDirectoryManager,
-    temp_directory
+    schedule_delayed_cleanup,
 )
 
 # 重试操作
@@ -217,19 +213,8 @@ success = retry_operation(lambda: risky_operation(), max_retries=3)
 # 强制清理目录
 force_cleanup_dir("C:\\temp\\game_patch")
 
-# 使用 TempDirectoryManager（推荐）
-with TempDirectoryManager(prefix="patch_") as temp_dir:
-    # temp_dir 是临时目录路径
-    process_files(temp_dir)
-    
-    # 如果需要保留目录用于调试
-    if debug_mode:
-        manager.keep()
-# 自动清理
-
-# 函数式接口
-with temp_directory(prefix="test_") as temp:
-    run_tests(temp)
+# 延迟清理（后台线程等待60秒后清理）
+schedule_delayed_cleanup("C:\\temp\\old_dir", delay_seconds=60)
 ```
 
 ---
@@ -346,7 +331,6 @@ with open(file_path, "rb") as f:
 |--------|------|
 | `@validate_path(should_exist, path_type)` | 路径存在性和类型验证 |
 | `@validate_not_empty` | 非空字符串验证 |
-| `@validate_asar_source` | ASAR源目录必需文件验证 |
 
 ### 使用示例
 
@@ -383,17 +367,24 @@ except ValidationError as e:
 
 | 函数 | 描述 |
 |------|------|
-|  | 读取 ASAR 头部大小 |
-|  | 读取 ASAR 头部 JSON 元数据 |
-|  | 获取 ASAR 内部文件的 SHA256 Hash |
+| `get_file_hash_in_asar(asar_path, file_path)` | 获取 ASAR 内部文件的 SHA256 Hash |
 
 ### 核心特性
 
 - **纯 Python 实现**：无需 Node.js，直接读取 ASAR 二进制格式
-- **内存映射**：使用  进行高效文件读取
+- **内存映射**：使用 `mmap`/`seek` 进行高效文件读取
 - **Hash 验证**：支持 Steam 更新检测，快速比对文件完整性
 
 ### 使用示例
+
+```python
+from utils.asar_utils import get_file_hash_in_asar
+
+# 获取 ASAR 内文件的 Hash（无需解包）
+file_hash = get_file_hash_in_asar("app.asar", "tyrano/lang.js")
+if file_hash:
+    print(f"File hash: {file_hash}")
+```
 
 
 

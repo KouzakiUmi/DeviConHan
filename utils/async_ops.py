@@ -12,6 +12,7 @@ __all__ = [
     "get_async_manager",
 ]
 
+import atexit
 import inspect
 import logging
 import threading
@@ -79,6 +80,10 @@ class AsyncOperationManager:
         self._operations: Dict[str, ProgressInfo] = {}
         self._lock = threading.Lock()
         self._progress_callback: Optional[Callable[[ProgressInfo], None]] = None
+        # 修复说明：原实现依赖 __del__ 清理线程池，但 Python 的 __del__
+        # 调用时机不可靠（循环引用阻止、解释器退出时全局变量已为 None）。
+        # 修复：使用 atexit 注册确定性的退出时清理。
+        atexit.register(self._atexit_shutdown)
 
     def set_progress_callback(self, callback: Callable[[ProgressInfo], None]) -> None:
         """
@@ -123,6 +128,18 @@ class AsyncOperationManager:
         accepts_cancel = "cancel_event" in sig.parameters
 
         with self._lock:
+            # M4 修复：拒绝对正在运行中的同名 operation_id 重复提交。
+            # 原实现直接覆盖旧的 ProgressInfo，导致旧的 wrapped_func
+            # 仍持有旧对象引用并在完成时调用 _notify_progress，
+            # 而此时 _operations 字典里就已是新对象，导致状态孤儿。
+            existing = self._operations.get(operation_id)
+            if existing is not None and existing.state == OperationState.RUNNING:
+                logger.warning(
+                    f"Operation '{operation_id}' is already running. "
+                    "Ignoring duplicate submit."
+                )
+                return existing.future  # type: ignore[return-value]
+
             # 防积压：在持锁状态内检查并清理，避免 TOCTOU 竞态
             if len(self._operations) >= MAX_HISTORY_OPERATIONS:
                 completed_states = {
@@ -228,14 +245,25 @@ class AsyncOperationManager:
 
         Returns:
             bool: 是否成功取消
+
+        修复说明（C2 死锁）：
+        原实现在持有 self._lock 的状态下调用 _notify_progress()，
+        而 _notify_progress 会执行外部回调，外部回调若调用
+        get_progress() / get_all_operations() 等任何需要获取
+        self._lock 的方法，就会因为 threading.Lock() 不可重入而
+        发生死锁。
+        修复：在锁内仅修改状态，将 _notify_progress 移到锁外调用。
         """
+        progress_to_notify: Optional[ProgressInfo] = None
+        result = False
+
         with self._lock:
             if operation_id not in self._operations:
                 return False
 
             progress_info = self._operations[operation_id]
 
-            # 设置 cancel_event
+            # 设置 cancel_event，通知运行中的任务尽早退出
             if hasattr(progress_info, "cancel_event"):
                 progress_info.cancel_event.set()
 
@@ -245,9 +273,14 @@ class AsyncOperationManager:
                 if cancelled:
                     progress_info.state = OperationState.CANCELLED
                     progress_info.message = "Cancelled"
-                    self._notify_progress(progress_info)
-                return cancelled
-            return False
+                    progress_to_notify = progress_info
+                result = cancelled
+
+        # 在锁外执行回调，避免死锁
+        if progress_to_notify is not None:
+            self._notify_progress(progress_to_notify)
+
+        return result
 
     def get_progress(self, operation_id: str) -> Optional[ProgressInfo]:
         """
@@ -300,10 +333,22 @@ class AsyncOperationManager:
         """退出上下文时关闭线程池"""
         self.shutdown(wait=False)
 
-    def __del__(self) -> None:
-        """析构函数，确保线程池被正确关闭"""
+    def _atexit_shutdown(self) -> None:
+        """解释器退出时的清理钩子（通过 atexit 注册，比 __del__ 更可靠）"""
         try:
-            self.shutdown(wait=False)
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+    def __del__(self) -> None:
+        """析构函数（保留作为次要保险，主要清理由 atexit 完成）
+
+        修复说明：__del__ 的调用时机在 Python 中不可靠（循环引用会阻止
+        调用，解释器退出阶段全局变量已为 None 会导致 AttributeError）。
+        主要清理责任已转移到 atexit 注册的 _atexit_shutdown()。
+        """
+        try:
+            self._executor.shutdown(wait=False)
         except Exception:
             pass
 

@@ -34,6 +34,27 @@ def has_embedded_patch():
     return os.path.exists(patch_zip) or os.path.exists(patch_dir)
 
 
+def _atomic_write_json(file_path, data):
+    """
+    原子写入 JSON 文件：先写 .tmp 临时文件，再 os.replace 原子替换。
+    防止写入中途崩溃导致文件截断损坏（steam.py 依赖这些文件判断补丁状态）。
+    """
+    temp_file = file_path + ".tmp"
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_file, file_path)
+    except Exception:
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
+        raise
+
+
 def save_patch_info(base_dir, asar_path, bak_path):
     """
     保存补丁信息到 .patch_info 文件
@@ -51,8 +72,7 @@ def save_patch_info(base_dir, asar_path, bak_path):
         "timestamp": datetime.datetime.now().isoformat(),
     }
 
-    with open(info_file, "w", encoding="utf-8") as f:
-        json.dump(info, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(info_file, info)
 
     logger.info(f"Saved patch info to: {info_file}")
 
@@ -68,18 +88,15 @@ def save_patch_meta(base_dir, temp_dir):
     patch_meta_file = get_config().patch_meta_file
     meta_file = os.path.join(base_dir, patch_meta_file)
 
-    # 收集补丁文件的信息
     meta_info = {"timestamp": datetime.datetime.now().isoformat(), "patch_files": {}}
 
-    # 记录关键文件的哈希值
     check_files = get_config().check_files_for_update
     for file_path in check_files:
         full_path = os.path.join(temp_dir, file_path)
         if os.path.exists(full_path):
             meta_info["patch_files"][file_path] = compute_file_hash(full_path)
 
-    with open(meta_file, "w", encoding="utf-8") as f:
-        json.dump(meta_info, f, indent=2, ensure_ascii=False)
+    _atomic_write_json(meta_file, meta_info)
 
     logger.info(f"Saved patch meta to: {meta_file}")
 

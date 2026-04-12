@@ -9,7 +9,6 @@ __all__ = [
     "ValidationError",
     "validate_path",
     "validate_not_empty",
-    "validate_asar_source",
 ]
 
 import functools
@@ -94,45 +93,13 @@ def validate_not_empty(*arg_names: str) -> Callable:
             for name in names_to_check:
                 if name in bound_args.arguments:
                     val = bound_args.arguments[name]
-                    if isinstance(val, str) and not val.strip():
+                    # 修复说明（M4）：原实现僅检查 str 类型，若参数为 None
+                    # （Optional[str] 常见）则静默跳过。None 同样是不合法的空输入。
+                    # 进一步修复：对于预期接收路径字符串的参数，传入 int(0)/ []/False
+                    # 也应视为无效输入。修复：增加 not isinstance(val, str) 检查。
+                    if val is None or not isinstance(val, str) or not val.strip():
                         raise ValidationError(
-                            f"Empty string argument not allowed: {name}"
-                        )
-
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
-def validate_asar_source(arg_name: str = "src") -> Callable:
-    """
-    验证ASAR源目录的装饰器
-
-    检查目录是否包含必需的ASAR文件（package.json, index.html）
-    """
-
-    def decorator(func: Callable) -> Callable:
-        sig = inspect.signature(func)
-
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            bound_args = sig.bind(*args, **kwargs)
-            bound_args.apply_defaults()
-
-            if arg_name in bound_args.arguments:
-                src_path = bound_args.arguments[arg_name]
-                if src_path and os.path.isdir(src_path):
-                    required_files = ["package.json", "index.html"]
-                    missing = [
-                        f
-                        for f in required_files
-                        if not os.path.exists(os.path.join(src_path, f))
-                    ]
-                    if missing:
-                        raise ValidationError(
-                            f"ASAR source directory missing required files: {missing}"
+                            f"Empty or None argument not allowed: {name}"
                         )
 
             return func(*args, **kwargs)

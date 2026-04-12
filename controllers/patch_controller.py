@@ -17,6 +17,7 @@ from utils.cleanup import force_cleanup_dir
 from utils.file_ops import safe_extract_zip
 from utils.language import T
 from utils.paths import get_resource_path
+from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +60,9 @@ class PatchController:
             (是否满足, 错误消息)
         """
         base = os.path.abspath(".")
-        res = os.path.join(base, get_config().resource_dir)
-        asar = os.path.join(res, "app.asar")
+        cfg = get_config()
+        res = os.path.join(base, cfg.resource_dir)
+        asar = os.path.join(res, cfg.target_asar_name)
 
         if not os.path.exists(res):
             return False, T("err_res_missing", "❌ 错误: 缺少 resources 文件夹。")
@@ -90,18 +92,39 @@ class PatchController:
         """
         _check_cancelled = kwargs.get("_check_cancelled")
         base = os.path.abspath(".")
-        res = os.path.join(base, get_config().resource_dir)
-        asar = os.path.join(res, "app.asar")
+        cfg = get_config()
+        res = os.path.join(base, cfg.resource_dir)
+        asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
         temp = None
 
+        # 修复说明（M2）：check_prerequisites() 定义了但从未被调用。
+        # 在开始正式流程前先进行前置条件检查，避免后续处理中才发现缺失关键文件。
+        ok, prereq_err = self.check_prerequisites()
+        if not ok:
+            return False, None, prereq_err
+
+        # 构建回调函数以解耦GUI
+        on_error = getattr(gui_app, "thread_safe_showerror", None) if gui_app else None
+        on_ask_yes_no = (
+            getattr(gui_app, "thread_safe_askyesno", None) if gui_app else None
+        )
+        on_info = getattr(gui_app, "thread_safe_showinfo", None) if gui_app else None
+
         # Steam 更新检测
         should_continue, cancel_or_error = handle_steam_update(
-            self.core, base, bak, asar, log_callback=self._log, gui_app=gui_app
+            self.core,
+            base,
+            bak,
+            asar,
+            log_callback=self._log,
+            on_error=on_error,
+            on_ask_yes_no=on_ask_yes_no,
+            on_info=on_info,
         )
 
         if cancel_or_error or not should_continue:
-            return False, temp, "Cancelled or error"
+            return False, temp, BATCH_CANCEL_OR_ERROR_MSG
 
         # 创建备份
         if not os.path.exists(bak):
@@ -113,7 +136,9 @@ class PatchController:
                 return False, None, f"Failed to create backup: {e}"
 
         # 创建临时目录
-        temp = os.path.join(base, "temp_patch")
+        # 修复说明：原实现硬编码 "temp_patch"，忽略 cfg.temp_patch_dir 配置项，
+        # 导致修改 config.ini 中的 TEMP_PATCH_DIR 不生效。修复后使用配置值。
+        temp = os.path.join(base, cfg.temp_patch_dir)
         if os.path.exists(temp):
             if not force_cleanup_dir(temp):
                 return (
@@ -162,31 +187,38 @@ class PatchController:
         )
 
         # 保存补丁信息
+        # 修复说明（M5）：原实现中 save_patch_info / save_patch_meta 的
+        # OSError / IOError 若不捕获，将绕过后续清理逻辑直接传播，
+        # 遗留脂临时目录。
         self._log("Saving patch information...")
-        save_patch_info(base, asar, bak)
-        save_patch_meta(base, temp)
+        try:
+            save_patch_info(base, asar, bak)
+            save_patch_meta(base, temp)
+        except Exception as e:
+            logger.warning(
+                f"Failed to save patch info/meta (non-fatal, patch still applied): {e}"
+            )
+            self._log(f"Warning: could not save patch info: {e}")
 
         # 清理临时备份文件
-        self._cleanup_temp_files(base, bak)
+        self._cleanup_temp_files(base)
 
         self._log("Patch applied successfully.")
         self._log(T("patch_done", "✅ 安装完成！"))
 
         return True, temp, ""
 
-    def _cleanup_temp_files(self, base_dir: str, bak_path: str) -> None:
-        """清理临时备份文件"""
-        temp_bak = bak_path + ".old"
+    def _cleanup_temp_files(self, base_dir: str) -> None:
+        """清理临时备份文件 (例如残留的 .patch_info.old 等)"""
         patch_info_file = get_config().patch_info_file
         temp_info = os.path.join(base_dir, patch_info_file + ".old")
 
-        for tmp_file in [temp_bak, temp_info]:
-            if os.path.exists(tmp_file):
-                try:
-                    os.remove(tmp_file)
-                    logger.debug(f"Removed old temp file: {tmp_file}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove temp backup file {tmp_file}: {e}")
+        if os.path.exists(temp_info):
+            try:
+                os.remove(temp_info)
+                logger.debug(f"Removed old temp file: {temp_info}")
+            except Exception as e:
+                logger.warning(f"Failed to remove temp file {temp_info}: {e}")
 
     def handle_error(
         self, base_dir: str, asar_path: str, bak_path: str, error: Exception
@@ -199,16 +231,6 @@ class PatchController:
             return
 
         try:
-            temp_bak = bak_path + ".old"
-            if os.path.exists(temp_bak):
-                self._log("Restoring backup due to error...")
-                if os.path.exists(bak_path):
-                    try:
-                        os.remove(bak_path)
-                    except Exception as e_rm:
-                        logger.error(f"Failed to remove corrupted backup: {e_rm}")
-                shutil.move(temp_bak, bak_path)
-
             if os.path.exists(asar_path):
                 try:
                     os.remove(asar_path)

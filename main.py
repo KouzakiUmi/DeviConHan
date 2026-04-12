@@ -50,6 +50,11 @@ def main() -> int:
     """
     args = parse_arguments()
 
+    # --verbose 和 --quiet 不能同时使用
+    if args.verbose and args.quiet:
+        print("Error: --verbose and --quiet are mutually exclusive.", file=sys.stderr)
+        return 1
+
     # 1. 初始化日志系统（最先初始化，确保后续操作都能记录日志）
     log_kwargs = {"verbose": args.verbose, "quiet": args.quiet}
     if args.log_file:
@@ -61,9 +66,11 @@ def main() -> int:
 
     # 3. 获取配置（依赖日志系统和语言设置）
     config = get_config()
-    config_valid, issues = config.validate_config()
+    config_valid, errors, warnings = config.validate_config()
+    if warnings:
+        logger.warning(f"Configuration warnings: {warnings}")
     if not config_valid:
-        logger.critical(f"Configuration validation failed: {issues}")
+        logger.critical(f"Configuration validation failed: {errors}")
         return 1
 
     if args.batch:
@@ -91,9 +98,16 @@ def main() -> int:
                 _ctypes = ctypes
                 # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
                 if ctypes.windll.kernel32.AllocConsole():
+                    # M6 修复：先将两个句柄都开好再赋值给 sys。
+                    # 原实现如果 stdout 成功公 stderr 失败，sys.stderr
+                    # 保持原始值但 _console_opened=True，finaliy 块
+                    # 会错误地关闭原始 stderr。
+                    # 修复：先开好所有句柄，全部成功再设置标志位。
+                    new_stdout = open("CONOUT$", "w", encoding="utf-8")
+                    new_stderr = open("CONOUT$", "w", encoding="utf-8")
+                    sys.stdout = new_stdout
+                    sys.stderr = new_stderr
                     _console_opened = True
-                    sys.stdout = open("CONOUT$", "w", encoding="utf-8", closefd=False)
-                    sys.stderr = open("CONOUT$", "w", encoding="utf-8", closefd=False)
             except Exception as e:
                 logger.warning(f"Failed to allocate console: {e}")
 
@@ -103,7 +117,9 @@ def main() -> int:
         app.mainloop()
         return 0
     except Exception as e:
-        logger.exception(f"Fatal error in main: {e}")
+        # 修复说明（L3）：logger.exception() 自动附加完整 traceback，
+        # 其中已包含异常信息，无需在格式化字符串中再次嵌入 "{e}"。
+        logger.exception("Fatal error in main")
         # messagebox.showerror("Fatal Error", f"An unexpected error occurred:\n{str(e)}")
         return 1
     finally:

@@ -149,7 +149,7 @@ def validate_path_exists(path: str, path_type: str = "Resource") -> Tuple[bool, 
         path_type: 路径类型描述（用于日志）
 
     Returns:
-        tuple[bool, str]: (是否存在, 错误消息)
+        Tuple[bool, str]: (是否存在, 错误消息)
     """
     if not path:
         return False, f"{path_type} path is empty"

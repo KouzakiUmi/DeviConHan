@@ -9,9 +9,12 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
-
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,8 +25,58 @@ jobs:
           python-version: '3.11'
           # cache: 'pip'
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Install PyInstaller and Asar
+        run: pip install pyinstaller asar
+
+      - name: Run Windows Pack Script
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: call Pack.cmd
+
+      - name: Run Mac/Linux Pack Script
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          chmod +x Pack.sh
+          ./Pack.sh
+
+      - name: Prepare Artifacts for Release
+        shell: bash
+        run: |
+          mkdir -p release_artifacts
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp dist/*.exe release_artifacts/ 2>/dev/null || true
+          else
+            # Ensure correct extension for macos app bundles vs linux binaries
+            if [ "${{ matrix.os }}" = "macos-latest" ]; then
+              for app in dist/*.app; do
+                if [ -d "$app" ]; then
+                  zip -r "release_artifacts/$(basename "$app" .app)_macos.zip" "$app"
+                fi
+              done
+            fi
+            
+            # Grab raw binaries if any
+            for f in dist/*; do
+              if [ -f "$f" ]; then
+                cp "$f" "release_artifacts/$(basename "$f")_${{ matrix.os }}"
+              fi
+            done
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: release_artifacts/*
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Generate Build Info
         id: date
@@ -31,18 +84,21 @@ jobs:
         run: |
           echo "build_time=$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
 
-      # 修正：直接调用 Pack.cmd
-      - name: Run Pack Script
-        shell: cmd
-        run: call Pack.cmd
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all_artifacts
+          pattern: build-*
+          merge-multiple: true
 
       - name: Update Nightly Tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -d nightly 2>nul || echo "No local tag"
+          git tag -d nightly 2>/dev/null || echo "No local tag"
+          git push origin :refs/tags/nightly || echo "No remote tag"
           git tag nightly
-          git push origin nightly --force
+          git push origin nightly
 
       - name: Release Nightly
         uses: softprops/action-gh-release@v2
@@ -50,14 +106,15 @@ jobs:
           tag_name: nightly
           name: "最新测试补丁 (Nightly) - ${{ steps.date.outputs.build_time }}"
           body: |
-            ### 🚧 自动构建版本
+            ### 🚧 自动跨平台构建版本
             **构建信息:**
             - 📅 时间: ${{ steps.date.outputs.build_time }} (CST)
             - #️⃣ 提交: ${{ github.sha }}
+            - 💻 平台: Windows / macOS / Linux
             
             **更新日志:**
             ${{ github.event.head_commit.message }}
-          files: dist/*.exe
+          files: all_artifacts/*
           prerelease: true
           make_latest: true
         env:
