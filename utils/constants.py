@@ -71,9 +71,14 @@ REQUIRED_ASAR_FILES: List[str] = ["package.json", "index.html"]
 FUSE_ENABLED_BYTE: bytes = b"\x31"
 FUSE_DISABLED_BYTE: bytes = b"\x30"
 FUSE_VALIDATION_MIN_SIZE: int = 1024
+FUSE_PARTIAL_HASH_HEAD_SIZE: int = 1024 * 1024  # 1 MB
+FUSE_PARTIAL_HASH_TAIL_SIZE: int = 1024 * 1024  # 1 MB
+
+# ================= ASAR 解包常量 =================
+ASAR_UNPACK_PATTERN: str = "*.{node,dll,so,dylib,exe,bin}"
 
 # ================= 配置验证常量 =================
-TIME_DIFF_THRESHOLD_MAX_DAYS: int = 365
+TIME_DIFF_THRESHOLD_MAX_DAYS: int = 2000
 
 # ================= 默认配置值 =================
 DEFAULT_ASAR_TIMEOUT_SECONDS: int = 300  # ASAR 操作超时时间（秒）

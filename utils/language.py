@@ -129,6 +129,17 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "err_path_not_exist": "路径不存在。",
         "err_delete_failed": "❌ 删除失败，请查看日志。",
         "err_permission_denied": "❌ 权限被拒绝，无法访问。",
+        # System Errors
+        "err_verbose_quiet_exclusive": "错误: --verbose 和 --quiet 不能同时使用。",
+        "err_failed_init_corelogic": "初始化 CoreLogic 失败: {error}",
+        "err_fatal_error": "致命错误",
+        "err_unexpected_error": "发生意外错误:\n{error}",
+        "err_init_failed": "初始化失败: {error}",
+        "err_config_load_failed": "配置加载失败: {error}",
+        "err_config_save_failed": "配置保存失败: {error}",
+        "err_config_validation_failed": "配置验证失败: {errors}",
+        "err_operation_conflict": "无法启动操作: 存在冲突的操作正在进行 ({operations})。",
+        "err_lock_acquire_failed": "获取锁失败: {error}",
         # Steam Update Detection
         "title_game_files_missing": "游戏文件缺失",
         "msg_game_files_missing": "app.asar 和备份文件都不存在。\n这可能表明：\n1. 游戏安装损坏\n2. 游戏下载不完整\n3. 文件被手动删除\n\n请通过 Steam 验证游戏完整性或重新安装游戏。",
@@ -265,6 +276,17 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "err_path_not_exist": "Path does not exist.",
         "err_delete_failed": "❌ Failed to delete. Check logs.",
         "err_permission_denied": "❌ Permission denied.",
+        # System Errors
+        "err_verbose_quiet_exclusive": "Error: --verbose and --quiet are mutually exclusive.",
+        "err_failed_init_corelogic": "Failed to initialize CoreLogic: {error}",
+        "err_fatal_error": "Fatal Error",
+        "err_unexpected_error": "An unexpected error occurred:\n{error}",
+        "err_init_failed": "Initialization failed: {error}",
+        "err_config_load_failed": "Failed to load config: {error}",
+        "err_config_save_failed": "Failed to save config: {error}",
+        "err_config_validation_failed": "Configuration validation failed: {errors}",
+        "err_operation_conflict": "Cannot start operation: conflicting operations in progress ({operations}).",
+        "err_lock_acquire_failed": "Failed to acquire lock: {error}",
         # Steam Update Detection
         "title_game_files_missing": "Game Files Missing",
         "msg_game_files_missing": "Neither app.asar nor backup file exists.\nThis could indicate:\n1. Corrupted game installation\n2. Incomplete game download\n3. Files were manually deleted\n\nPlease verify game integrity through Steam or reinstall the game.",
@@ -397,6 +419,17 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "warn_missing_files": "警告: 必要な asar ファイル（package.json、index.html など）が見つかりません。\n\n有効な asar ソースディレクトリではない可能性があります。\n\n続行しますか？",
         "warn_operation_in_progress": "操作が進行中です。お待ちください...",
         "err_asar_cmd_missing": "エラー: 'asar' コマンドが見つかりません。",
+        # System Errors
+        "err_verbose_quiet_exclusive": "エラー: --verbose と --quiet は同時に使用できません。",
+        "err_failed_init_corelogic": "CoreLogic の初期化に失敗しました: {error}",
+        "err_fatal_error": "致命的なエラー",
+        "err_unexpected_error": "予期しないエラーが発生しました:\n{error}",
+        "err_init_failed": "初期化に失敗しました: {error}",
+        "err_config_load_failed": "設定の読み込みに失敗しました: {error}",
+        "err_config_save_failed": "設定の保存に失敗しました: {error}",
+        "err_config_validation_failed": "設定の検証に失敗しました: {errors}",
+        "err_operation_conflict": "操作を開始できません: 競合する操作が進行中です ({operations})。",
+        "err_lock_acquire_failed": "ロックの取得に失敗しました: {error}",
         "err_save_dir_not_exist": "セーブフォルダが存在しません。",
         "err_backup_not_exist": "バックアップファイル/フォルダが存在しません。",
         "err_path_not_exist": "パスが存在しません。",
@@ -544,15 +577,12 @@ def T(key: str, default: str = "") -> str:
         return en_dict[key]
 
     logger.debug(
-        f"Missing translation key: '{key}' "
-        f"(lang={lang_code}, fallback='{default or key}')"
+        f"Missing translation key: '{key}' (lang={lang_code}, fallback='{default or key}')"
     )
     return default if default else key
 
 
-def get_font(
-    size: int = 9, weight: str = "normal"
-) -> Union[Tuple[str, int], Tuple[str, int, str]]:
+def get_font(size: int = 9, weight: str = "normal") -> Union[Tuple[str, int], Tuple[str, int, str]]:
     """
     根据平台和语言返回合适的 UI 字体
 
@@ -653,8 +683,7 @@ def init_lang() -> None:
 
 
 def _load_saved_language() -> Optional[str]:
-    """从配置文件加载保存的语言偏好
-    """
+    """从配置文件加载保存的语言偏好"""
     try:
         # 延迟导入避免循环依赖（language -> config -> language）
         from core.config import get_config

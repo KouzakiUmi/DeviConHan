@@ -19,24 +19,16 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
-        "--batch", action="store_true", help="Run in batch mode (no GUI)"
-    )
-    parser.add_argument(
-        "--auto", action="store_true", help="Automatically detect and patch game"
-    )
+    parser.add_argument("--batch", action="store_true", help="Run in batch mode (no GUI)")
+    parser.add_argument("--auto", action="store_true", help="Automatically detect and patch game")
     parser.add_argument(
         "--fuse",
         metavar="FILE",
         help="Remove Fuse integrity check from specified executable",
     )
     parser.add_argument("--log-file", metavar="PATH", help="Custom log file path")
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Suppress non-error output"
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress non-error output")
 
     return parser.parse_args()
 
@@ -64,13 +56,22 @@ def main() -> int:
     # 2. 初始化语言设置（依赖日志系统）
     init_lang()
 
-    # 3. 获取配置（依赖日志系统和语言设置）
-    config = get_config()
-    config_valid, errors, warnings = config.validate_config()
-    if warnings:
-        logger.warning(f"Configuration warnings: {warnings}")
-    if not config_valid:
-        logger.critical(f"Configuration validation failed: {errors}")
+    # 3. 系统引导检查（包含配置验证、状态检查、磁盘检查）
+    try:
+        from core.bootstrap import bootstrap_system
+
+        bootstrap_ok, bootstrap_messages = bootstrap_system(
+            skip_state_check=args.batch  # 批处理模式下跳过状态检查
+        )
+
+        for msg in bootstrap_messages:
+            if "Warning:" in msg:
+                logger.warning(msg)
+            else:
+                logger.info(msg)
+
+    except Exception as e:
+        logger.critical(f"System bootstrap failed: {e}")
         return 1
 
     if args.batch:
@@ -91,6 +92,7 @@ def main() -> int:
     _original_stderr = sys.stderr
     _ctypes = None
     if sys.platform.startswith("win") and not args.batch:
+        config = get_config()
         if config.get_gui_config("show_console", False):
             try:
                 import ctypes
@@ -111,9 +113,9 @@ def main() -> int:
         app = App()
         app.mainloop()
         return 0
-    except Exception:
+    except Exception as e:
         logger.exception("Fatal error in main")
-        # messagebox.showerror("Fatal Error", f"An unexpected error occurred:\n{str(e)}")
+        # messagebox.showerror(T("err_fatal_error"), T("err_unexpected_error", error=str(e)))
         return 1
     finally:
         # 清理控制台句柄

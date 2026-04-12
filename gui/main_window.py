@@ -27,6 +27,7 @@ from utils.language import T, get_font, get_mono_font
 from utils.paths import get_resource_path, get_user_config_path
 from utils.performance import get_performance_monitor
 from utils.async_ops import get_async_manager, ProgressInfo
+from utils.operation_lock import get_operation_lock, OperationType
 from utils.constants import (
     CORRUPTED_SUFFIX,
     DEFAULT_DIALOG_TIMEOUT,
@@ -63,15 +64,13 @@ class App(tk.Tk):
             # 初始化核心逻辑（可能抛出异常）
             self.core = CoreLogic()
             self.save_service = SaveService(self.core)
-            self.save_controller = SaveManagerController(
-                self.save_service, log_callback=self.log
-            )
+            self.save_controller = SaveManagerController(self.save_service, log_callback=self.log)
             self.patch_controller = PatchController(self.core, log_callback=self.log)
         except Exception as e:
-            logger.error(f"Failed to initialize CoreLogic: {e}")
-            messagebox.showerror(T("title_error", "Initialization Error"), str(e))
+            logger.error(T("err_failed_init_corelogic").format(error=str(e)))
+            messagebox.showerror(T("title_error"), str(e))
             self.destroy()
-            raise RuntimeError(f"Initialization failed: {e}") from e
+            raise RuntimeError(T("err_init_failed").format(error=str(e))) from e
 
         self.log_callback = log_callback  # 允许外部设置日志回调
         self.app_config = None
@@ -86,6 +85,9 @@ class App(tk.Tk):
         # 初始化异步任务管理器
         self.async_manager = get_async_manager()
         self.async_manager.set_progress_callback(self._on_async_progress)
+
+        # 初始化操作锁
+        self._op_lock = get_operation_lock()
 
         self._ui_queue = queue.Queue(maxsize=500)
         self._process_ui_queue()
@@ -124,23 +126,15 @@ class App(tk.Tk):
         self.config(menu=menubar)
         lang_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=T("menu_lang"), menu=lang_menu)
-        lang_menu.add_command(
-            label="English", command=lambda lang="en": self.change_lang(lang)
-        )
-        lang_menu.add_command(
-            label="简体中文", command=lambda lang="cn": self.change_lang(lang)
-        )
-        lang_menu.add_command(
-            label="日本語", command=lambda lang="jp": self.change_lang(lang)
-        )
+        lang_menu.add_command(label="English", command=lambda lang="en": self.change_lang(lang))
+        lang_menu.add_command(label="简体中文", command=lambda lang="cn": self.change_lang(lang))
+        lang_menu.add_command(label="日本語", command=lambda lang="jp": self.change_lang(lang))
 
         about_menu = tk.Menu(menubar, tearoff=0)
         about_label = T("menu_about")
         about_app_label = T("menu_about_app")
         menubar.add_cascade(label=about_label, menu=about_menu)
-        about_menu.add_command(
-            label=about_app_label, command=lambda: show_about_dialog(self)
-        )
+        about_menu.add_command(label=about_app_label, command=lambda: show_about_dialog(self))
 
         style = ttk.Style()
         if sys.platform.startswith("win"):
@@ -200,9 +194,7 @@ class App(tk.Tk):
             if os.path.exists(self.config_file):
                 file_size = os.path.getsize(self.config_file)
                 if file_size > MAX_CONFIG_FILE_SIZE:
-                    logger.warning(
-                        f"Config file too large ({file_size} bytes), ignoring"
-                    )
+                    logger.warning(f"Config file too large ({file_size} bytes), ignoring")
                     return True
 
                 # 仅读取内容用于完整性检查，不重新解析
@@ -218,9 +210,7 @@ class App(tk.Tk):
                         shutil.copy2(self.config_file, backup_file)
                         logger.info(f"Backed up corrupted config to: {backup_file}")
                     except Exception as backup_err:
-                        logger.warning(
-                            f"Failed to backup corrupted config: {backup_err}"
-                        )
+                        logger.warning(f"Failed to backup corrupted config: {backup_err}")
                     # 配置文件损坏：让 AppConfig 重新从默认配置加载
                     self.app_config.reload()
                     return True
@@ -233,7 +223,7 @@ class App(tk.Tk):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to load config: {e}")
+            logger.error(T("err_config_load_failed").format(error=str(e)))
             self.app_config = get_config()  # 使用默认配置
             return False
 
@@ -290,12 +280,11 @@ class App(tk.Tk):
             return True
 
         except Exception as e:
-            logger.error(f"Failed to save config: {e}")
+            logger.error(T("err_config_save_failed").format(error=str(e)))
             return False
 
     def change_lang(self, code):
-        """切换界面语言
-        """
+        """切换界面语言"""
         if self.is_operating:
             from tkinter import messagebox
 
@@ -390,9 +379,7 @@ class App(tk.Tk):
         except Exception:
             return False
 
-    def _thread_safe_dialog(
-        self, dialog_func, title, message, timeout, default_value, log_prefix
-    ):
+    def _thread_safe_dialog(self, dialog_func, title, message, timeout, default_value, log_prefix):
         """
         通用线程安全对话框方法。
 
@@ -451,6 +438,69 @@ class App(tk.Tk):
         return self._thread_safe_dialog(
             messagebox.showinfo, title, message, timeout, None, "thread_safe_showinfo"
         )
+
+    def _check_operation_lock(self, op_type: OperationType, show_warning: bool = True) -> bool:
+        """
+        检查是否可以开始指定操作
+
+        Args:
+            op_type: 操作类型
+            show_warning: 如果冲突，是否显示警告对话框
+
+        Returns:
+            bool: 是否可以开始操作
+        """
+        if self._op_lock.is_operation_running(op_type):
+            if show_warning:
+                messagebox.showwarning(
+                    T("title_warning", "Operation in Progress"),
+                    T(
+                        "warn_operation_in_progress",
+                        "An operation is already in progress. Please wait.",
+                    ),
+                )
+            return False
+
+        # 检查是否有互斥操作在进行
+        running = self._op_lock.get_running_operations()
+        if running:
+            if show_warning:
+                op_names = ", ".join([op.value for op in running])
+                messagebox.showwarning(
+                    T("title_warning", "Conflicting Operation"),
+                    T("err_operation_conflict").format(operations=op_names),
+                )
+            return False
+
+        return True
+
+    def _acquire_operation_lock(self, op_type: OperationType) -> bool:
+        """
+        获取操作锁
+
+        Args:
+            op_type: 操作类型
+
+        Returns:
+            bool: 是否成功获取
+        """
+        if not self._op_lock.acquire(op_type):
+            logger.warning(f"Failed to acquire lock for {op_type.value}")
+            return False
+        self.is_operating = True
+        self.toggle_progress(True)
+        return True
+
+    def _release_operation_lock(self, op_type: OperationType) -> None:
+        """
+        释放操作锁
+
+        Args:
+            op_type: 操作类型
+        """
+        self._op_lock.release(op_type)
+        self.is_operating = False
+        self.toggle_progress(False)
 
     def _on_async_progress(self, progress_info: ProgressInfo) -> None:
         """

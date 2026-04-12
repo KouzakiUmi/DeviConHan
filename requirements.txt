@@ -1,0 +1,5 @@
+# Runtime dependencies for Tyrano Patcher
+# This file is for compatibility; main dependencies are defined in pyproject.toml
+
+# No runtime dependencies required - this is a pure Python application
+# Build-time dependencies are handled by pyproject.toml

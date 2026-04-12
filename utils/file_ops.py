@@ -5,7 +5,12 @@
 提供复制目录并校验哈希值等高级文件操作。
 """
 
-__all__ = ["compute_file_hash", "migrate_backup", "safe_extract_zip"]
+__all__ = [
+    "compute_file_hash",
+    "migrate_backup",
+    "safe_extract_zip",
+    "verify_directory_safe",
+]
 
 import os
 import shutil
@@ -247,4 +252,42 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                     force_cleanup_dir(dest_path)
             except Exception:
                 pass
+        return False
+
+
+def verify_directory_safe(directory: str) -> bool:
+    """
+    验证目录中所有文件和子目录的路径都在该目录内（防止路径遍历）
+
+    Args:
+        directory: 要验证的目录路径
+
+    Returns:
+        bool: 目录是否安全（所有路径都在目录内）
+
+    Note:
+        此函数用于验证 ASAR 解压后的结果，确保没有路径遍历攻击
+    """
+    if not directory or not os.path.exists(directory):
+        return True
+
+    try:
+        abs_dir = os.path.normpath(os.path.abspath(directory))
+        dir_with_sep = abs_dir if abs_dir.endswith(os.sep) else abs_dir + os.sep
+
+        for root, dirs, files in os.walk(directory):
+            for name in dirs + files:
+                item_path = os.path.join(root, name)
+                abs_item = os.path.normpath(os.path.abspath(item_path))
+
+                if abs_item != abs_dir and not abs_item.startswith(dir_with_sep):
+                    logger.error(
+                        f"Path traversal detected in directory: {item_path} "
+                        f"resolves to {abs_item} which is outside {abs_dir}"
+                    )
+                    return False
+
+        return True
+    except Exception as e:
+        logger.error(f"Failed to verify directory safety: {e}")
         return False

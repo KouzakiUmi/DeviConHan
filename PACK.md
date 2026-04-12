@@ -1,6 +1,8 @@
 # 打包与分发指南
 
-本文档详细介绍如何打包和分发恶魔链接本地化工具。
+本文档详细介绍 **Tyrano补丁工具箱** 的打包和分发流程（基于Pack.cmd/Pack.sh脚本的最新运行逻辑）。
+
+**注意**：`でびるコネクション`汉化补丁为自带示例，通过Patch.zip适配其他游戏。
 
 ---
 
@@ -78,7 +80,6 @@ Pack.cmd 会自动执行：
 python -m PyInstaller -F -w --clean ^
     -i "icon.ico" ^
     --add-data "icon.ico:." ^
-    --add-data "tools/node.exe:tools" ^
     --add-data "config.ini:." ^
     --name "Tyrano_Toolbox" ^
     main.py
@@ -94,7 +95,6 @@ python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
 python -m PyInstaller -F -w --clean ^
     -i "icon.ico" ^
     --add-data "icon.ico:." ^
-    --add-data "tools/node.exe:tools" ^
     --add-data "config.ini:." ^
     --add-data "Patch.zip:." ^
     --name "DevilConnection_Patch" ^

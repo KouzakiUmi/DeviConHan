@@ -492,31 +492,38 @@ class ToolsTab(ttk.Frame):
                 logger.error(f"Failed to update fuse offset: {e}")
 
     def _tool_fuse(self):
-        if self.app.is_operating:
+        from utils.operation_lock import OperationType
+
+        if not self.app._acquire_operation_lock(OperationType.FUSE_REMOVE):
             return messagebox.showwarning(
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
 
-        t = self.app.var_exe.get()
-        if not t:
-            return messagebox.showwarning(
-                T("title_warning"), T("warn_no_file", "请选择文件")
-            )
+        try:
+            t = self.app.var_exe.get()
+            if not t:
+                return messagebox.showwarning(
+                    T("title_warning"), T("warn_no_file", "请选择文件")
+                )
 
-        if not os.path.exists(t):
-            return messagebox.showerror(
-                T("title_error"), T("err_path_not_exist", "路径不存在")
-            )
+            if not os.path.exists(t):
+                return messagebox.showerror(
+                    T("title_error"), T("err_path_not_exist", "路径不存在")
+                )
 
-        current_offset = get_config().fuse_asar_integrity_offset
-        warn_msg = T("msg_fuse_warn").format(offset=current_offset)
+            current_offset = get_config().fuse_asar_integrity_offset
+            warn_msg = T("msg_fuse_warn").format(offset=current_offset)
 
-        if not messagebox.askyesno(T("title_warning"), warn_msg):
-            return
+            if not messagebox.askyesno(T("title_warning"), warn_msg):
+                return
 
-        result = remove_fuse(t, callback=self.app.log)
-        if result:
-            messagebox.showinfo(T("title_success"), T("op_success"))
-        else:
-            messagebox.showinfo(T("title_warning"), T("msg_fuse_disabled_or_not_found"))
+            result = remove_fuse(t, callback=self.app.log)
+            if result:
+                messagebox.showinfo(T("title_success"), T("op_success"))
+            else:
+                messagebox.showinfo(
+                    T("title_warning"), T("msg_fuse_disabled_or_not_found")
+                )
+        finally:
+            self.app._release_operation_lock(OperationType.FUSE_REMOVE)

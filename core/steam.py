@@ -155,11 +155,12 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
         current_hash = get_file_hash_in_asar(asar_path, file_path)
         if current_hash != expected_hash:
             all_match_patch = False
-            mismatched_files.append(file_path)
+            mismatched_files.append((file_path, expected_hash, current_hash))
             logger.info(
                 f"File {file_path} in ASAR hash mismatch. Expected: {expected_hash}, Got: {current_hash}"
             )
-            break
+            # 不再break，继续检查所有文件
+            # 这样可以提供完整的变化报告
 
     if all_match_patch:
         logger.info("All crucial files in ASAR match the patch meta. Patch is active.")
@@ -174,11 +175,18 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
         return (False, False)
     else:
         logger.info(
-            "ASAR crucial files do not match patch meta. Checking if it's a Steam update..."
+            f"ASAR crucial files do not match patch meta. "
+            f"Mismatched files: {len(mismatched_files)}. "
+            f"Checking if it's a Steam update..."
         )
+        # 记录所有不匹配的文件
+        for file_path, expected, actual in mismatched_files:
+            logger.debug(
+                f"  - {file_path}: expected={expected[:16]}..., actual={actual[:16]}..."
+            )
 
         all_match_bak = True
-        for file_path in mismatched_files:
+        for file_path, expected_hash, current_hash in mismatched_files:
             bak_hash = get_file_hash_in_asar(bak_path, file_path)
             asar_hash = get_file_hash_in_asar(asar_path, file_path)
 
@@ -187,6 +195,7 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
                 logger.info(
                     f"File {file_path} differs between ASAR and backup. Bak: {bak_hash}, ASAR: {asar_hash}"
                 )
+                # 只检查第一个不匹配的文件来判断是否是Steam更新
                 break
 
         if all_match_bak:
@@ -470,6 +479,15 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
                     return False
 
                 header_size = struct.unpack("<I", header_size_bytes)[0]
+
+                # 增加最大Header Size限制（例如50MB），防止OOM
+                MAX_HEADER_SIZE = 50 * 1024 * 1024
+                if header_size > MAX_HEADER_SIZE:
+                    logger.warning(
+                        f"{archive_type.capitalize()} header too large ({header_size} bytes)"
+                    )
+                    return False
+
                 header_data = f.read(header_size)
                 if len(header_data) != header_size or len(header_data) < 8:
                     logger.warning(f"{archive_type.capitalize()} truncated header data")

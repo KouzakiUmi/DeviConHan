@@ -1,4 +1,6 @@
-# Devil Connection Patcher - 项目规范与技术参考 (Project Specifications)
+# Tyrano补丁工具箱 - 项目规范与技术参考 (Project Specifications)
+
+**でびるコネクション汉化补丁是自带示例作品。可通过config和patch.zip适配其他游戏。**
 
 这份文档详细描述了本工具的设计哲学、架构细节、核心工作流以及避免常见误解的关键设定。
 **任何后续的维护者（包括人类与 AI Agent）在修改核心代码前，请务必阅读本文档，避免破坏原有的设计闭环。**
@@ -21,7 +23,7 @@
 ### 📁 模块说明
 * **`main.py`**：程序入口点。负责解析命令行参数（CLI），决定启动 `GUI 模式` 还是纯后台运行的 `批处理模式 (--batch)`。
 * **`core/`** (核心业务层)
-  * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**。ASAR 完整性校验已改为纯 Python 解析（不再启动 node.exe 子进程）。
+  * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**。使用纯 Python 实现的 ASAR 处理，无外部依赖。
   * `config.py`：`AppConfig` 配置管理单例。支持内存热加载，优先读取用户个人空间配置。
   * `save_service.py`：`SaveService` 存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作。
   * `steam.py`：Steam 更新状态机及 Hash 校验检测。
@@ -42,11 +44,9 @@
   * `async_ops.py`：封装了 `ThreadPoolExecutor` 的 `AsyncOperationManager`，统筹 GUI 进度条、任务状态与后台线程，并支持通过下发 `_check_cancelled` 实现文件级的真实线程中断。
   * `performance.py`：用于性能打点和日志耗时统计。
   * `logging.py`：初始化滚动日志（Rotating File Handler），默认输出至 `~/.tyranopatcher/tyrano_patcher.log`。
-  * `asar_utils.py`：纯 Python ASAR 解析与 Hash 计算，`get_file_hash_in_asar(asar_path, file_path)` 无需 CoreLogic 实例。
-* **`tools/`** (外部依赖库)
-  * `node.exe`、`asar_cli.mjs` 以及 `bundled_asar`：脱离系统环境限制，程序自带的 ASAR 操作底层套件。
+* `asar_utils.py`：纯 Python ASAR 解析与 Hash 计算，`get_file_hash_in_asar(asar_path, file_path)` 无需 CoreLogic 实例。
 * **`Patch/`** (数据层)
-  * 包含实际将要注入进游戏 `app.asar` 中的翻译文件与媒体资源。
+    * 包含实际将要注入进游戏 `app.asar` 中的翻译文件与媒体资源。
 
 ---
 
