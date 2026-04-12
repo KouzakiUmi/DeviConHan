@@ -196,20 +196,25 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
     def search():
         for base in search_paths:
             common_dir = os.path.join(base, "common")
+            logger.info(f"Checking directory: {common_dir}")
             if not os.path.isdir(common_dir):
+                logger.info(f"  -> common directory does not exist")
                 continue
 
             try:
-                for entry in os.listdir(common_dir):
+                entries = os.listdir(common_dir)
+                logger.info(f"  -> Found {len(entries)} entries in common")
+                for entry in entries:
                     entry_lower = entry.lower()
+                    logger.info(f"  -> Checking: {entry}")
                     for var in variations:
                         if var in entry_lower or entry_lower in var:
                             game_path = os.path.join(common_dir, entry)
-                            logger.info(f"Found game match: {entry} at {game_path}")
+                            logger.info(f"Found game match: '{entry}' (looking for '{var}') at {game_path}")
                             result[0] = game_path
                             return
             except (PermissionError, OSError) as e:
-                logger.debug(f"Cannot access {common_dir}: {e}")
+                logger.warning(f"Cannot access {common_dir}: {e}")
                 continue
 
     # 使用线程执行搜索（带超时）
