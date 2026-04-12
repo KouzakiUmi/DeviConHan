@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 系统启动引导模块
 
@@ -11,14 +10,13 @@
 
 __all__ = ["bootstrap_system", "find_game_directory", "get_detected_game_path", "SystemBootstrapError"]
 
-import os
-import sys
 import logging
-from typing import Tuple, List, Optional
+import os
+from typing import List, Optional, Tuple
 
 from core.config import get_config
-from core.state_validator import validate_system_state, SystemState
-from utils.disk_utils import get_disk_free_space, format_bytes
+from core.state_validator import validate_system_state
+from utils.disk_utils import format_bytes, get_disk_free_space
 from utils.operation_lock import get_operation_lock
 
 logger = logging.getLogger(__name__)
@@ -214,32 +212,32 @@ def bootstrap_system(
     if not skip_state_check:
         logger.info("Checking system state consistency...")
         state, issues = validate_system_state(base_dir)
-        
+
         critical_errors = [i for i in issues if i.severity == "critical"]
         warnings_list = [i for i in issues if i.severity == "warning"]
-        
+
         if critical_errors:
             error_msg = f"System state critical errors: {[e.message for e in critical_errors]}"
             logger.error(error_msg)
             raise SystemBootstrapError(error_msg)
-            
+
         for warning in warnings_list:
             messages.append(f"Warning: {warning.message}")
             if warning.suggestion:
                 messages.append(f"  Suggestion: {warning.suggestion}")
-                
+
         logger.info(f"System state: {state.value}")
-        
+
     # 3. 磁盘空间检查
     if not skip_disk_check:
         logger.info("Checking disk space...")
         try:
             base = base_dir or os.path.abspath(".")
             free_space = get_disk_free_space(base)
-            
+
             # 建议保留至少1GB空间
             MIN_FREE_SPACE = 1024 * 1024 * 1024  # 1GB
-            
+
             if free_space < MIN_FREE_SPACE:
                 messages.append(
                     f"Warning: Low disk space. Available: {format_bytes(free_space)}, "
@@ -247,17 +245,17 @@ def bootstrap_system(
                 )
             else:
                 logger.info(f"Disk space OK: {format_bytes(free_space)} available")
-                
+
         except Exception as e:
             messages.append(f"Warning: Could not check disk space: {e}")
-            
+
     # 4. 初始化操作锁
     try:
         _ = get_operation_lock()
         logger.debug("Operation lock initialized")
     except Exception as e:
         raise SystemBootstrapError(f"Failed to initialize operation lock: {e}") from e
-        
+
     logger.info("System bootstrap completed successfully")
     return True, messages
 
@@ -274,11 +272,11 @@ def check_can_apply_patch(base_dir: Optional[str] = None) -> Tuple[bool, str]:
     """
     try:
         from core.state_validator import StateValidator
-        
+
         validator = StateValidator(base_dir)
         can_apply, reason = validator.can_apply_patch()
         return can_apply, reason
-        
+
     except Exception as e:
         return False, f"Cannot verify patch availability: {e}"
 
@@ -295,10 +293,10 @@ def check_can_restore_backup(base_dir: Optional[str] = None) -> Tuple[bool, str]
     """
     try:
         from core.state_validator import StateValidator
-        
+
         validator = StateValidator(base_dir)
         can_restore, reason = validator.can_restore_backup()
         return can_restore, reason
-        
+
     except Exception as e:
         return False, f"Cannot verify restore availability: {e}"

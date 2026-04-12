@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox
-from core.config import get_config
+from tkinter import messagebox, ttk
+
 from core.bootstrap import get_detected_game_path
 from utils.language import T, get_font
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+
 
 class PatchTab(ttk.Frame):
     def __init__(self, parent, app):

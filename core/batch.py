@@ -1,19 +1,18 @@
-# -*- coding: utf-8 -*-
 """
 批处理模式模块
 
 提供命令行批处理模式的功能。
 """
 
-import os
 import logging
+import os
 
-from utils.performance import get_performance_monitor
-from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
-from core.patcher import CoreLogic
-from core.fuse import remove_fuse
 from controllers.patch_controller import PatchController
+from core.fuse import remove_fuse
+from core.patcher import CoreLogic
 from utils.cleanup import force_cleanup_dir
+from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
+from utils.performance import get_performance_monitor
 
 logger = logging.getLogger(__name__)
 

@@ -1,23 +1,23 @@
-# -*- coding: utf-8 -*-
 """
 存档服务模块，负责执行存档的备份、还原、迁移、删除等业务逻辑
 """
 
+import datetime
+import logging
 import os
 import shutil
-import logging
-import datetime
-import zipfile
 import tempfile
-from typing import Optional, Callable, Tuple, Any
+import zipfile
+from typing import Any, Callable, Optional, Tuple
+
+from utils.constants import (
+    TEMP_BACKUP_PREFIX,
+    TEMP_FILE_SUFFIX,
+)
+from utils.error_handler import ErrorCategory, ErrorSeverity, PatcherError
 from utils.file_ops import migrate_backup, safe_extract_zip
 from utils.paths import normalize_path
-from utils.validators import validate_path, validate_not_empty
-from utils.error_handler import PatcherError, ErrorSeverity, ErrorCategory
-from utils.constants import (
-    TEMP_FILE_SUFFIX,
-    TEMP_BACKUP_PREFIX,
-)
+from utils.validators import validate_not_empty, validate_path
 
 # 注意: core.config 在方法内延迟导入以避免循环导入
 

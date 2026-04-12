@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 __all__ = [
     "get_resource_path",
@@ -9,9 +8,9 @@ __all__ = [
     "get_user_config_path",
 ]
 
+import logging
 import os
 import sys
-import logging
 from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)

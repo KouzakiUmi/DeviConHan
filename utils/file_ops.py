@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 文件和目录操作模块
 
@@ -12,16 +11,16 @@ __all__ = [
     "verify_directory_safe",
 ]
 
-import os
-import shutil
 import hashlib
 import logging
+import os
+import shutil
 import zipfile
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 from utils.cleanup import force_cleanup_dir
+from utils.constants import HASH_CHUNK_SIZE, MAX_ZIP_EXTRACT_FILES, MAX_ZIP_EXTRACT_SIZE
 from utils.paths import safe_path_within
-from utils.constants import HASH_CHUNK_SIZE, MAX_ZIP_EXTRACT_SIZE, MAX_ZIP_EXTRACT_FILES
 
 logger = logging.getLogger(__name__)
 
@@ -109,17 +108,13 @@ def safe_extract_zip(
 
                 # 额外检查：拒绝绝对路径（ZIP 规范本不允许，但需明确防御）
                 if os.path.isabs(member.filename):
-                    raise ValueError(
-                        f"Absolute path not allowed in ZIP file: {member.filename}"
-                    )
+                    raise ValueError(f"Absolute path not allowed in ZIP file: {member.filename}")
 
                 # 使用 safe_path_within 做路径遍历检测
                 # 该函数先 join 再 normpath/abspath，能防御 ....// 等所有变体
                 abs_member_path = safe_path_within(member.filename, abs_dest_dir)
                 if abs_member_path is None:
-                    raise ValueError(
-                        f"Path traversal detected in ZIP file: {member.filename}"
-                    )
+                    raise ValueError(f"Path traversal detected in ZIP file: {member.filename}")
 
                 # 检查是否为目录
                 if member.filename.endswith("/"):
@@ -130,10 +125,7 @@ def safe_extract_zip(
                     os.makedirs(parent_dir, exist_ok=True)
 
                     # 解压文件（使用分块读取避免大文件内存溢出）
-                    with (
-                        zf.open(member) as source,
-                        open(abs_member_path, "wb") as target,
-                    ):
+                    with zf.open(member) as source, open(abs_member_path, "wb") as target:
                         # 分块读取，每块 64KB，避免大文件一次性读入内存
                         while True:
                             chunk = source.read(65536)
@@ -226,9 +218,7 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
             if all_match:
                 # 校验通过，删除源目录
                 force_cleanup_dir(src)
-                logger.info(
-                    f"Successfully migrated backup directory: {src} -> {dest_path}"
-                )
+                logger.info(f"Successfully migrated backup directory: {src} -> {dest_path}")
                 return True
             else:
                 logger.error(f"Hash mismatch after migrating directory: {src}")

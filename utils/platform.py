@@ -1,18 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 跨平台检测模块
 
 提供跨平台的 Steam 游戏路径检测和平台信息获取。
 """
 
-import os
-import sys
-import platform
 import logging
-import threading
+import os
+import platform
 import re
-from typing import Optional, List
+import sys
+import threading
 from dataclasses import dataclass
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +116,7 @@ def get_steam_library_paths() -> List[str]:
     library_folders_vdf = os.path.join(main_steamapps, "libraryfolders.vdf")
     if os.path.isfile(library_folders_vdf):
         try:
-            with open(library_folders_vdf, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(library_folders_vdf, encoding='utf-8', errors='ignore') as f:
                 content = f.read()
             # 解析 libraryfolders.vdf 提取路径
             for line in content.split('\n'):
@@ -223,7 +222,7 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
             common_dir = os.path.join(base, "common")
             logger.info(f"Checking directory: {common_dir}")
             if not os.path.isdir(common_dir):
-                logger.info(f"  -> common directory does not exist")
+                logger.info("  -> common directory does not exist")
                 continue
 
             try:

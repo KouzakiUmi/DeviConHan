@@ -65,3 +65,8 @@
 
 ---
 *更新时间: 2026-04-12*
+
+## 2026-04-12 更新：路径解析与存档备份功能同步
+- **SaveManagerController (`scan_save_directory`)**: 更新存档扫描逻辑，使其优先使用 `core.bootstrap.get_detected_game_path()` 自动获取全局游戏目录作为扫描基准，并向下兼容从当前工作目录 (`CWD`) 中进行查找，确保了无论在哪运行补丁都能找到存档。
+- **ToolsTab (`_auto_scan_exe`)**: 更新工具选项卡中自动扫描游戏可执行文件的逻辑。同样引入了全局的 `get_detected_game_path()`，并在 Mac (`Darwin`) 平台上增强了对 `.app` 包内 `Contents/MacOS/` 目录下二进制文件的跨平台智能检索。
+- **代码质量与安全**: 移除了 `utils/file_ops.py` 中的 Python 3.9 独有的 `with (a, b):` 语法，还原为 `with a, b:` 确保兼容项目声明的 `>=3.8` 规范；同时使用 `ruff` 清理并修复了项目中大量的过期 Import 引用和未使用变量，规范化了代码风格。

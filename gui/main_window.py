@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 恶魔链接补丁工具 - GUI主窗口模块
 
@@ -6,36 +5,35 @@
 包含性能监控集成，用于跟踪和优化GUI操作性能。
 """
 
-import os
-import sys
-import shutil
-import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
 import datetime
 import logging
+import os
 import queue
-
+import shutil
+import sys
+import tkinter as tk
+from tkinter import messagebox, scrolledtext, ttk
 from typing import Optional
 
-from core.config import get_config
-from core.patcher import CoreLogic
-from core.patch_info import has_embedded_patch
-from core.save_service import SaveService
 from controllers.patch_controller import PatchController
 from controllers.save_manager_controller import SaveManagerController
-from utils.language import T, get_font, get_mono_font
-from utils.paths import get_resource_path, get_user_config_path
-from utils.performance import get_performance_monitor
-from utils.async_ops import get_async_manager, ProgressInfo
-from utils.operation_lock import get_operation_lock, OperationType
+from core.config import get_config
+from core.patch_info import has_embedded_patch
+from core.patcher import CoreLogic
+from core.save_service import SaveService
+from gui.about_dialog import show_about_dialog
+from utils.async_ops import ProgressInfo, get_async_manager
 from utils.constants import (
     CORRUPTED_SUFFIX,
     DEFAULT_DIALOG_TIMEOUT,
     LOG_AREA_HEIGHT,
-    WINDOW_MIN_WIDTH,
     WINDOW_MIN_HEIGHT,
+    WINDOW_MIN_WIDTH,
 )
-from gui.about_dialog import show_about_dialog
+from utils.language import T, get_font, get_mono_font
+from utils.operation_lock import OperationType, get_operation_lock
+from utils.paths import get_resource_path, get_user_config_path
+from utils.performance import get_performance_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +196,7 @@ class App(tk.Tk):
                     return True
 
                 # 仅读取内容用于完整性检查，不重新解析
-                with open(self.config_file, "r", encoding="utf-8") as f:
+                with open(self.config_file, encoding="utf-8") as f:
                     content = f.read()
 
                 # 检查无效控制字符（排除合法的换行/回车/制表符）

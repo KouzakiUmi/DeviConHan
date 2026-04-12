@@ -1,22 +1,20 @@
-# -*- coding: utf-8 -*-
 """
 Steam 更新检测和处理模块
 
 提供 Steam 更新检测、文件状态检查和补丁状态验证功能。
 """
 
-import os
-import shutil
 import json
 import logging
-
+import os
+import shutil
 from typing import Callable, Optional, Tuple
 
-from utils.language import T
-from utils.performance import get_performance_monitor
+from core.config import get_config
 from utils.asar_utils import get_file_hash_in_asar
 from utils.constants import MIN_ASAR_SIZE
-from core.config import get_config
+from utils.language import T
+from utils.performance import get_performance_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +104,7 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
         shutil.copy2(bak_path, asar_path)
         logger.info(f"Successfully restored ASAR from backup: {bak_path}")
         return (True, False)
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.error(f"Failed to restore ASAR from backup: {e}")
         return (False, True)
 
@@ -229,10 +227,11 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
 
 def _get_fallback_patch_hashes():
     """从本地 Patch.zip 或 Patch/ 目录中动态提取验证文件的哈希值作为 fallback"""
-    import zipfile
     import hashlib
-    from utils.paths import get_resource_path
+    import zipfile
+
     from utils.constants import HASH_CHUNK_SIZE
+    from utils.paths import get_resource_path
 
     check_files = get_config().check_files_for_update
     hashes = {}
@@ -324,7 +323,7 @@ def _handle_both_exist(
         try:
             shutil.copy2(bak_path, asar_path)
             logger.info(f"Successfully restored ASAR from backup: {bak_path}")
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.error(f"Failed to restore ASAR from backup: {e}")
             if on_error:
                 on_error(T("title_error"), f"Failed to restore ASAR from backup: {e}")
@@ -340,7 +339,7 @@ def _handle_both_exist(
 
     if os.path.exists(meta_file):
         try:
-            with open(meta_file, "r", encoding="utf-8") as f:
+            with open(meta_file, encoding="utf-8") as f:
                 meta_info = json.load(f)
             patch_files = meta_info.get("patch_files", {})
         except Exception as e:
@@ -450,8 +449,9 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
     Returns:
         bool: 文件是否有效
     """
-    from utils.constants import ASAR_MAGIC_NUMBER
     import struct
+
+    from utils.constants import ASAR_MAGIC_NUMBER
 
     monitor = get_performance_monitor()
     monitor.start(f"validate_{archive_type}")

@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 
+import logging
 import os
 import sys
-import logging
 import threading
-from typing import Optional, Tuple, Union, Dict
+from typing import Dict, Optional, Tuple, Union
 
 from utils.paths import get_user_config_path
 

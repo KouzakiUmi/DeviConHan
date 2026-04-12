@@ -10,9 +10,8 @@ This script shows how to use pyproject.toml for modern Python packaging.
 For executable builds, use Pack.cmd (Windows) or Pack.sh (Mac/Linux) instead.
 """
 
-import sys
 import subprocess
-from pathlib import Path
+import sys
 
 
 def check_python_version():

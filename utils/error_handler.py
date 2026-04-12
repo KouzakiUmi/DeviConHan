@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 统一错误处理模块
 
@@ -21,8 +20,8 @@ __all__ = [
 
 import logging
 import traceback
-from typing import Optional, Dict, Any
 from enum import Enum
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

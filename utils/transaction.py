@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 事务性文件操作模块
 
@@ -13,12 +12,11 @@ __all__ = [
     "safe_backup",
 ]
 
+import logging
 import os
 import shutil
-import logging
 import tempfile
-from typing import List, Callable, Optional
-from contextlib import contextmanager
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 

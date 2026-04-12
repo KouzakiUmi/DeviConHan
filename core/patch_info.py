@@ -1,18 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 补丁信息管理模块
 
 提供补丁信息保存、读取和管理功能。
 """
 
-import os
+import datetime
 import json
 import logging
-import datetime
+import os
 
+from core.config import get_config
 from utils.file_ops import compute_file_hash
 from utils.paths import get_resource_path
-from core.config import get_config
 
 logger = logging.getLogger(__name__)
 

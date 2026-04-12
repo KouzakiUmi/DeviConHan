@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 操作互斥锁模块
 
@@ -12,12 +11,12 @@ __all__ = [
     "with_operation_lock",
 ]
 
-import threading
 import logging
-from enum import Enum, auto
-from typing import Optional, Set, Callable
+import threading
 from contextlib import contextmanager
+from enum import Enum
 from functools import wraps
+from typing import Callable, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -57,26 +56,26 @@ class OperationLock:
     
     管理多个操作的互斥关系，防止冲突操作同时进行。
     """
-    
+
     def __init__(self):
         self._lock = threading.RLock()
         self._current_operations: Set[OperationType] = set()
-        
+
     def is_operation_running(self, op_type: OperationType) -> bool:
         """检查特定操作是否正在进行"""
         with self._lock:
             return op_type in self._current_operations
-            
+
     def is_any_operation_running(self) -> bool:
         """检查是否有任何操作正在进行"""
         with self._lock:
             return len(self._current_operations) > 0
-            
+
     def get_running_operations(self) -> Set[OperationType]:
         """获取正在进行的操作集合"""
         with self._lock:
             return self._current_operations.copy()
-            
+
     def acquire(self, op_type: OperationType) -> bool:
         """
         尝试获取操作锁
@@ -99,11 +98,11 @@ class OperationLock:
                             f"conflicting operations running: {[op.value for op in conflicts]}"
                         )
                         return False
-                        
+
             self._current_operations.add(op_type)
             logger.debug(f"Acquired lock for {op_type.value}")
             return True
-            
+
     def release(self, op_type: OperationType) -> None:
         """
         释放操作锁
@@ -114,7 +113,7 @@ class OperationLock:
         with self._lock:
             self._current_operations.discard(op_type)
             logger.debug(f"Released lock for {op_type.value}")
-            
+
     @contextmanager
     def acquire_context(self, op_type: OperationType):
         """

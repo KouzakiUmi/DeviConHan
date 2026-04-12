@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 磁盘空间检查和文件系统工具
 
@@ -13,10 +12,10 @@ __all__ = [
     "get_disk_free_space",
 ]
 
+import logging
 import os
 import shutil
-import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ def get_disk_free_space(path: str) -> int:
     """
     try:
         abs_path = os.path.abspath(path)
-        
+
         # Windows和Unix都支持
         if hasattr(shutil, 'disk_usage'):
             usage = shutil.disk_usage(os.path.dirname(abs_path) if os.path.isfile(abs_path) else abs_path)
@@ -65,7 +64,7 @@ def get_disk_free_space(path: str) -> int:
             else:  # Unix
                 stat = os.statvfs(abs_path)
                 return stat.f_frsize * stat.f_bavail
-                
+
     except Exception as e:
         raise DiskSpaceError(f"Failed to get disk space for {path}: {e}") from e
 
@@ -99,9 +98,9 @@ def check_disk_space(
     try:
         free_space = get_disk_free_space(path)
         required_with_margin = int(required_bytes * safety_margin)
-        
+
         has_space = free_space >= required_with_margin
-        
+
         if not has_space:
             msg = (
                 f"磁盘空间不足: 需要 {format_bytes(required_bytes)} "
@@ -111,9 +110,9 @@ def check_disk_space(
             logger.error(msg)
             if raise_on_error:
                 raise DiskSpaceError(msg)
-                
+
         return has_space, free_space
-        
+
     except DiskSpaceError:
         raise
     except Exception as e:
@@ -140,9 +139,9 @@ def estimate_asar_size(source_path: str) -> int:
     """
     if not os.path.exists(source_path):
         return 0
-        
+
     total_size = 0
-    
+
     try:
         if os.path.isfile(source_path):
             total_size = os.path.getsize(source_path)
@@ -154,11 +153,11 @@ def estimate_asar_size(source_path: str) -> int:
                         total_size += os.path.getsize(filepath)
                     except OSError:
                         pass
-                        
+
         # ASAR有额外开销：header + padding
         overhead = max(1024 * 1024, int(total_size * 0.1))  # 至少1MB，或10%
         return total_size + overhead
-        
+
     except Exception as e:
         logger.warning(f"Failed to estimate ASAR size: {e}")
         # 如果无法计算，返回一个保守的估计
@@ -178,14 +177,14 @@ def validate_write_permission(path: str) -> bool:
     try:
         # 如果是文件，检查父目录
         check_path = path if os.path.isdir(path) else os.path.dirname(path)
-        
+
         if not os.path.exists(check_path):
             # 尝试创建目录
             try:
                 os.makedirs(check_path, exist_ok=True)
             except PermissionError:
                 return False
-                
+
         # 尝试创建临时文件
         test_file = os.path.join(check_path, ".write_test_tmp")
         try:
@@ -193,9 +192,9 @@ def validate_write_permission(path: str) -> bool:
                 f.write("test")
             os.remove(test_file)
             return True
-        except (PermissionError, IOError):
+        except (OSError, PermissionError):
             return False
-            
+
     except Exception as e:
         logger.warning(f"Write permission check failed for {path}: {e}")
         return False
@@ -240,11 +239,11 @@ def check_operation_space(
         >>> ok, info = check_operation_space(ops)
     """
     total_required = sum(op[1] for op in operations)
-    
+
     try:
         free_space = get_disk_free_space(base_path)
         required_with_margin = int(total_required * SAFETY_MARGIN)
-        
+
         detail_lines = [
             "磁盘空间检查:",
             f"  所需空间: {format_bytes(total_required)}",
@@ -252,16 +251,16 @@ def check_operation_space(
             f"  可用空间: {format_bytes(free_space)}",
             "  详细需求:",
         ]
-        
+
         for desc, size in operations:
             detail_lines.append(f"    - {desc}: {format_bytes(size)}")
-            
+
         if free_space >= required_with_margin:
-            detail_lines.append(f"  ✓ 空间充足")
+            detail_lines.append("  ✓ 空间充足")
             return True, "\n".join(detail_lines)
         else:
             detail_lines.append(f"  ✗ 空间不足，缺少 {format_bytes(required_with_margin - free_space)}")
             return False, "\n".join(detail_lines)
-            
+
     except Exception as e:
         return False, f"无法检查磁盘空间: {e}"

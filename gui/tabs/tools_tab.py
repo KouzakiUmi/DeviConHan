@@ -1,23 +1,22 @@
-# -*- coding: utf-8 -*-
-
+import logging
 import os
-import sys
 import shutil
 import subprocess
+import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import logging
+from tkinter import filedialog, messagebox, ttk
+
+from core.bootstrap import get_detected_game_path
 from core.config import get_config
 from core.fuse import remove_fuse
-from core.bootstrap import get_detected_game_path
+from utils.constants import (
+    ASAR_EXTENSION,
+    EXTRACTED_SUFFIX,
+    PACKED_DIR_NAME,
+    UNPACKED_DIR_NAME,
+)
 from utils.language import T
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
-from utils.constants import (
-    UNPACKED_DIR_NAME,
-    PACKED_DIR_NAME,
-    EXTRACTED_SUFFIX,
-    ASAR_EXTENSION,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -95,17 +94,11 @@ class ToolsTab(ttk.Frame):
         lf = ttk.LabelFrame(self, text=T("grp_asar"), padding=10)
         lf.pack(fill="x", pady=5)
 
-        self.app.var_ext_src = self._file_entry(
-            lf, T("lbl_src_asar"), False, ("Asar", "*.asar")
-        )
+        self.app.var_ext_src = self._file_entry(lf, T("lbl_src_asar"), False, ("Asar", "*.asar"))
         box_ext = ttk.Frame(lf)
         box_ext.pack(fill="x", pady=2)
-        ttk.Button(box_ext, text=T("btn_auto_scan"), command=self._auto_scan_asar).pack(
-            side="left"
-        )
-        ttk.Button(box_ext, text=T("btn_extract"), command=self._tool_extract).pack(
-            side="right"
-        )
+        ttk.Button(box_ext, text=T("btn_auto_scan"), command=self._auto_scan_asar).pack(side="left")
+        ttk.Button(box_ext, text=T("btn_extract"), command=self._tool_extract).pack(side="right")
 
         ttk.Separator(lf, orient="horizontal").pack(fill="x", pady=10)
 
@@ -133,32 +126,24 @@ class ToolsTab(ttk.Frame):
             command=self.app.save_config,
         ).pack(side="left", padx=5)
 
-        ttk.Button(box_pack, text=T("btn_pack"), command=self._tool_pack).pack(
-            side="right"
+        ttk.Button(box_pack, text=T("btn_pack"), command=self._tool_pack).pack(side="right")
+        ttk.Button(box_pack, text=T("btn_sync_path"), command=self._sync_extracted_path).pack(
+            side="right", padx=5
         )
-        ttk.Button(
-            box_pack, text=T("btn_sync_path"), command=self._sync_extracted_path
-        ).pack(side="right", padx=5)
 
         lf2 = ttk.LabelFrame(self, text=T("grp_fix"), padding=10)
         lf2.pack(fill="x", pady=10)
-        self.app.var_exe = self._file_entry(
-            lf2, T("lbl_game_exe"), False, ("EXE", "*.exe")
-        )
+        self.app.var_exe = self._file_entry(lf2, T("lbl_game_exe"), False, ("EXE", "*.exe"))
 
         box_fuse = ttk.Frame(lf2)
         box_fuse.pack(fill="x")
-        ttk.Button(box_fuse, text=T("btn_locate"), command=self._auto_scan_exe).pack(
-            side="left"
-        )
+        ttk.Button(box_fuse, text=T("btn_locate"), command=self._auto_scan_exe).pack(side="left")
         ttk.Button(
             box_fuse,
             text=T("btn_fuse_setting", "修改Fuse偏移"),
             command=self._edit_fuse_offset,
         ).pack(side="left", padx=10)
-        ttk.Button(box_fuse, text=T("btn_fuse"), command=self._tool_fuse).pack(
-            side="right"
-        )
+        ttk.Button(box_fuse, text=T("btn_fuse"), command=self._tool_fuse).pack(side="right")
 
         lf3 = ttk.LabelFrame(self, text=T("grp_config"), padding=10)
         lf3.pack(fill="x", pady=10)
@@ -177,12 +162,12 @@ class ToolsTab(ttk.Frame):
 
         box_config = ttk.Frame(lf3)
         box_config.pack(fill="x")
-        ttk.Button(
-            box_config, text=T("btn_validate_config"), command=self._validate_config
-        ).pack(side="left")
-        ttk.Button(
-            box_config, text=T("btn_reset_config"), command=self._reset_config
-        ).pack(side="right")
+        ttk.Button(box_config, text=T("btn_validate_config"), command=self._validate_config).pack(
+            side="left"
+        )
+        ttk.Button(box_config, text=T("btn_reset_config"), command=self._reset_config).pack(
+            side="right"
+        )
 
     def _validate_config(self):
         config = get_config()
@@ -242,15 +227,32 @@ class ToolsTab(ttk.Frame):
 
     def _auto_scan_exe(self):
         exe_name = get_config().auto_target_exe
-        p = os.path.abspath(exe_name)
+        base = get_detected_game_path() or os.path.abspath(".")
+
+        # 默认优先在检测到的目录查找
+        p = os.path.abspath(os.path.join(base, exe_name))
+
+        # 跨平台资源路径处理 (Mac)
+        if get_platform_info().system == "Darwin":
+            mac_app = get_config().macos_app
+            mac_p = os.path.abspath(os.path.join(base, mac_app, "Contents", "MacOS", exe_name))
+            if not os.path.exists(p) and os.path.exists(mac_p):
+                p = mac_p
+
         if os.path.exists(p):
             self.app.var_exe.set(p)
             self.app.log(f"Found: {p}")
         else:
-            self.app.log(f"{exe_name} not found.")
-            messagebox.showinfo(
-                T("title_warning"), T("warn_exe_not_found").format(exe_name=exe_name)
-            )
+            # 兼容旧版本：如果在检测到的目录没找到，尝试在当前工作目录下查找
+            fallback_p = os.path.abspath(exe_name)
+            if base != os.path.abspath(".") and os.path.exists(fallback_p):
+                self.app.var_exe.set(fallback_p)
+                self.app.log(f"Found (fallback): {fallback_p}")
+            else:
+                self.app.log(f"{exe_name} not found.")
+                messagebox.showinfo(
+                    T("title_warning"), T("warn_exe_not_found").format(exe_name=exe_name)
+                )
 
     def _tool_extract(self):
         if self.app.is_operating:
@@ -263,9 +265,7 @@ class ToolsTab(ttk.Frame):
             return messagebox.showwarning(T("title_warning"), T("warn_no_file"))
 
         fname = os.path.basename(src)
-        out_dir = os.path.join(
-            os.getcwd(), UNPACKED_DIR_NAME, f"{fname}{EXTRACTED_SUFFIX}"
-        )
+        out_dir = os.path.join(os.getcwd(), UNPACKED_DIR_NAME, f"{fname}{EXTRACTED_SUFFIX}")
         self.app.last_extracted_path = out_dir
 
         if not self.app.core:
@@ -275,9 +275,7 @@ class ToolsTab(ttk.Frame):
             try:
                 shutil.rmtree(out_dir, onerror=self.app.core.remove_readonly_handler)
             except Exception as e:
-                logger.debug(
-                    f"Failed to remove existing output directory {out_dir}: {e}"
-                )
+                logger.debug(f"Failed to remove existing output directory {out_dir}: {e}")
 
         self.app.performance_monitor.start("gui_extract_asar")
         self.app.is_operating = True
@@ -322,9 +320,7 @@ class ToolsTab(ttk.Frame):
         self.app.async_manager.submit("gui_extract_asar_op", _t)
 
     def _sync_extracted_path(self):
-        if self.app.last_extracted_path and os.path.exists(
-            self.app.last_extracted_path
-        ):
+        if self.app.last_extracted_path and os.path.exists(self.app.last_extracted_path):
             self.app.var_pack_src.set(self.app.last_extracted_path)
             self.app.log(f"Synced path: {self.app.last_extracted_path}")
         else:
@@ -358,10 +354,7 @@ class ToolsTab(ttk.Frame):
             return False
 
         src_basename = os.path.basename(os.path.normpath(src))
-        if (
-            src_basename.endswith(".unpacked")
-            or src_basename == f"app{ASAR_EXTENSION}.unpacked"
-        ):
+        if src_basename.endswith(".unpacked") or src_basename == f"app{ASAR_EXTENSION}.unpacked":
             messagebox.showwarning(T("title_warning"), T("warn_asar_unpacked"))
             return False
 
@@ -386,13 +379,9 @@ class ToolsTab(ttk.Frame):
 
         from utils.constants import REQUIRED_ASAR_FILES
 
-        missing_files = [
-            f for f in REQUIRED_ASAR_FILES if not os.path.exists(os.path.join(src, f))
-        ]
+        missing_files = [f for f in REQUIRED_ASAR_FILES if not os.path.exists(os.path.join(src, f))]
         if missing_files:
-            logger.warning(
-                f"Missing required files in source directory: {missing_files}"
-            )
+            logger.warning(f"Missing required files in source directory: {missing_files}")
             msg = T(
                 "warn_missing_files",
                 f"Warning: Missing expected files: {', '.join(missing_files)}\n\nThis may not be a valid asar source directory.\n\nContinue anyway?",
@@ -449,9 +438,7 @@ class ToolsTab(ttk.Frame):
 
         def _t():
             try:
-                core.run_asar(
-                    "pack", src, out_path, callback=self.app.log, unpack_pattern=pat
-                )
+                core.run_asar("pack", src, out_path, callback=self.app.log, unpack_pattern=pat)
                 self.after(
                     0,
                     lambda packed_path=out_path: messagebox.showinfo(
@@ -511,14 +498,10 @@ class ToolsTab(ttk.Frame):
         try:
             t = self.app.var_exe.get()
             if not t:
-                return messagebox.showwarning(
-                    T("title_warning"), T("warn_no_file", "请选择文件")
-                )
+                return messagebox.showwarning(T("title_warning"), T("warn_no_file", "请选择文件"))
 
             if not os.path.exists(t):
-                return messagebox.showerror(
-                    T("title_error"), T("err_path_not_exist", "路径不存在")
-                )
+                return messagebox.showerror(T("title_error"), T("err_path_not_exist", "路径不存在"))
 
             current_offset = get_config().fuse_asar_integrity_offset
             warn_msg = T("msg_fuse_warn").format(offset=current_offset)
@@ -530,8 +513,6 @@ class ToolsTab(ttk.Frame):
             if result:
                 messagebox.showinfo(T("title_success"), T("op_success"))
             else:
-                messagebox.showinfo(
-                    T("title_warning"), T("msg_fuse_disabled_or_not_found")
-                )
+                messagebox.showinfo(T("title_warning"), T("msg_fuse_disabled_or_not_found"))
         finally:
             self.app._release_operation_lock(OperationType.FUSE_REMOVE)

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 工具函数模块 - 通用清理功能
 
@@ -11,17 +10,20 @@ __all__ = [
     "schedule_delayed_cleanup",
 ]
 
+import logging
 import os
 import shutil
 import stat
-import logging
-import time
 import subprocess
 import sys
 import threading
-from typing import Callable, Any
+import time
+from typing import Any, Callable
+
 from utils.constants import (
     DEFAULT_CLEANUP_RETRY_DELAY as CLEANUP_RETRY_DELAY,
+)
+from utils.constants import (
     DELAYED_CLEANUP_DELAY,
 )
 

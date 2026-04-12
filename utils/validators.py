@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 输入验证装饰器和验证函数
 
@@ -14,7 +13,7 @@ __all__ = [
 import functools
 import inspect
 import os
-from typing import Callable, Optional, Union, List
+from typing import Callable, List, Optional, Union
 
 
 class ValidationError(Exception):

@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 关于对话框模块
 """
 
+import logging
 import os
 import tkinter as tk
 from tkinter import ttk
-import logging
 
+from utils.constants import GITHUB_REPO_URL
 from utils.language import T, get_font
 from utils.paths import get_resource_path
-from utils.constants import GITHUB_REPO_URL
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +55,8 @@ def _create_about_avatar(parent_frame, dlg):
     """创建关于对话框的头像区域"""
     avatar_img = None
     try:
-        import struct
         import base64
+        import struct
         icon_path = get_resource_path("icon.ico")
         if os.path.exists(icon_path):
             with open(icon_path, 'rb') as f:

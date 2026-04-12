@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 补丁安装控制器模块
 
@@ -13,30 +12,27 @@
 
 __all__ = ["PatchController", "PatchError"]
 
+import logging
 import os
 import shutil
-import logging
-from typing import Optional, Callable, Tuple
+from typing import Callable, Optional, Tuple
 
+from core.bootstrap import get_detected_game_path
 from core.config import get_config
-from core.steam import handle_steam_update
 from core.patch_info import save_patch_info, save_patch_meta
 from core.state_validator import StateValidator, SystemState
-from core.bootstrap import get_detected_game_path
+from core.steam import handle_steam_update
 from utils.cleanup import force_cleanup_dir
+from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
+from utils.disk_utils import (
+    check_operation_space,
+)
 from utils.file_ops import safe_extract_zip
 from utils.language import T
+from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 from utils.transaction import FileTransaction, TransactionError
-from utils.operation_lock import with_operation_lock, OperationType
-from utils.disk_utils import (
-    check_disk_space,
-    estimate_asar_size,
-    check_operation_space,
-    DiskSpaceError,
-)
-from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +174,7 @@ class PatchController:
         Returns:
             (是否成功, 临时目录, 错误消息)
         """
-        from utils.operation_lock import get_operation_lock, OperationType
+        from utils.operation_lock import get_operation_lock
 
         lock = get_operation_lock()
         if not lock.acquire(OperationType.PATCH):

@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 ASAR 工具模块
 
 提供与 ASAR 文件操作相关的辅助函数，例如从包内计算哈希。
 """
 
-import os
-import json
-import struct
 import hashlib
+import json
 import logging
+import os
+import struct
+
 from utils.constants import ASAR_MAGIC_NUMBER
 
 logger = logging.getLogger(__name__)

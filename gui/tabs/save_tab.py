@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 
+import logging
 import os
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import logging
+from tkinter import filedialog, messagebox, ttk
+
 from utils.language import T
 
 logger = logging.getLogger(__name__)

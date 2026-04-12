@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 系统状态一致性验证器
 
@@ -13,16 +12,15 @@ __all__ = [
     "validate_system_state",
 ]
 
-import os
 import json
 import logging
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
 from utils.asar_utils import get_file_hash_in_asar
-from utils.file_ops import compute_file_hash
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
 logger = logging.getLogger(__name__)
@@ -99,7 +97,7 @@ class StateValidator:
         self.errors: List[StateValidationError] = []
         self.warnings: List[StateValidationError] = []
         self.infos: List[StateValidationError] = []
-        
+
     def validate_all(self) -> Tuple[SystemState, List[StateValidationError]]:
         """
         执行完整的系统状态验证
@@ -110,36 +108,36 @@ class StateValidator:
         self.errors = []
         self.warnings = []
         self.infos = []
-        
+
         logger.info("Starting system state validation...")
-        
+
         # 1. 检查基础路径
         self._validate_base_paths()
-        
+
         # 2. 检查ASAR文件
         asar_state = self._validate_asar()
-        
+
         # 3. 检查备份文件
         bak_state = self._validate_backup()
-        
+
         # 4. 检查补丁元数据
         meta_state = self._validate_patch_meta()
-        
+
         # 5. 检查补丁信息
         info_state = self._validate_patch_info()
-        
+
         # 6. 综合分析状态
         system_state = self._analyze_state(asar_state, bak_state, meta_state, info_state)
-        
+
         all_issues = self.errors + self.warnings + self.infos
-        
+
         if not all_issues:
             logger.info(f"System state validation passed: {system_state.value}")
         else:
             logger.warning(f"System state: {system_state.value}, issues found: {len(all_issues)}")
-            
+
         return system_state, all_issues
-        
+
     def _validate_base_paths(self) -> None:
         """验证基础路径"""
         if not os.path.exists(self.res_dir):
@@ -149,11 +147,11 @@ class StateValidator:
                 file_path=self.res_dir,
                 suggestion="Please ensure the patcher is in the game directory"
             ))
-            
+
     def _validate_asar(self) -> FileState:
         """验证ASAR文件"""
         state = FileState(path=self.asar_path, exists=os.path.exists(self.asar_path))
-        
+
         if not state.exists:
             self.warnings.append(StateValidationError(
                 severity="warning",
@@ -162,10 +160,10 @@ class StateValidator:
                 suggestion="If Steam just updated, restore from backup first"
             ))
             return state
-            
+
         try:
             state.size = os.path.getsize(self.asar_path)
-            
+
             # 检查ASAR完整性（magic number）
             with open(self.asar_path, 'rb') as f:
                 magic = f.read(4)
@@ -179,20 +177,20 @@ class StateValidator:
                     state.is_valid = False
                 else:
                     state.is_valid = True
-                    
+
         except Exception as e:
             self.errors.append(StateValidationError(
                 severity="critical",
                 message=f"Failed to validate ASAR: {e}",
                 file_path=self.asar_path
             ))
-            
+
         return state
-        
+
     def _validate_backup(self) -> FileState:
         """验证备份文件"""
         state = FileState(path=self.bak_path, exists=os.path.exists(self.bak_path))
-        
+
         if not state.exists:
             self.infos.append(StateValidationError(
                 severity="info",
@@ -200,10 +198,10 @@ class StateValidator:
                 file_path=self.bak_path
             ))
             return state
-            
+
         try:
             state.size = os.path.getsize(self.bak_path)
-            
+
             # 验证备份完整性
             with open(self.bak_path, 'rb') as f:
                 magic = f.read(4)
@@ -216,25 +214,25 @@ class StateValidator:
                     ))
                 else:
                     state.is_valid = True
-                    
+
         except Exception as e:
             self.warnings.append(StateValidationError(
                 severity="warning",
                 message=f"Failed to validate backup: {e}",
                 file_path=self.bak_path
             ))
-            
+
         return state
-        
+
     def _validate_patch_meta(self) -> Optional[Dict]:
         """验证补丁元数据"""
         if not os.path.exists(self.patch_meta_path):
             return None
-            
+
         try:
-            with open(self.patch_meta_path, 'r', encoding='utf-8') as f:
+            with open(self.patch_meta_path, encoding='utf-8') as f:
                 meta = json.load(f)
-                
+
             # 验证必要字段
             if 'patch_files' not in meta:
                 self.warnings.append(StateValidationError(
@@ -242,9 +240,9 @@ class StateValidator:
                     message="Patch meta is missing 'patch_files' field",
                     file_path=self.patch_meta_path
                 ))
-                
+
             return meta
-            
+
         except json.JSONDecodeError as e:
             self.warnings.append(StateValidationError(
                 severity="warning",
@@ -258,16 +256,16 @@ class StateValidator:
                 message=f"Failed to read patch meta: {e}",
                 file_path=self.patch_meta_path
             ))
-            
+
         return None
-        
+
     def _validate_patch_info(self) -> Optional[Dict]:
         """验证补丁信息"""
         if not os.path.exists(self.patch_info_path):
             return None
-            
+
         try:
-            with open(self.patch_info_path, 'r', encoding='utf-8') as f:
+            with open(self.patch_info_path, encoding='utf-8') as f:
                 info = json.load(f)
             return info
         except Exception as e:
@@ -277,7 +275,7 @@ class StateValidator:
                 file_path=self.patch_info_path
             ))
             return None
-            
+
     def _analyze_state(
         self,
         asar_state: FileState,
@@ -295,19 +293,19 @@ class StateValidator:
         - ASAR存在 + 备份存在 + 无元数据 = INCONSISTENT (不一致)
         - ASAR损坏 = CORRUPTED (损坏)
         """
-        
+
         # 检查是否损坏
         if asar_state.exists and not asar_state.is_valid:
             return SystemState.CORRUPTED
-            
+
         # ASAR和备份都不存在
         if not asar_state.exists and not bak_state.exists:
             return SystemState.CORRUPTED
-            
+
         # ASAR不存在但备份存在 - Steam更新
         if not asar_state.exists and bak_state.exists:
             return SystemState.STEAM_UPDATED
-            
+
         # ASAR存在但备份不存在
         if asar_state.exists and not bak_state.exists:
             if meta_state or info_state:
@@ -319,7 +317,7 @@ class StateValidator:
                 ))
                 return SystemState.INCONSISTENT
             return SystemState.CLEAN
-            
+
         # ASAR和备份都存在
         if asar_state.exists and bak_state.exists:
             if meta_state:
@@ -336,9 +334,9 @@ class StateValidator:
                     suggestion="You may need to reapply the patch"
                 ))
                 return SystemState.INCONSISTENT
-                
+
         return SystemState.UNKNOWN
-        
+
     def _verify_patch_integrity(self, meta: Dict) -> bool:
         """
         验证补丁完整性
@@ -348,7 +346,7 @@ class StateValidator:
         patch_files = meta.get('patch_files', {})
         if not patch_files:
             return True
-            
+
         # 只检查前3个文件，避免太慢
         check_count = 0
         for file_path, expected_hash in patch_files.items():
@@ -362,9 +360,9 @@ class StateValidator:
             except Exception:
                 # 如果无法读取，可能是部分补丁
                 return False
-                
+
         return True
-        
+
     def can_apply_patch(self) -> Tuple[bool, str]:
         """
         检查是否可以安全地应用补丁
@@ -373,19 +371,19 @@ class StateValidator:
             Tuple[bool, str]: (是否可以, 原因)
         """
         state, issues = self.validate_all()
-        
+
         critical_errors = [e for e in issues if e.severity == "critical"]
         if critical_errors:
             return False, f"Critical errors found: {critical_errors[0].message}"
-            
+
         if state == SystemState.CORRUPTED:
             return False, "Game files are corrupted. Please verify integrity in Steam first."
-            
+
         if state == SystemState.PATCHED:
             return False, "Game is already patched. No need to apply again."
-            
+
         return True, "Ready to apply patch"
-        
+
     def can_restore_backup(self) -> Tuple[bool, str]:
         """
         检查是否可以恢复备份
@@ -395,7 +393,7 @@ class StateValidator:
         """
         if not os.path.exists(self.bak_path):
             return False, "Backup file not found"
-            
+
         try:
             with open(self.bak_path, 'rb') as f:
                 magic = f.read(4)
@@ -403,7 +401,7 @@ class StateValidator:
                     return False, "Backup file is corrupted"
         except Exception as e:
             return False, f"Cannot read backup: {e}"
-            
+
         return True, "Ready to restore"
 
 

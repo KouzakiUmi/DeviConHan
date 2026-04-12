@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Fuse 完整性校验移除模块
 
@@ -13,23 +12,23 @@ Fuse 完整性校验移除模块
 
 __all__ = ["remove_fuse", "restore_fuse", "verify_fuse_backup", "FuseError"]
 
-import os
-import mmap
-import shutil
 import hashlib
 import logging
+import mmap
+import os
+import shutil
 import stat
-from typing import Optional, Callable, Tuple
+from typing import Callable, Optional, Tuple
 
-from utils.paths import normalize_path
 from core.config import get_config
 from utils.constants import (
-    FUSE_ENABLED_BYTE,
     FUSE_DISABLED_BYTE,
-    FUSE_VALIDATION_MIN_SIZE,
+    FUSE_ENABLED_BYTE,
     FUSE_PARTIAL_HASH_HEAD_SIZE,
     FUSE_PARTIAL_HASH_TAIL_SIZE,
+    FUSE_VALIDATION_MIN_SIZE,
 )
+from utils.paths import normalize_path
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +420,7 @@ def remove_fuse(exe_path, callback=None):
         # 尝试回滚
         _rollback_fuse(exe_path, temp_backup)
         return False
-    except (OSError, IOError) as e:
+    except OSError as e:
         logger.error(f"MMap/IO error: {e}")
         if callback:
             callback(f"IO Error: {e}")

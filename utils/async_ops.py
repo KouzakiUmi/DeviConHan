@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 异步操作管理器模块
 
@@ -16,9 +15,9 @@ import atexit
 import inspect
 import logging
 import threading
-from concurrent.futures import ThreadPoolExecutor, Future, CancelledError
-from typing import Callable, Optional, Any, Dict
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from enum import Enum
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

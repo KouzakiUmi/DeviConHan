@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 性能分析工具模块
 
@@ -14,11 +13,11 @@ __all__ = [
 ]
 
 import logging
-import time
 import threading
+import time
 from contextlib import contextmanager
-from typing import Optional, Dict, Any
 from functools import wraps
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

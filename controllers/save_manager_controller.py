@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*-
 """
 存档管理器控制器模块
 
 封装存档管理相关的业务逻辑，解耦GUI代码。
 """
 
-import os
 import logging
-from typing import Optional, Callable, Tuple
+import os
+from typing import Callable, Optional, Tuple
 
 from core.save_service import SaveService
 
@@ -25,9 +24,7 @@ class SaveManagerController:
     # 存档目录候选名称
     SAVE_DIR_CANDIDATES = ["_storage", "save", "SaveData", "UserData"]
 
-    def __init__(
-        self, save_service: SaveService, log_callback: Optional[Callable] = None
-    ):
+    def __init__(self, save_service: SaveService, log_callback: Optional[Callable] = None):
         """
         初始化存档管理器控制器
 
@@ -60,11 +57,24 @@ class SaveManagerController:
         Returns:
             存档目录路径，未找到返回 None
         """
+        from core.bootstrap import get_detected_game_path
+
+        base_dir = get_detected_game_path() or os.path.abspath(".")
+
         for candidate in self.SAVE_DIR_CANDIDATES:
-            path = os.path.abspath(candidate)
+            path = os.path.join(base_dir, candidate)
             if os.path.exists(path) and os.path.isdir(path):
                 self._log(f"Found save directory: {path}")
                 return path
+
+        # 兼容旧版本：如果基于检测到的目录找不到，尝试在当前工作目录下查找
+        if base_dir != os.path.abspath("."):
+            for candidate in self.SAVE_DIR_CANDIDATES:
+                path = os.path.abspath(candidate)
+                if os.path.exists(path) and os.path.isdir(path):
+                    self._log(f"Found save directory (in CWD fallback): {path}")
+                    return path
+
         return None
 
     def scan_backups(self, save_root: str, backup_dir: str) -> list:
@@ -97,13 +107,9 @@ class SaveManagerController:
 
                         fp = entry.path
                         if entry.is_dir():
-                            self._add_backup_to_list(
-                                backups, d, fp, is_zip=False, prefix=prefix
-                            )
+                            self._add_backup_to_list(backups, d, fp, is_zip=False, prefix=prefix)
                         elif entry.is_file() and d.endswith(".zip"):
-                            self._add_backup_to_list(
-                                backups, d, fp, is_zip=True, prefix=prefix
-                            )
+                            self._add_backup_to_list(backups, d, fp, is_zip=True, prefix=prefix)
             except Exception as e:
                 logger.debug(f"Error scanning {d_path}: {e}")
 
@@ -152,15 +158,11 @@ class SaveManagerController:
             if len(ts) >= 17:
                 # 新格式：含毫秒（17位）
                 display_name = (
-                    f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} "
-                    f"{ts[8:10]}:{ts[10:12]}:{ts[12:14]}.{ts[14:17]}"
+                    f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}.{ts[14:17]}"
                 )
             elif len(ts) == 14:
                 # 旧格式：无毫秒（14位）
-                display_name = (
-                    f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} "
-                    f"{ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
-                )
+                display_name = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[8:10]}:{ts[10:12]}:{ts[12:14]}"
             else:
                 display_name = name_part
             list_ref.append((display_name, fullpath, is_zip))
@@ -179,16 +181,12 @@ class SaveManagerController:
             实际使用的备份目录路径
         """
         if not backup_dir or not os.path.exists(backup_dir):
-            default_dir = os.path.join(
-                os.path.expanduser("~"), ".tyranopatcher", "backups"
-            )
+            default_dir = os.path.join(os.path.expanduser("~"), ".tyranopatcher", "backups")
             os.makedirs(default_dir, exist_ok=True)
             return default_dir
         return backup_dir
 
-    def execute_backup(
-        self, save_dir: str, backup_dir: str, use_zip: bool, **kwargs
-    ) -> bool:
+    def execute_backup(self, save_dir: str, backup_dir: str, use_zip: bool, **kwargs) -> bool:
         """
         执行存档备份
 
@@ -202,18 +200,14 @@ class SaveManagerController:
             是否成功
         """
         try:
-            result = self.save_service.backup_save(
-                save_dir, backup_dir, use_zip, **kwargs
-            )
+            result = self.save_service.backup_save(save_dir, backup_dir, use_zip, **kwargs)
             self._log(f"Backup created: {result}")
             return True
         except Exception as e:
             self._log(f"Backup error: {e}", "error")
             return False
 
-    def execute_restore(
-        self, save_dir: str, backup_src: str, **kwargs
-    ) -> Tuple[bool, str]:
+    def execute_restore(self, save_dir: str, backup_src: str, **kwargs) -> Tuple[bool, str]:
         """
         执行存档还原
 

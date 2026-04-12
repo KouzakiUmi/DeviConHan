@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 恶魔链接补丁工具 - 核心逻辑模块
 
@@ -6,19 +5,19 @@
 包含性能监控集成，用于跟踪和优化操作性能。
 """
 
+import logging
 import os
 import stat
-import logging
 from typing import Callable, Optional
 
-from utils.paths import normalize_path
-from utils.performance import get_performance_monitor
+from utils.constants import ASAR_UNPACK_PATTERN
 from utils.error_handler import (
     PatcherError,
 )
-from utils.validators import validate_path, validate_not_empty
-from utils.constants import ASAR_UNPACK_PATTERN
 from utils.file_ops import verify_directory_safe
+from utils.paths import normalize_path
+from utils.performance import get_performance_monitor
+from utils.validators import validate_not_empty, validate_path
 
 logger = logging.getLogger(__name__)
 

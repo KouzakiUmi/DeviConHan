@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 恶魔链接补丁工具 - 配置管理模块
 
@@ -6,17 +5,17 @@
 包含配置验证功能，确保配置项的有效性和一致性。
 """
 
-import os
 import logging
+import os
 import shutil
 import threading
 import time
 from configparser import ConfigParser
 from contextlib import contextmanager
-from typing import Optional, List, Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from utils.constants import MAX_BACKUP_PREFIX_LENGTH, TIME_DIFF_THRESHOLD_MAX_DAYS
 from utils.paths import get_resource_path, get_user_config_path
-from utils.constants import TIME_DIFF_THRESHOLD_MAX_DAYS, MAX_BACKUP_PREFIX_LENGTH
 
 logger = logging.getLogger(__name__)
 

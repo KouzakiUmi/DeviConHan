@@ -1,14 +1,13 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """恶魔链接补丁工具 - 主程序入口"""
 
-import sys
 import argparse
+import sys
 
 from core.config import get_config
 from gui.main_window import App
-from utils.logging import setup_logging
 from utils.language import init_lang
+from utils.logging import setup_logging
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -113,7 +112,7 @@ def main() -> int:
         app = App()
         app.mainloop()
         return 0
-    except Exception as e:
+    except Exception:
         logger.exception("Fatal error in main")
         # messagebox.showerror(T("err_fatal_error"), T("err_unexpected_error", error=str(e)))
         return 1
