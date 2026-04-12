@@ -80,9 +80,6 @@ class AsyncOperationManager:
         self._operations: Dict[str, ProgressInfo] = {}
         self._lock = threading.Lock()
         self._progress_callback: Optional[Callable[[ProgressInfo], None]] = None
-        # 修复说明：原实现依赖 __del__ 清理线程池，但 Python 的 __del__
-        # 调用时机不可靠（循环引用阻止、解释器退出时全局变量已为 None）。
-        # 修复：使用 atexit 注册确定性的退出时清理。
         atexit.register(self._atexit_shutdown)
 
     def set_progress_callback(self, callback: Callable[[ProgressInfo], None]) -> None:
@@ -106,15 +103,6 @@ class AsyncOperationManager:
         """
         提交异步任务
 
-        Bug D 修复：原实现在 wrapped_func 内部直接修改通过 **kwargs 捕获的
-        同一字典对象（kwargs["cancel_event"] = ... 等），若调用方复用该字典
-        或同一操作被重新提交，注入的键会污染后续调用。
-        修复：在 wrapped_func 执行时复制一份 kwargs 副本再注入，不修改原始字典。
-
-        同时修复：原 len(self._operations) >= MAX_HISTORY_OPERATIONS 检查在锁外
-        执行，cleanup_completed() 内再重新加锁，存在 TOCTOU 竞态；改为在持锁
-        状态下做清理。
-
         Args:
             operation_id: 操作ID
             func: 要执行的函数
@@ -128,10 +116,6 @@ class AsyncOperationManager:
         accepts_cancel = "cancel_event" in sig.parameters
 
         with self._lock:
-            # M4 修复：拒绝对正在运行中的同名 operation_id 重复提交。
-            # 原实现直接覆盖旧的 ProgressInfo，导致旧的 wrapped_func
-            # 仍持有旧对象引用并在完成时调用 _notify_progress，
-            # 而此时 _operations 字典里就已是新对象，导致状态孤儿。
             existing = self._operations.get(operation_id)
             if existing is not None and existing.state == OperationState.RUNNING:
                 logger.warning(
@@ -168,7 +152,6 @@ class AsyncOperationManager:
                 progress_info.message = "In progress..."
                 self._notify_progress(progress_info)
 
-                # 复制一份 kwargs，避免修改调用方传入的原始字典（Bug D 修复）
                 call_kwargs = dict(kwargs)
 
                 def check_cancelled():
@@ -245,14 +228,6 @@ class AsyncOperationManager:
 
         Returns:
             bool: 是否成功取消
-
-        修复说明（C2 死锁）：
-        原实现在持有 self._lock 的状态下调用 _notify_progress()，
-        而 _notify_progress 会执行外部回调，外部回调若调用
-        get_progress() / get_all_operations() 等任何需要获取
-        self._lock 的方法，就会因为 threading.Lock() 不可重入而
-        发生死锁。
-        修复：在锁内仅修改状态，将 _notify_progress 移到锁外调用。
         """
         progress_to_notify: Optional[ProgressInfo] = None
         result = False
@@ -342,10 +317,6 @@ class AsyncOperationManager:
 
     def __del__(self) -> None:
         """析构函数（保留作为次要保险，主要清理由 atexit 完成）
-
-        修复说明：__del__ 的调用时机在 Python 中不可靠（循环引用会阻止
-        调用，解释器退出阶段全局变量已为 None 会导致 AttributeError）。
-        主要清理责任已转移到 atexit 注册的 _atexit_shutdown()。
         """
         try:
             self._executor.shutdown(wait=False)

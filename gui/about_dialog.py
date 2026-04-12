@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def show_about_dialog(parent):
     """显示关于对话框"""
     about_app_label = T("menu_about_app")
-    
+
     dlg = tk.Toplevel(parent)
     dlg.title(about_app_label)
     dlg.resizable(False, False)
@@ -92,31 +92,31 @@ def _create_about_info(parent_frame, dlg):
 
     app_name = T("app_title")
     ttk.Label(info_frame, text=app_name, font=get_font(14, "bold")).pack(anchor="w", pady=(0, 5))
-    
+
     about_version = T("about_version")
     ttk.Label(info_frame, text=about_version, font=get_font(10)).pack(anchor="w", pady=(0, 10))
-    
+
     desc = T("about_desc")
-    
+
     # 使用带滚动条的文本框展示 Credits
     from tkinter import scrolledtext
     text_area = scrolledtext.ScrolledText(info_frame, wrap=tk.WORD, height=8, font=get_font(9))
     text_area.insert(tk.END, desc)
     text_area.config(state="disabled")
     text_area.pack(fill="both", expand=True, pady=(0, 10))
-    
+
     # 链接标签
     def open_url(event):
         import webbrowser
         webbrowser.open(GITHUB_REPO_URL)
-        
+
     about_github_link = T("about_github_link")
     lbl_link = ttk.Label(info_frame, text=about_github_link, foreground="blue", cursor="hand2")
     lbl_link.pack(anchor="w", pady=(0, 10))
     lbl_link.bind("<Button-1>", open_url)
-    
+
     btn_frame = ttk.Frame(info_frame)
     btn_frame.pack(fill="x", side="bottom")
-    
+
     btn_ok = T("btn_ok")
     ttk.Button(btn_frame, text=btn_ok, command=dlg.destroy, width=10).pack(side="right")

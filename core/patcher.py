@@ -9,17 +9,14 @@
 import os
 import stat
 import logging
-import threading
 from typing import Callable, Optional
 
-from utils.paths import get_resource_path, normalize_path
+from utils.paths import normalize_path
 from utils.performance import get_performance_monitor
 from utils.error_handler import (
     PatcherError,
-    PatcherFileNotFoundError,
 )
 from utils.validators import validate_path, validate_not_empty
-from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +32,7 @@ class CoreLogic:
     def remove_readonly_handler(func, path, excinfo):
         """删除只读属性的回调函数（静态方法，可在类外复用）"""
         try:
-            os.chmod(path, stat.S_IWRITE)
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
             func(path)
         except Exception as e:
             logger.debug(f"Failed to remove readonly: {e}")
@@ -45,7 +42,7 @@ class CoreLogic:
         初始化核心逻辑
         """
         try:
-            import asar
+            import asar  # noqa: F401  # noqa: F401  # noqa: F401
         except ImportError:
             raise PatcherError(
                 "Missing dependency: asar. Please install it using 'pip install asar'."
@@ -96,7 +93,7 @@ class CoreLogic:
         monitor.start(f"asar_{action}")
 
         try:
-            import asar
+            import asar  # noqa: F401  # noqa: F401  # noqa: F401
             from pathlib import Path
 
             if callback:
@@ -122,11 +119,6 @@ class CoreLogic:
 
         except Exception as e:
             logger.exception("ASAR operation failed")
-            # 修复说明：原实现将所有非 PatcherFileNotFoundError 的异常都包装为
-            # PatcherError(str(e))，导致具有 category/severity/details 的
-            # PatcherError 子类结构化信息丢失。
-            # 修复：已是 PatcherError 子类的直接重抛，保留结构化信息；
-            # 只将真正未预期的非 PatcherError 包装为 PatcherError。
             if isinstance(e, PatcherError):
                 raise
             raise PatcherError(str(e)) from e

@@ -41,16 +41,6 @@ def normalize_path(path: str) -> str:
     """
     规范化路径，处理各种边界情况。
 
-    修复说明（路径遍历安全漏洞 P0）：
-    原实现通过字符串替换移除 ".." 来防止路径遍历，但该方法存在绕过风险：
-    - "....//foo" 经过 replace("..", "") 得到 "//foo"，仍然是有效的遍历路径；
-    - URL 编码（%2e%2e/）不会被 ".." 检测命中；
-    - 在 replace 之后再调用 abspath 会把残留的 "/" 解析为绝对路径。
-
-    正确做法：直接调用 os.path.abspath + os.path.normpath，由操作系统层面
-    解析所有遍历序列，产生规范绝对路径；不手动剔除字符串。
-    若需要限制路径必须在某个目录内，请使用 safe_path_within()。
-
     注意：本函数不对路径做边界限制（沙箱），仅做格式规范化。
     """
     if not path:
@@ -101,11 +91,6 @@ def normalize_path(path: str) -> str:
 def safe_path_within(path: str, base_dir: str) -> Optional[str]:
     """
     规范化路径并验证其位于指定基础目录内（防路径遍历沙箱）。
-
-    修复说明（路径遍历安全漏洞 P0）：
-    对于需要限制路径必须在某个目录内的场景（如解压 ZIP、写入目标目录），
-    应使用本函数代替单独的 normalize_path。本函数在规范化后进行边界检查，
-    确保结果路径以 base_dir 为前缀，从根本上杜绝路径遍历绕过。
 
     Args:
         path:     待验证的路径（可以是相对路径或绝对路径）

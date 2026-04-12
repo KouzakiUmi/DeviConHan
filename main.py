@@ -98,11 +98,6 @@ def main() -> int:
                 _ctypes = ctypes
                 # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
                 if ctypes.windll.kernel32.AllocConsole():
-                    # M6 修复：先将两个句柄都开好再赋值给 sys。
-                    # 原实现如果 stdout 成功公 stderr 失败，sys.stderr
-                    # 保持原始值但 _console_opened=True，finaliy 块
-                    # 会错误地关闭原始 stderr。
-                    # 修复：先开好所有句柄，全部成功再设置标志位。
                     new_stdout = open("CONOUT$", "w", encoding="utf-8")
                     new_stderr = open("CONOUT$", "w", encoding="utf-8")
                     sys.stdout = new_stdout
@@ -116,9 +111,7 @@ def main() -> int:
         app = App()
         app.mainloop()
         return 0
-    except Exception as e:
-        # 修复说明（L3）：logger.exception() 自动附加完整 traceback，
-        # 其中已包含异常信息，无需在格式化字符串中再次嵌入 "{e}"。
+    except Exception:
         logger.exception("Fatal error in main")
         # messagebox.showerror("Fatal Error", f"An unexpected error occurred:\n{str(e)}")
         return 1

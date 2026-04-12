@@ -93,10 +93,6 @@ def validate_not_empty(*arg_names: str) -> Callable:
             for name in names_to_check:
                 if name in bound_args.arguments:
                     val = bound_args.arguments[name]
-                    # 修复说明（M4）：原实现僅检查 str 类型，若参数为 None
-                    # （Optional[str] 常见）则静默跳过。None 同样是不合法的空输入。
-                    # 进一步修复：对于预期接收路径字符串的参数，传入 int(0)/ []/False
-                    # 也应视为无效输入。修复：增加 not isinstance(val, str) 检查。
                     if val is None or not isinstance(val, str) or not val.strip():
                         raise ValidationError(
                             f"Empty or None argument not allowed: {name}"

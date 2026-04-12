@@ -75,8 +75,6 @@ def _handle_both_missing(on_error):
 
 def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
     """处理 ASAR 不存在，备份存在的情况"""
-    # 修复说明（C3）： handle_steam_update 中 asar_path 可为 None，
-    # 若不检查直接传给 shutil.copy2 将抛出 TypeError。
     if not asar_path:
         logger.error("Cannot restore ASAR: target asar_path is None or empty")
         if on_error:
@@ -140,8 +138,6 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
     """验证补丁哈希以检测 Steam 更新"""
     check_files = get_config().check_files_for_update
 
-    # H2 修复：check_files 为空时无法做哈希对比，不能假定「已打补丁」
-    # 直接返回 (True, False) 让后续流程继续，而不是静默阻断补丁安装。
     if not check_files:
         logger.warning(
             "check_files_for_update is empty; skipping hash verification and continuing."
@@ -214,9 +210,6 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
                     _remove_backup_safely(bak_path)
                 return (result, not result)
             else:
-                # H3 修复：批处理模式下不应静默删除备份。
-                # 原实现用 log_error=False 隐藏这一危险操作；
-                # 现改为记录 WARNING 且保留备份，让管理员可审计。
                 logger.warning(
                     "Batch mode: inconsistent file state detected between ASAR and backup. "
                     "Discarding old backup and repatching (consider verifying game integrity via Steam)."

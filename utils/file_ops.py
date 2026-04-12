@@ -81,8 +81,6 @@ def safe_extract_zip(
         abs_dest_dir = os.path.normpath(os.path.abspath(dest_dir))
 
         with zipfile.ZipFile(zip_path, "r") as zf:
-            # M2 修复：ZIP 炸弹防护 —— 在实际解压前对元数据做预检查
-            # ZipInfo.file_size 字段可被恶意篇改，但局内目录的这个能提前拦戚大多数普通 ZIP 炸弹。
             total_uncompressed = 0
             file_count = 0
             for info in zf.infolist():

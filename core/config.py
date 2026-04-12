@@ -101,9 +101,6 @@ class AppConfig:
 
     def _get_config_snapshot(self) -> Dict[str, Any]:
         """获取配置快照（线程安全，带TTL刷新）
-
-        修复 TOCTOU：将 TTL 检查与快照重建合并在同一个锁块内，
-        避免多线程同时通过外层检查后重复重建快照。
         """
         with self._acquire_lock():
             current_time = time.time()
@@ -277,9 +274,6 @@ class AppConfig:
         """
         设置 [main] 配置节的键值（线程安全）
 
-        修复说明（H1）：原 GUI 代码直接操作内部 self.config对象，
-        绕过了 _config_rw_lock 的所有保护。此方法将修改封装到锁内执行。
-
         Args:
             key: 配置键名（自动转为大写保持与原配置文件一致）
             value: 配置值
@@ -302,11 +296,6 @@ class AppConfig:
         """
         设置 GUI 配置值（线程安全）
 
-        修复说明：原实现直接操作 self.config 对象，未加锁保护，
-        且修改后未使快照缓存失效，导致并发写入竞态以及后续读取
-        可能返回旧值。修复：在锁内执行写操作并同步失效快照，
-        与 set_main_config 保持一致的模式。
-
         Args:
             key: 配置键名
             value: 配置值
@@ -328,11 +317,6 @@ class AppConfig:
     def set_gui_config_batch(self, config_dict: Dict[str, Any]) -> bool:
         """
         批量设置 GUI 配置值（原子操作）
-
-        修复说明（C2 竞态条件）：
-        原实现中，GUI 层多次调用 set_gui_config() 会触发多次文件写入，
-        且批量设置多个配置项的过程没有原子性保证。此方法在持锁状态下
-        一次性设置所有配置项，然后统一写入文件，避免竞态条件。
 
         Args:
             config_dict: 配置键值对字典

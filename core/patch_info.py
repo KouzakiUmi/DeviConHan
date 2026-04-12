@@ -16,9 +16,6 @@ from core.config import get_config
 
 logger = logging.getLogger(__name__)
 
-# Bug G 修复：移除此文件中从未被使用的 ASAR 格式常量重复定义。
-# ASAR_MAGIC_NUMBER 等常量的权威定义在 utils/constants.py，
-# 此处保留会误导维护者以为本文件内有 ASAR 解析逻辑。
 
 
 def has_embedded_patch():
@@ -101,8 +98,3 @@ def save_patch_meta(base_dir, temp_dir):
     logger.info(f"Saved patch meta to: {meta_file}")
 
 
-# get_resource_path 已统一从 utils.paths 导入，此处删除局部副本。
-# 修复说明：原实现在本文件底部重复定义了与 utils/paths.py 完全相同的
-# get_resource_path 函数。局部副本不会受益于 utils/paths.py 的后续修改
-# （如安全性增强），且 has_embedded_patch() 调用的是未经 normalize_path
-# 处理的本地版本。修复方法：顶部 import，删除局部定义。

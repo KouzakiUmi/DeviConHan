@@ -1,0 +1,8 @@
+[install]
+cache_max_size = "500MB"
+
+[run]
+gc_threshold = 1048576
+
+[test]
+pool = "1"

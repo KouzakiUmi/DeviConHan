@@ -47,11 +47,6 @@ def get_file_hash_in_asar(asar_path, file_path):
             if len(header_data) != header_size:
                 return None
 
-            # Bug F 修复：原代码直接对 header_data[4:8] 执行 struct.unpack，
-            # 若 header_data 不足 8 字节（截断/损坏的 ASAR），
-            # struct.unpack 会静默收到空字节串并抛出 struct.error，
-            # 被最外层 except 静默吞掉，难以调试。
-            # 修复：显式检查 header_data 最小长度并记录具体原因。
             if len(header_data) < 8:
                 logger.debug(
                     f"ASAR header_data too short ({len(header_data)} bytes) "

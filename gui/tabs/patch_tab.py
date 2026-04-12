@@ -28,12 +28,12 @@ class PatchTab(ttk.Frame):
             command=lambda: self.app.notebook.select(self.app.tab_tools),
         ).pack(pady=10)
 
-    def _run_auto_patch_worker(self):
+    def _run_auto_patch_worker(self, cancel_event=None, _check_cancelled=None):
         self.app.performance_monitor.start("auto_patch")
         temp = None
         try:
             success, temp, error_msg = self.app.patch_controller.run_auto_patch(
-                gui_app=self.app
+                gui_app=self.app, _check_cancelled=_check_cancelled
             )
             if success:
                 def on_exit_confirm():

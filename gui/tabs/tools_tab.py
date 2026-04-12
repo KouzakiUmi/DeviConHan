@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsTab(ttk.Frame):
-    # L2 修复：将平台包解模式定义为类常量，避免每次调用 _tool_pack 都重建字典
     _PLATFORM_PATTERNS: dict = {
         "win": "*.{node,dll,exe}",
         "nix": "*.{node,dll,so,dylib,bin}",
@@ -288,9 +287,6 @@ class ToolsTab(ttk.Frame):
                     ),
                 )
                 self.after(0, self._sync_extracted_path)
-                # M3 修复：解包失败时 out_dir 可能不存在；
-                # 将打开文件管理器的操作包裹在 try/except 中，
-                # 并在销毁的父窗口上不弹对话框，仅记录日志。
                 if os.path.exists(out_dir):
                     try:
                         if sys.platform.startswith("win"):
@@ -484,9 +480,6 @@ class ToolsTab(ttk.Frame):
         if new_offset is not None:
             try:
                 cfg = get_config()
-                # 修复说明（H1）：原代码直接操作 cfg.config（内部 ConfigParser），
-                # 绕过了 _config_rw_lock 的所有线程安全保护。
-                # 现改为调用 set_main_config() 公开接口，确保全程持锁操作。
                 if not cfg.set_main_config("FUSE_ASAR_INTEGRITY_OFFSET", new_offset):
                     raise OSError("set_main_config() returned False")
 

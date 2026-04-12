@@ -81,8 +81,4 @@ DEFAULT_ASAR_TIMEOUT_SECONDS: int = 300  # ASAR 操作超时时间（秒）
 # ================= 项目链接常量 =================
 GITHUB_REPO_URL: str = "https://github.com/KouzakiUmi/DeviConHan"
 
-# ================= 批处理模式常量 =================
-# 修复说明（M3）：batch.py 中直接用字面量字符串匹配 "Cancelled or error"，
-# 如果 PatchController 的返回字符串微有改动就会静默失效。
-# 统一定义在此处，两端均引用此常量以保持同步。
 BATCH_CANCEL_OR_ERROR_MSG: str = "Cancelled or error"

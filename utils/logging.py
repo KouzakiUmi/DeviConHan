@@ -9,10 +9,6 @@ from typing import Optional
 
 class NewlineSanitizingFormatter(logging.Formatter):
     """格式化器，将日志消息中的换行符转义以防止日志注入
-
-    M5 修复：不再直接修改 LogRecord 的原始字段。
-    LogRecord 对象可能被多个 handler 共享，原地修改 .msg 是副作用。
-    修复：若消息包含换行符，就先遺制一份副本再修改，不影响原始对象。
     """
 
     def format(self, record):

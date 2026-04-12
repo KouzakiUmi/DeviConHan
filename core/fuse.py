@@ -90,25 +90,8 @@ def remove_fuse(exe_path, callback=None):
         return False
 
     try:
-        # 移除只读属性
-        # 修复说明（M6）：原代码使用 stat.S_IWRITE（= 0o200，仅用户写位）。
-        # 在 Linux/macOS 上这会将权限设为 --w-------，移除了读权限，
-        # 导致后续的 mmap() 因无读权限而失败。
-        # 修复：同时设置读写位，确保跨平台匹配性。
-        os.chmod(exe_path, stat.S_IRUSR | stat.S_IWUSR)
+        os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IRUSR | stat.S_IWUSR)
 
-        # -------------------------------------------------------
-        # 自动备份机制（修复 P3：备份完整性验证）
-        #
-        # 原实现仅检查备份文件是否存在，若备份为空文件或写入中断
-        # 导致截断，后续不会重新创建，用户将失去原始文件。
-        # 修复：
-        # 1. 若备份不存在 → 创建并通过哈希验证写入完整性；
-        # 2. 若备份已存在 → 通过文件大小 + SHA256 对比是否与
-        #    当前可执行文件内容匹配（fuse 已被修改）或与原始一致；
-        #    若大小为 0 或哈希计算失败（表明备份损坏），则重新创建；
-        # 3. 备份创建失败时中止操作，保护用户数据安全。
-        # -------------------------------------------------------
         backup_path = exe_path + ".fuse_backup"
 
         def _create_backup() -> bool:
@@ -174,47 +157,44 @@ def remove_fuse(exe_path, callback=None):
         header_len = get_config().fuse_wire_header_length
         integrity_offset = get_config().fuse_asar_integrity_offset
 
-        with open(exe_path, "r+b") as f:
-            with mmap.mmap(f.fileno(), 0) as mm:
-                offset = mm.find(fuse_sentinel)
+        with open(exe_path, "r+b") as f, mmap.mmap(f.fileno(), 0) as mm:
+            offset = mm.find(fuse_sentinel)
 
-                if offset == -1:
-                    logger.info(
-                        "Fuse sentinel not found - already removed or never present"
-                    )
-                    return False
+            if offset == -1:
+                logger.info(
+                    "Fuse sentinel not found - already removed or never present"
+                )
+                return False
 
-                # 计算目标偏移量
-                target = offset + header_len + integrity_offset
+            # 计算目标偏移量
+            target = offset + header_len + integrity_offset
 
-                # 边界检查（确保target + 1在文件范围内）
-                if target + 1 > mm.size():
-                    logger.error(
-                        f"Target position {target} (+1 byte) exceeds file size {mm.size()}"
-                    )
-                    return False
+            # 边界检查（确保target + 1在文件范围内）
+            if target + 1 > mm.size():
+                logger.error(
+                    f"Target position {target} (+1 byte) exceeds file size {mm.size()}"
+                )
+                return False
 
-                current_byte = mm[target : target + 1]
+            current_byte = mm[target : target + 1]
 
-                if current_byte == FUSE_ENABLED_BYTE:
-                    mm[target : target + 1] = FUSE_DISABLED_BYTE
-                    logger.info("Fuse checksum byte modified (0x31 -> 0x30)")
-                    if callback:
-                        callback("Fuse removed.")
-                    return True
-                elif current_byte == FUSE_DISABLED_BYTE:
-                    logger.info("Fuse already disabled")
-                    if callback:
-                        callback("Fuse already disabled.")
-                    return True
-                else:
-                    logger.warning(
-                        f"Unexpected byte at target position: {current_byte}"
-                    )
-                    return False
+            if current_byte == FUSE_ENABLED_BYTE:
+                mm[target : target + 1] = FUSE_DISABLED_BYTE
+                logger.info("Fuse checksum byte modified (0x31 -> 0x30)")
+                if callback:
+                    callback("Fuse removed.")
+                return True
+            elif current_byte == FUSE_DISABLED_BYTE:
+                logger.info("Fuse already disabled")
+                if callback:
+                    callback("Fuse already disabled.")
+                return True
+            else:
+                logger.warning(
+                    f"Unexpected byte at target position: {current_byte}"
+                )
+                return False
 
-        # 修复说明（M1）： with mmap 块内所有分支均已包含 return，
-        # 才此处的两行代码永远不会执行，已删除。
 
     except (OSError, IOError) as e:
         # mmap.error 是 OSError 的子类

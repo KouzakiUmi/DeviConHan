@@ -108,11 +108,11 @@ class SaveTab(ttk.Frame):
                 self.app.is_operating = True
                 self.app.toggle_progress(True)
 
-                def _migrate_worker():
+                def _migrate_worker(cancel_event=None, _check_cancelled=None):
                     try:
                         self.app.save_controller.set_log_callback(self.app.log)
                         migrated_count, failed_count = (
-                            self.app.save_controller.migrate_backups(old_dir, new_dir)
+                            self.app.save_controller.migrate_backups(old_dir, new_dir, _check_cancelled=_check_cancelled)
                         )
                         msg = T("msg_migrate_success").format(migrated=migrated_count)
                         if failed_count > 0:
@@ -188,19 +188,18 @@ class SaveTab(ttk.Frame):
         self.app.is_operating = True
         self.app.toggle_progress(True)
 
-        def _worker():
+        def _worker(cancel_event=None, _check_cancelled=None):
             try:
                 self.app.save_controller.set_log_callback(self.app.log)
                 success = self.app.save_controller.execute_backup(
-                    save_dir, parent, use_zip
+                    save_dir, parent, use_zip, _check_cancelled=_check_cancelled
                 )
                 if success:
                     self.after(0, self.scan_saves)
                     self.after(
                         0,
-                        lambda msg=T("msg_backup_ok"): messagebox.showinfo(
-                            T("title_success"), msg
-                        ),
+                        lambda: messagebox.showinfo(
+                            T("title_success"), T("msg_backup_ok")),
                     )
                 else:
                     self.after(
@@ -253,18 +252,17 @@ class SaveTab(ttk.Frame):
             self.app.is_operating = True
             self.app.toggle_progress(True)
 
-            def _w():
+            def _w(cancel_event=None, _check_cancelled=None):
                 try:
                     self.app.save_controller.set_log_callback(self.app.log)
                     success, error_msg = self.app.save_controller.execute_restore(
-                        save_dir, src
+                        save_dir, src, _check_cancelled=_check_cancelled
                     )
                     if success:
                         self.after(
                             0,
-                            lambda msg=T("msg_restored"): messagebox.showinfo(
-                                T("title_success"), msg
-                            ),
+                            lambda: messagebox.showinfo(
+                                T("title_success"), T("msg_restored")),
                         )
                         self.after(0, self.scan_saves)
                     else:
@@ -308,7 +306,7 @@ class SaveTab(ttk.Frame):
         self.app.is_operating = True
         self.app.toggle_progress(True)
 
-        def _w():
+        def _w(cancel_event=None, _check_cancelled=None):
             try:
                 self.app.save_controller.set_log_callback(self.app.log)
                 success = self.app.save_controller.execute_delete(src)

@@ -10,10 +10,6 @@ from utils.paths import get_user_config_path
 
 logger = logging.getLogger(__name__)
 
-# 经合锁：同时保护 CURRENT_LANG_CODE 和 _lang_version，避免两把锁之间的不一致窗口
-# 修复说明：原实现分别使用 _lang_lock 和 _version_lock 两把独立锁，
-# 语言码和版本号不在同一锁内原子更新，存在短暂不一致窗口。
-# 修复：合并为单一锁 _lang_lock，确保语言码和版本号始终同步。
 _lang_lock = threading.Lock()
 # 保留 _version_lock 别名以向下兼容（指向同一对象）
 _version_lock = _lang_lock
@@ -524,7 +520,6 @@ def T(key: str, default: str = "") -> str:
             en_dict = LANG_DICT.get("en", {})
             if key in en_dict:
                 return en_dict[key]
-            # L1 修复：记录缺失的翻译键，便于开发期调试
             logger.debug(
                 f"Missing translation key: '{key}' "
                 f"(lang={cached_code}, fallback='{default or key}')"
@@ -548,7 +543,6 @@ def T(key: str, default: str = "") -> str:
     if key in en_dict:
         return en_dict[key]
 
-    # L1 修复：记录缺失的翻译键，便于开发期调试
     logger.debug(
         f"Missing translation key: '{key}' "
         f"(lang={lang_code}, fallback='{default or key}')"
@@ -616,13 +610,6 @@ def set_language(code: str) -> None:
 
     Note: 此函数是线程安全的，会自动递增版本号通知所有线程刷新缓存
 
-    修复说明：原实现分两步加锁（先 _lang_lock 写语言码，再
-    _version_lock 递增版本号），两把锁之间有语言码已更新但
-    版本号未变的短暂窗口。其他线程在此窗口内读到新版本号
-    但旧语言码（或反之），会用错误语言重建缓存。修复：
-    _lang_lock 合并了 _version_lock（两者指向同一锁），在单一锁内
-    同时更新两个全局变量，很彻底地消除不一致窗口。
-
     Args:
         code: 语言代码 ('en', 'cn', 'jp')
     """
@@ -667,11 +654,6 @@ def init_lang() -> None:
 
 def _load_saved_language() -> Optional[str]:
     """从配置文件加载保存的语言偏好
-
-    修复说明：原实现创建独立的 ConfigParser 实例重新解析同一配置文件，
-    绕过了 AppConfig 单例的缓存和锁保护，存在与 AppConfig.save() 并发
-    读取的竞态风险。修复：通过已初始化的 AppConfig 单例读取，
-    统一走 AppConfig 的并发读写项径和缓存层。
     """
     try:
         # 延迟导入避免循环依赖（language -> config -> language）

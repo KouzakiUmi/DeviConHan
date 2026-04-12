@@ -10,10 +10,9 @@ import os
 import sys
 import shutil
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import messagebox, scrolledtext, ttk
 import datetime
 import logging
-import subprocess
 import queue
 
 from typing import Optional
@@ -21,7 +20,6 @@ from typing import Optional
 from core.config import get_config
 from core.patcher import CoreLogic
 from core.patch_info import has_embedded_patch
-from core.fuse import remove_fuse
 from core.save_service import SaveService
 from controllers.patch_controller import PatchController
 from controllers.save_manager_controller import SaveManagerController
@@ -30,10 +28,6 @@ from utils.paths import get_resource_path, get_user_config_path
 from utils.performance import get_performance_monitor
 from utils.async_ops import get_async_manager, ProgressInfo
 from utils.constants import (
-    UNPACKED_DIR_NAME,
-    PACKED_DIR_NAME,
-    EXTRACTED_SUFFIX,
-    ASAR_EXTENSION,
     CORRUPTED_SUFFIX,
     DEFAULT_DIALOG_TIMEOUT,
     LOG_AREA_HEIGHT,
@@ -93,8 +87,6 @@ class App(tk.Tk):
         self.async_manager = get_async_manager()
         self.async_manager.set_progress_callback(self._on_async_progress)
 
-        # 修复说明：原实现无 maxsize，若后台线程高频回调则队列无限增长导致内存溢出。
-        # 修复：设置 maxsize=500，导虫入队改用 put_nowait 并在满队时少量丢弃日志更新。
         self._ui_queue = queue.Queue(maxsize=500)
         self._process_ui_queue()
 
@@ -133,13 +125,13 @@ class App(tk.Tk):
         lang_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=T("menu_lang"), menu=lang_menu)
         lang_menu.add_command(
-            label="English", command=lambda l="en": self.change_lang(l)
+            label="English", command=lambda lang="en": self.change_lang(lang)
         )
         lang_menu.add_command(
-            label="简体中文", command=lambda l="cn": self.change_lang(l)
+            label="简体中文", command=lambda lang="cn": self.change_lang(lang)
         )
         lang_menu.add_command(
-            label="日本語", command=lambda l="jp": self.change_lang(l)
+            label="日本語", command=lambda lang="jp": self.change_lang(lang)
         )
 
         about_menu = tk.Menu(menubar, tearoff=0)
@@ -150,7 +142,6 @@ class App(tk.Tk):
             label=about_app_label, command=lambda: show_about_dialog(self)
         )
 
-        # 修复说明：原实现 darwin 和 else 分支都使用 "clam"，是重复代码。已合并。
         style = ttk.Style()
         if sys.platform.startswith("win"):
             style.theme_use("vista")
@@ -196,17 +187,6 @@ class App(tk.Tk):
     def load_config(self):
         """
         从配置文件加载用户偏好设置（使用统一的 AppConfig）
-
-        修复说明（P1 配置文件重复读取）：
-        原实现在 get_config() 已将配置文件读入 AppConfig 单例后，
-        又用第二个 ConfigParser 重新解析同一文件并手动逐 section/key
-        同步，完全冗余且存在竞态写入风险。
-        修复后：
-        1. 仅获取已初始化好的全局 AppConfig 实例。
-        2. 若文件存在，先做轻量完整性检查（大小、非法字符）；
-           若检测到损坏文件，备份后调用 reload() 回退到默认值，
-           不再进行第二次完整解析。
-        3. save_config 改为使用 AppConfig.save() 原子写入。
 
         Returns:
             bool: 是否成功加载配置
@@ -282,12 +262,6 @@ class App(tk.Tk):
         """
         保存用户偏好设置到配置文件（使用统一的 AppConfig）
 
-        修复说明（C2 竞态条件）：
-        原实现直接操作 self.app_config.config.set() 后调用 save()，
-        在批量设置多个配置项的过程中存在竞态条件。修复后使用
-        AppConfig.set_gui_config_batch() 在持锁状态下一次性设置所有配置项，
-        然后统一写入文件，确保原子性。
-
         Returns:
             bool: 是否成功保存
         """
@@ -321,11 +295,6 @@ class App(tk.Tk):
 
     def change_lang(self, code):
         """切换界面语言
-
-        修复说明（H4）：原实现调用 set_language() 后，
-        连续调用 set_gui_config() + save_config()，共触发三次文件写入，
-        而 set_language() 内部已通过 _save_language_to_config() 保存了一次。
-        修复：移除多余的两次写入，仅保留 set_language() 即可。
         """
         if self.is_operating:
             from tkinter import messagebox
@@ -364,10 +333,6 @@ class App(tk.Tk):
                 ts = datetime.datetime.now().strftime("%H:%M:%S")
                 self.log_area.config(state="normal")
 
-                # 根据日志级别添加颜色标记（如果支持）
-                # 修复说明：原实现 level_prefix 为 "" 时保留了占位空格，
-                # 导致 info 级别日志出现 "[ts]  msg" 双空格。
-                # 修复：将空格纳入 level_prefix 内部。
                 level_prefix = f" [{level.upper()}]" if level != "info" else ""
                 self.log_area.insert(tk.END, f"[{ts}]{level_prefix} {msg}\n")
                 self.log_area.see(tk.END)
@@ -430,15 +395,6 @@ class App(tk.Tk):
     ):
         """
         通用线程安全对话框方法。
-
-        修复说明（P2 线程安全对话框空指针）：
-        原实现在调用 self.after() 前没有检查窗口是否仍然存在，且
-        self.after() 本身若在窗口销毁后调用会抛出未捕获的 tk.TclError。
-        修复：
-        1. 调用 self.after() 前先检查 _window_alive()；
-        2. 将 self.after() 包裹在 try-except 中，若失败直接向队列写入默认值
-           确保后台线程不会永久阻塞；
-        3. 回调函数内检查 winfo_exists()，避免在销毁的父窗口上弹出对话框。
 
         Args:
             dialog_func: 对话框函数（如 messagebox.askyesno）

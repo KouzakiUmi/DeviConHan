@@ -16,7 +16,7 @@ from core.patch_info import save_patch_info, save_patch_meta
 from utils.cleanup import force_cleanup_dir
 from utils.file_ops import safe_extract_zip
 from utils.language import T
-from utils.paths import get_resource_path
+from utils.paths import get_resource_path, safe_path_within
 from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 
 logger = logging.getLogger(__name__)
@@ -98,8 +98,6 @@ class PatchController:
         bak = asar + ".bak"
         temp = None
 
-        # 修复说明（M2）：check_prerequisites() 定义了但从未被调用。
-        # 在开始正式流程前先进行前置条件检查，避免后续处理中才发现缺失关键文件。
         ok, prereq_err = self.check_prerequisites()
         if not ok:
             return False, None, prereq_err
@@ -135,10 +133,10 @@ class PatchController:
             except Exception as e:
                 return False, None, f"Failed to create backup: {e}"
 
-        # 创建临时目录
-        # 修复说明：原实现硬编码 "temp_patch"，忽略 cfg.temp_patch_dir 配置项，
-        # 导致修改 config.ini 中的 TEMP_PATCH_DIR 不生效。修复后使用配置值。
-        temp = os.path.join(base, cfg.temp_patch_dir)
+        temp_raw = os.path.join(base, cfg.temp_patch_dir)
+        temp = safe_path_within(temp_raw, base)
+        if not temp:
+            return False, None, f"Security error: Invalid temporary patch directory path '{temp_raw}'"
         if os.path.exists(temp):
             if not force_cleanup_dir(temp):
                 return (
@@ -183,13 +181,9 @@ class PatchController:
         # 打包 ASAR
         self._log("Packing ASAR...")
         self.core.run_asar(
-            "pack", temp, asar, callback=self._log, unpack_pattern="*.{node,dll,exe}"
+            "pack", temp, asar, callback=self._log, unpack_pattern="*.{node,dll,exe,so,dylib,bin}"
         )
 
-        # 保存补丁信息
-        # 修复说明（M5）：原实现中 save_patch_info / save_patch_meta 的
-        # OSError / IOError 若不捕获，将绕过后续清理逻辑直接传播，
-        # 遗留脂临时目录。
         self._log("Saving patch information...")
         try:
             save_patch_info(base, asar, bak)

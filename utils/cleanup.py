@@ -19,9 +19,8 @@ import time
 import subprocess
 import sys
 import threading
-from typing import Callable, Any, Optional
+from typing import Callable, Any
 from utils.constants import (
-    MAX_CLEANUP_RETRIES,
     DEFAULT_CLEANUP_RETRY_DELAY as CLEANUP_RETRY_DELAY,
     DELAYED_CLEANUP_DELAY,
 )

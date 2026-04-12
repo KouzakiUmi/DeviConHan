@@ -30,11 +30,6 @@ class SaveService:
 
     def _cleanup_temp(self, temp_path: str, is_dir: bool = False) -> None:
         """安全清理临时资源（文件或目录）
-
-        修复说明：原实现静默吃掉所有清理异常（bare except: pass），
-        导致清理失败（权限问题、文件被占用等）无任何可追溯记录，
-        可能积累大量磁盘垃圾。修复：保留 try-except 以确保健壮性，
-        但改为 WARNING 级别记录失败原因，便于排查。
         """
         if not os.path.exists(temp_path):
             return
@@ -99,6 +94,9 @@ class SaveService:
         backup_dir = normalize_path(backup_dir)
 
         # 确保备份目录存在，不存在则自动创建
+        if backup_dir.startswith(save_dir + os.sep) or backup_dir == save_dir:
+            raise PatcherError("Backup directory cannot be inside the save directory.")
+
         try:
             os.makedirs(backup_dir, exist_ok=True)
         except OSError as e:
@@ -108,10 +106,6 @@ class SaveService:
 
         from core.config import get_config
 
-        # 修复说明：原实现精度为秒（%S），同一秒内触发两次备份时
-        # os.replace 会静默覆盖第一份备份，导致用户数据丢失。
-        # 修复：使用单次 now() 调用并包含毫秒（%f 取前3位），
-        # 避免两次 now() 调用的跳变问题，确保同秒内的备份名唯一。
         _now = datetime.datetime.now()
         ts = _now.strftime("%Y%m%d%H%M%S") + _now.strftime("%f")[:3]
         prefix = get_config().backup_prefix
@@ -121,12 +115,6 @@ class SaveService:
             dest_zip = os.path.join(backup_dir, zip_name)
             # 原子写入：先写临时文件，完成后rename
             temp_zip = dest_zip + TEMP_FILE_SUFFIX
-            # Bug E 修复：base_path 和 base_len 必须使用同一个规范化路径。
-            # 原实现 base_path = os.path.abspath(save_dir) 但
-            # base_len = len(save_dir)（未规范化），abs_path 是基于
-            # base_path 构建的绝对路径，用 base_len 切割会切到路径中间，
-            # 产生错乱的 ZIP 内部路径，极端情况产生路径遍历风险。
-            # 修复：统一使用 base_path（规范化绝对路径）及其长度。
             base_path = os.path.normpath(os.path.abspath(save_dir))
             base_len = len(base_path)
             try:
@@ -287,13 +275,6 @@ class SaveService:
     ) -> None:
         """
         回滚逻辑：尝试恢复之前备份的当前存档
-
-        修复说明：原实现在回滚成功后仍抛出 PatcherError，将成功恢复
-        视为异常，调用方难以区分"还原失败"与"还原操作本身出错但已回滚"。
-        修复后：
-        - 回滚成功：抛出包含原始错误信息 + 回滚成功提示的 PatcherError，
-          使用 WARNING 级别而不是 ERROR，便于调用方展示给用户。
-        - 回滚失败：抛出 CRITICAL 级别的 PatcherError，提示数据可能丢失。
         """
         try:
             logger.info("Attempting rollback: restoring current save from backup...")
@@ -390,7 +371,7 @@ class SaveService:
                 and os.path.exists(current_save_backup_path)
             ):
                 self._rollback_restore(
-                    save_dir, current_save_backup_path, copy_with_cancel, e
+                    save_dir, current_save_backup_path, shutil.copy2, e
                 )
             else:
                 raise PatcherError(str(e)) from e
@@ -404,11 +385,6 @@ class SaveService:
     def delete_backup(self, backup_src: str, **kwargs: Any) -> None:
         """
         删除备份
-
-        修复说明（H3）：原实现在备份已被外部删除时会抛出未处理的
-        FileNotFoundError，异常会传播至 GUI 层并显示未预期的错误。
-        修复：先检查路径是否存在；若不存在则记录警告后直接返回；
-        若删除过程出错，抛出包含语义的 PatcherError 供上层统一处理。
         """
         backup_src = normalize_path(backup_src)
         if not os.path.exists(backup_src):
