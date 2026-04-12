@@ -23,10 +23,12 @@
 ### 📁 模块说明
 * **`main.py`**：程序入口点。负责解析命令行参数（CLI），决定启动 `GUI 模式` 还是纯后台运行的 `批处理模式 (--batch)`。
 * **`core/`** (核心业务层)
+  * `bootstrap.py`：系统引导模块，负责初始化检查、配置验证和状态检查。
   * `patcher.py`：负责 **ASAR 解包/打包**、**Steam 更新状态机检测**。使用纯 Python 实现的 ASAR 处理，无外部依赖。
   * `config.py`：`AppConfig` 配置管理单例。支持内存热加载，优先读取用户个人空间配置。
   * `save_service.py`：`SaveService` 存档服务类，提供存档的备份、还原、删除和平滑迁移等底层操作。
   * `steam.py`：Steam 更新状态机及 Hash 校验检测。
+  * `state_validator.py`：系统状态验证模块，检查ASAR文件、备份完整性和补丁状态。
   * `patch_info.py`：补丁元数据存储管理。
   * `fuse.py`：移除游戏底层 Electron 的防篡改锁。
   * `batch.py`：非 GUI 的静默批处理安装模式。

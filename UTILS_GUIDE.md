@@ -17,6 +17,10 @@
 9. [常量定义 (utils/constants)](#常量定义-utilsconstants)
 10. [输入验证 (utils/validators)](#输入验证-utilsvalidators)
 11. [ASAR 工具 (utils/asar_utils)](#asar-工具-utilasar_utils)
+12. [磁盘工具 (utils/disk_utils)](#磁盘工具-utilsdisk_utils)
+13. [操作锁 (utils/operation_lock)](#操作锁-utilsoperation_lock)
+14. [平台工具 (utils/platform)](#平台工具-utilsplatform)
+15. [事务管理 (utils/transaction)](#事务管理-utilstransaction)
 
 ---
 
@@ -442,5 +446,133 @@ if not valid:
     logger.error(f"Config validation failed: {messages}")
 
 # 设置配置值（自动加锁）
-config.set_gui_config("language", "cn")
-```
+    config.set_gui_config("language", "cn")
+    ```
+
+    ---
+
+    ## 磁盘工具 (utils/disk_utils)
+
+    ### 主要功能
+
+    | 函数 | 描述 |
+    |------|------|
+    | `get_disk_free_space(path)` | 获取磁盘剩余空间 |
+    | `check_disk_space(path, required_bytes)` | 检查是否有足够磁盘空间 |
+    | `estimate_asar_size(source_path)` | 估算ASAR打包后的大小 |
+    | `validate_write_permission(path)` | 验证写入权限 |
+    | `format_bytes(bytes_value)` | 格式化字节数为人类可读格式 |
+    | `check_operation_space(operations, base_path)` | 检查一系列操作所需的磁盘空间 |
+
+    ### 使用示例
+
+    ```python
+    from utils.disk_utils import get_disk_free_space, check_disk_space
+
+    # 检查磁盘空间
+    free_space = get_disk_free_space("/game")
+    ok, available = check_disk_space("/game", 100*1024*1024)  # 100MB
+    if not ok:
+        print(f"空间不足，仅剩 {available} 字节")
+
+    # 估算ASAR大小
+    size = estimate_asar_size("source_dir")
+    print(f"预计大小: {format_bytes(size)}")
+    ```
+
+    ---
+
+    ## 操作锁 (utils/operation_lock)
+
+    ### 主要功能
+
+    | 类/函数 | 描述 |
+    |------|------|
+    | `OperationLock` | 操作互斥锁类 |
+    | `OperationType` | 操作类型枚举 |
+    | `get_operation_lock()` | 获取全局操作锁实例 |
+    | `with_operation_lock(op_type)` | 装饰器形式的操作锁 |
+
+    ### 使用示例
+
+    ```python
+    from utils.operation_lock import get_operation_lock, OperationType
+
+    op_lock = get_operation_lock()
+
+    # 检查操作是否可以开始
+    if op_lock.is_operation_running(OperationType.PATCH):
+        print("补丁操作正在进行中")
+        return
+
+    # 获取锁
+    if op_lock.acquire(OperationType.PATCH):
+        try:
+            # 执行操作
+            apply_patch()
+        finally:
+            op_lock.release(OperationType.PATCH)
+
+    # 或使用上下文管理器
+    with op_lock.acquire_context(OperationType.PATCH):
+        apply_patch()
+
+    # 或使用装饰器
+    @with_operation_lock(OperationType.PATCH)
+    def apply_patch():
+        pass
+    ```
+
+    ---
+
+    ## 平台工具 (utils/platform)
+
+    ### 主要功能
+
+    | 函数/常量 | 描述 |
+    |------|------|
+    | `IS_WIN` | 是否为Windows平台 |
+    | 平台检测函数 | 检测当前运行平台 |
+
+    ### 使用示例
+
+    ```python
+    from utils.platform import IS_WIN
+
+    if IS_WIN:
+        # Windows特有代码
+        use_windows_path_separator()
+    else:
+        # Unix类系统代码
+        use_unix_path_separator()
+    ```
+
+    ---
+
+    ## 事务管理 (utils/transaction)
+
+    ### 主要功能
+
+    | 类 | 描述 |
+    |------|------|
+    | `TransactionManager` | 文件操作事务管理器 |
+    | `AtomicFileWriter` | 原子文件写入器 |
+
+    ### 使用示例
+
+    ```python
+    from utils.transaction import TransactionManager
+
+    # 创建事务管理器
+    with TransactionManager() as tx:
+        # 暂存文件操作
+        tx.stage_file("source.txt", "dest.txt")
+        tx.stage_file("config.json", "config.json.backup")
+
+        # 执行事务（原子操作）
+        tx.commit()
+
+        # 如果出错，自动回滚
+    ```
+
+    ---
