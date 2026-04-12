@@ -49,6 +49,10 @@ if [ "$(uname)" = "Darwin" ] && [ -f "$ROOT/icon.ico" ]; then
         echo "Using system tools for icon conversion..."
         ICON_FILE="$ROOT/icon.ico"
     fi
+elif [ "$(uname)" = "Linux" ] && [ -f "$ROOT/icon.ico" ]; then
+    echo "Converting icon.ico to icon.png using Pillow..."
+    $PYTHON_CMD -c "from PIL import Image; img = Image.open('$ROOT/icon.ico'); img.save('$ROOT/icon.png'); print('Converted icon.ico to icon.png')"
+    ICON_FILE="$ROOT/icon.png"
 else
     ICON_FILE="$ROOT/icon.ico"
 fi
@@ -67,6 +71,11 @@ $PYTHON_CMD -m PyInstaller -F -w --clean \
     --add-data "$ROOT/config.ini:." \
     --name "$OUT_TOOL" \
     "$ROOT/$PY_SCRIPT"
+
+if [ $? -ne 0 ]; then
+    echo "[Error] Toolbox build failed"
+    exit 1
+fi
 
 rm -rf "build_toolbox"
 
@@ -114,7 +123,12 @@ if [ "$BUILD_PATCHER" -eq 1 ]; then
         --add-data "$ROOT/Patch.zip:." \
         --name "$OUT_PATCH" \
         "$ROOT/$PY_SCRIPT"
-    
+
+    if [ $? -ne 0 ]; then
+        echo "[Error] Patcher build failed"
+        exit 1
+    fi
+
     echo "- Patcher build success."
     rm -rf "build_patcher"
 else
