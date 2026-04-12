@@ -14,21 +14,12 @@ import subprocess
 import sys
 
 
-def check_python_version():
-    """Check if Python version is compatible."""
-    if sys.version_info < (3, 8):
-        print("Error: Python 3.8+ required", file=sys.stderr)
-        return False
-    return True
-
-
 def install_build():
     """Install build module if not available."""
     try:
-        import build
-
-        return True
-    except ImportError:
+        import importlib.util
+        return importlib.util.find_spec("build") is not None
+    except Exception:
         print("Installing build module...")
         result = subprocess.run([sys.executable, "-m", "pip", "install", "build"], check=True)
         return result.returncode == 0
@@ -52,9 +43,6 @@ def main():
     """Main build function."""
     print("Tyrano Patcher - Modern Python Build")
     print("====================================")
-
-    if not check_python_version():
-        return 1
 
     if not install_build():
         print("Failed to install build module", file=sys.stderr)

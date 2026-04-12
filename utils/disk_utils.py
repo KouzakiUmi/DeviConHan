@@ -31,13 +31,13 @@ class DiskSpaceError(Exception):
 def get_disk_free_space(path: str) -> int:
     """
     获取指定路径所在磁盘的剩余空间（字节）
-    
+
     Args:
         path: 文件或目录路径
-        
+
     Returns:
         int: 剩余空间字节数
-        
+
     Raises:
         DiskSpaceError: 如果无法获取磁盘信息
     """
@@ -77,19 +77,19 @@ def check_disk_space(
 ) -> Tuple[bool, int]:
     """
     检查磁盘是否有足够空间
-    
+
     Args:
         path: 要检查的磁盘路径
         required_bytes: 需要的空间（字节）
         safety_margin: 安全余量系数（默认1.5倍）
         raise_on_error: 空间不足时是否抛出异常
-        
+
     Returns:
         Tuple[bool, int]: (是否足够, 可用空间字节数)
-        
+
     Raises:
         DiskSpaceError: 如果空间不足且raise_on_error为True
-        
+
     示例:
         >>> ok, free = check_disk_space("/data", 1024*1024*100)  # 检查100MB
         >>> if not ok:
@@ -126,14 +126,14 @@ def check_disk_space(
 def estimate_asar_size(source_path: str) -> int:
     """
     估算ASAR打包后的大小
-    
+
     ASAR文件 = Header + 文件内容
     Header大小取决于文件数量和目录结构，通常很小
     打包后大小约等于源目录大小 + 5-10%开销
-    
+
     Args:
         source_path: 源目录路径
-        
+
     Returns:
         int: 估算的字节数
     """
@@ -146,7 +146,7 @@ def estimate_asar_size(source_path: str) -> int:
         if os.path.isfile(source_path):
             total_size = os.path.getsize(source_path)
         else:
-            for dirpath, dirnames, filenames in os.walk(source_path):
+            for dirpath, _dirnames, filenames in os.walk(source_path):
                 for filename in filenames:
                     filepath = os.path.join(dirpath, filename)
                     try:
@@ -167,10 +167,10 @@ def estimate_asar_size(source_path: str) -> int:
 def validate_write_permission(path: str) -> bool:
     """
     验证是否有写入权限
-    
+
     Args:
         path: 要验证的路径
-        
+
     Returns:
         bool: 是否有写入权限
     """
@@ -203,10 +203,10 @@ def validate_write_permission(path: str) -> bool:
 def format_bytes(bytes_value: int) -> str:
     """
     格式化字节数为人类可读字符串
-    
+
     Args:
         bytes_value: 字节数
-        
+
     Returns:
         str: 格式化后的字符串（如 "1.5 GB"）
     """
@@ -223,14 +223,14 @@ def check_operation_space(
 ) -> Tuple[bool, str]:
     """
     检查一系列操作所需的磁盘空间
-    
+
     Args:
         operations: 操作列表，每项为 (描述, 所需字节数)
         base_path: 基础路径
-        
+
     Returns:
         Tuple[bool, str]: (是否足够, 详细信息)
-        
+
     示例:
         >>> ops = [
         ...     ("解压ASAR", 200*1024*1024),

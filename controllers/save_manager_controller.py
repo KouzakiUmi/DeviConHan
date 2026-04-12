@@ -124,7 +124,7 @@ class SaveManagerController:
 
         # 若多个不同路径的备份拥有相同的显示名，则在名称后附加父目录名以区分
         name_count: dict = {}
-        for name, fp, is_zip in deduped:
+        for name, _fp, _is_zip in deduped:
             name_count[name] = name_count.get(name, 0) + 1
 
         result = []

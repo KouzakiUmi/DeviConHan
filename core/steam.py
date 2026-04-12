@@ -184,7 +184,7 @@ def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_
             )
 
         all_match_bak = True
-        for file_path, expected_hash, current_hash in mismatched_files:
+        for file_path, _expected_hash, _current_hash in mismatched_files:
             bak_hash = get_file_hash_in_asar(bak_path, file_path)
             asar_hash = get_file_hash_in_asar(asar_path, file_path)
 

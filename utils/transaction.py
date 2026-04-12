@@ -163,13 +163,13 @@ class FileTransaction:
                     logger.debug(f"Moved original to {old_path}")
 
             # 第二步：移动暂存文件到目标位置
-            for target_path, staged_path in self.staged.items():
+            for _target_path, staged_path in self.staged.items():
                 shutil.move(staged_path, target_path)
                 new_files_placed.append(target_path)
                 logger.info(f"Committed: {staged_path} -> {target_path}")
 
             # 第三步：删除.old备份
-            for target_path, old_path in old_backups:
+            for _target_path, old_path in old_backups:
                 if os.path.isfile(old_path):
                     os.remove(old_path)
                 elif os.path.isdir(old_path):
@@ -241,7 +241,7 @@ class FileTransaction:
                 logger.warning(f"Failed to restore original file {original_path}: {e}")
 
         # 2. 删除所有暂存文件
-        for target_path, staged_path in self.staged.items():
+        for _target_path, staged_path in self.staged.items():
             try:
                 if os.path.exists(staged_path):
                     if os.path.isfile(staged_path):

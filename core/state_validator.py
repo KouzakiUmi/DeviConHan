@@ -101,7 +101,7 @@ class StateValidator:
     def validate_all(self) -> Tuple[SystemState, List[StateValidationError]]:
         """
         执行完整的系统状态验证
-        
+
         Returns:
             Tuple[SystemState, List[StateValidationError]]: (系统状态, 错误列表)
         """
@@ -285,7 +285,7 @@ class StateValidator:
     ) -> SystemState:
         """
         综合分析系统状态
-        
+
         状态矩阵：
         - ASAR存在 + 备份不存在 + 无元数据 = CLEAN (原始状态)
         - ASAR存在 + 备份存在 + 有元数据 = PATCHED (已打补丁)
@@ -340,7 +340,7 @@ class StateValidator:
     def _verify_patch_integrity(self, meta: Dict) -> bool:
         """
         验证补丁完整性
-        
+
         检查ASAR中的关键文件是否与元数据中的哈希匹配
         """
         patch_files = meta.get('patch_files', {})
@@ -366,7 +366,7 @@ class StateValidator:
     def can_apply_patch(self) -> Tuple[bool, str]:
         """
         检查是否可以安全地应用补丁
-        
+
         Returns:
             Tuple[bool, str]: (是否可以, 原因)
         """
@@ -387,7 +387,7 @@ class StateValidator:
     def can_restore_backup(self) -> Tuple[bool, str]:
         """
         检查是否可以恢复备份
-        
+
         Returns:
             Tuple[bool, str]: (是否可以, 原因)
         """
@@ -408,10 +408,10 @@ class StateValidator:
 def validate_system_state(base_dir: Optional[str] = None) -> Tuple[SystemState, List[StateValidationError]]:
     """
     便捷函数：验证系统状态
-    
+
     Args:
         base_dir: 基础目录
-        
+
     Returns:
         Tuple[SystemState, List[StateValidationError]]: (状态, 问题列表)
     """

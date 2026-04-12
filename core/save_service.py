@@ -119,7 +119,7 @@ class SaveService:
             base_len = len(base_path)
             try:
                 with zipfile.ZipFile(temp_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-                    for root, dirs, files in os.walk(base_path):
+                    for root, _dirs, files in os.walk(base_path):
                         if _check_cancelled:
                             _check_cancelled()
                         for file in files:
@@ -295,7 +295,7 @@ class SaveService:
                 f"{original_error}\n\nRollback failed. Current save may be lost. Error: {restore_err}",
                 category=ErrorCategory.CORRUPTED_DATA,
                 severity=ErrorSeverity.CRITICAL,
-            )
+            ) from restore_err
 
         # 回滚成功：仍抛出异常以通知调用方"还原操作失败"，但附带回滚成功信息
         raise PatcherError(

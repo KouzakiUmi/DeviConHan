@@ -53,7 +53,7 @@ MUTEX_GROUPS = {
 class OperationLock:
     """
     操作互斥锁
-    
+
     管理多个操作的互斥关系，防止冲突操作同时进行。
     """
 
@@ -79,10 +79,10 @@ class OperationLock:
     def acquire(self, op_type: OperationType) -> bool:
         """
         尝试获取操作锁
-        
+
         Args:
             op_type: 操作类型
-            
+
         Returns:
             bool: 是否成功获取
         """
@@ -106,7 +106,7 @@ class OperationLock:
     def release(self, op_type: OperationType) -> None:
         """
         释放操作锁
-        
+
         Args:
             op_type: 操作类型
         """
@@ -118,7 +118,7 @@ class OperationLock:
     def acquire_context(self, op_type: OperationType):
         """
         上下文管理器形式的锁获取
-        
+
         使用示例:
             with op_lock.acquire_context(OperationType.PATCH):
                 do_patch()
@@ -154,7 +154,7 @@ def get_operation_lock() -> OperationLock:
 def with_operation_lock(op_type: OperationType):
     """
     装饰器：在函数执行期间持有操作锁
-    
+
     使用示例:
         @with_operation_lock(OperationType.PATCH)
         def apply_patch():

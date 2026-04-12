@@ -321,7 +321,7 @@ class PatchController:
                         safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
                         self._log("Patch.zip extracted successfully.")
                     except ValueError as e:
-                        raise PatchError(f"Security violation in patch ZIP: {e}")
+                        raise PatchError(f"Security violation in patch ZIP: {e}") from e
                 elif os.path.exists(patch_dir):
                     self._log("Copying Patch directory...")
 
