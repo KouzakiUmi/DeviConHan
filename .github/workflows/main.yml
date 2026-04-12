@@ -43,6 +43,7 @@ jobs:
         run: pip install pyinstaller asar pillow
 
       - name: Build
+        shell: bash
         run: |
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             call Pack.cmd
