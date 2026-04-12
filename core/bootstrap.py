@@ -9,7 +9,7 @@
 4. 配置验证
 """
 
-__all__ = ["bootstrap_system", "find_game_directory", "SystemBootstrapError"]
+__all__ = ["bootstrap_system", "find_game_directory", "get_detected_game_path", "SystemBootstrapError"]
 
 import os
 import sys
@@ -23,10 +23,23 @@ from utils.operation_lock import get_operation_lock
 
 logger = logging.getLogger(__name__)
 
+# 存储检测到的游戏目录（模块级缓存）
+_detected_game_path: Optional[str] = None
+
 
 class SystemBootstrapError(Exception):
     """系统启动错误"""
     pass
+
+
+def get_detected_game_path() -> Optional[str]:
+    """
+    获取检测到的游戏目录
+
+    Returns:
+        str: 检测到的游戏目录，未检测返回 None
+    """
+    return _detected_game_path
 
 
 def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
@@ -61,6 +74,10 @@ def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
     # 在 Steam 目录中查找游戏
     search_paths = get_steam_library_paths()
     game_path = find_game_in_steam(config.game_id, search_paths)
+
+    # 缓存结果
+    global _detected_game_path
+    _detected_game_path = game_path
 
     return game_path
 
@@ -100,6 +117,10 @@ def bootstrap_system(
             base_dir = game_path
             messages.append(f"Auto-detected game directory: {base_dir}")
             logger.info(f"Using auto-detected game directory: {base_dir}")
+    
+    # 更新缓存
+    global _detected_game_path
+    _detected_game_path = base_dir
 
     # 1. 初始化配置
     try:
