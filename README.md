@@ -89,13 +89,10 @@ python main.py
 **跨平台构建**
 ```bash
 # macOS / Linux 上构建 Windows 可执行文件（需要 wine）
-pip install pyinstaller
+pip install pyinstaller asar
 python -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
-    --add-data "tools/node.exe:tools" \
-    --add-data "tools/bundled_asar:tools\bundled_asar" \
-    --add-data "tools/asar_cli.mjs:tools" \
     --add-data "config.ini:." \
     --name "DevilConnection_Patch" \
     main.py

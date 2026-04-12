@@ -171,7 +171,7 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -185,7 +185,7 @@ jobs:
         run: .\Pack.cmd
       
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: executables
           path: dist/*.exe
