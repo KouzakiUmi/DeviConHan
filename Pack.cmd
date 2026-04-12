@@ -11,6 +11,7 @@ set OUT_PATCH=DevilConnection_Patch
 
 echo ==========================================
 echo    Tyrano Builder (Windows Packager)
+echo    Pure Python ASAR Implementation
 echo ==========================================
 
 if not exist "%ROOT%%PY_SCRIPT%" (
@@ -29,9 +30,13 @@ python --version
 
 python -m PyInstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [Error] PyInstaller not found. Please pip install pyinstaller asar
-    pause
-    exit /b 1
+    echo [Error] PyInstaller not found. Installing dependencies...
+    pip install pyinstaller asar
+    if %errorlevel% neq 0 (
+        echo [Error] Failed to install dependencies.
+        pause
+        exit /b 1
+    )
 )
 
 echo.
@@ -111,6 +116,7 @@ echo [Cleanup] Cleaning up...
 if exist "build_toolbox" rd /s /q "build_toolbox"
 if exist "build_patcher" rd /s /q "build_patcher"
 if exist "__pycache__" rd /s /q "__pycache__"
+for /d %%d in (__pycache__) do rd /s /q "%%d" 2>nul
 del /q *.spec >nul 2>&1
 
 echo.

@@ -68,3 +68,12 @@ wheels/
 *.egg
 MANIFEST
 .aider*
+
+# Project specific
+*.asar.bak
+*.asar.backup
+patch.zip.backup
+
+# Unpacked ASAR directories
+resources/app.asar.unpacked/
+resources/app_repacked.asar.unpacked/

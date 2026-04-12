@@ -12,6 +12,7 @@ OUT_PATCH="DevilConnection_Patch"
 
 echo "=========================================="
 echo "   Tyrano Builder (Mac/Linux)"
+echo "   Pure Python ASAR Implementation"
 echo "=========================================="
 
 if [ ! -f "$ROOT/$PY_SCRIPT" ]; then
@@ -33,8 +34,8 @@ fi
 $PYTHON_CMD --version
 
 if ! $PYTHON_CMD -m PyInstaller --version >/dev/null 2>&1; then
-    echo "[Error] PyInstaller not found. Please install it using 'pip install pyinstaller asar'"
-    exit 1
+    echo "[Error] PyInstaller not found. Installing dependencies..."
+    pip install pyinstaller asar
 fi
 
 echo
