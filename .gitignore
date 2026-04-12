@@ -73,6 +73,9 @@ MANIFEST
 *.asar.bak
 *.asar.backup
 patch.zip.backup
+resources/app.asar
+resources/*.asar
+*.asar
 
 # Unpacked ASAR directories
 resources/app.asar.unpacked/
