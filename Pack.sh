@@ -40,15 +40,9 @@ fi
 
 # Convert icon for macOS
 if [ "$(uname)" = "Darwin" ] && [ -f "$ROOT/icon.ico" ]; then
-    if ! command -v sips >/dev/null 2>&1 || ! command -v iconutil >/dev/null 2>&1; then
-        echo "Converting icon.ico to icon.icns using Pillow..."
-        $PYTHON_CMD -c "from PIL import Image; img = Image.open('$ROOT/icon.ico'); img.save('$ROOT/icon.icns'); print('Converted icon.ico to icon.icns')"
-        ICON_FILE="$ROOT/icon.icns"
-    else
-        # Use system tools if available
-        echo "Using system tools for icon conversion..."
-        ICON_FILE="$ROOT/icon.ico"
-    fi
+    echo "Converting icon.ico to icon.icns using Pillow..."
+    $PYTHON_CMD -c "from PIL import Image; img = Image.open('$ROOT/icon.ico'); img.save('$ROOT/icon.icns'); print('Converted icon.ico to icon.icns')"
+    ICON_FILE="$ROOT/icon.icns"
 elif [ "$(uname)" = "Linux" ] && [ -f "$ROOT/icon.ico" ]; then
     echo "Converting icon.ico to icon.png using Pillow..."
     $PYTHON_CMD -c "from PIL import Image; img = Image.open('$ROOT/icon.ico'); img.save('$ROOT/icon.png'); print('Converted icon.ico to icon.png')"
@@ -138,6 +132,7 @@ fi
 echo
 echo "[Cleanup] Cleaning up..."
 rm -rf "build_toolbox" "build_patcher" "__pycache__"
+find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 rm -f *.spec
 
 echo
@@ -146,6 +141,11 @@ echo "   Build Complete!"
 echo "=========================================="
 echo
 echo "Generated files:"
-[ -f "dist/$OUT_TOOL" ] && echo "  - Toolbox: dist/$OUT_TOOL" || ([ -f "dist/$OUT_TOOL.app" ] && echo "  - Toolbox: dist/$OUT_TOOL.app")
-[ -f "dist/$OUT_PATCH" ] && echo "  - Patcher: dist/$OUT_PATCH" || ([ -f "dist/$OUT_PATCH.app" ] && echo "  - Patcher: dist/$OUT_PATCH.app")
+if [ "$(uname)" = "Darwin" ]; then
+    [ -d "dist/$OUT_TOOL.app" ] && echo "  - Toolbox: dist/$OUT_TOOL.app"
+    [ -d "dist/$OUT_PATCH.app" ] && echo "  - Patcher: dist/$OUT_PATCH.app"
+else
+    [ -f "dist/$OUT_TOOL" ] && echo "  - Toolbox: dist/$OUT_TOOL"
+    [ -f "dist/$OUT_PATCH" ] && echo "  - Patcher: dist/$OUT_PATCH"
+fi
 echo
