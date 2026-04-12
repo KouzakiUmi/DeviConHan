@@ -32,6 +32,7 @@ class SystemBootstrapError(Exception):
 def is_game_directory(path: str, config=None) -> bool:
     """
     检查指定目录是否是游戏目录
+    需要同时满足：1) 游戏可执行文件存在  2) resources/app.asar 存在
 
     Args:
         path: 目录路径
@@ -46,20 +47,36 @@ def is_game_directory(path: str, config=None) -> bool:
     if config is None:
         config = get_config()
 
-    # 检查是否存在 resources 目录和 app.asar
     from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
     info = get_platform_info()
 
+    # 1. 检查游戏可执行文件
+    if info.system == "darwin":
+        exe_name = config.macos_app
+        exe_path = os.path.join(path, exe_name)
+    else:
+        exe_name = config.auto_target_exe
+        exe_path = os.path.join(path, exe_name)
+
+    if not os.path.isfile(exe_path):
+        logger.debug(f"Game executable not found: {exe_path}")
+        return False
+
+    # 2. 检查 resources/app.asar
     if is_app_bundle(path):
-        # macOS .app bundle
         res_path = os.path.join(path, "Contents", "Resources")
     else:
         res_path = get_resources_path(path, info.system)
 
     asar_path = os.path.join(res_path, config.target_asar_name)
 
-    return os.path.isfile(asar_path)
+    if not os.path.isfile(asar_path):
+        logger.debug(f"app.asar not found: {asar_path}")
+        return False
+
+    logger.debug(f"Confirmed game directory: {path}")
+    return True
 
 
 def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
