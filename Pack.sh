@@ -42,13 +42,7 @@ fi
 if [ "$(uname)" = "Darwin" ] && [ -f "$ROOT/icon.ico" ]; then
     if ! command -v sips >/dev/null 2>&1 || ! command -v iconutil >/dev/null 2>&1; then
         echo "Converting icon.ico to icon.icns using Pillow..."
-        $PYTHON_CMD -c "
-from PIL import Image
-img = Image.open('$ROOT/icon.ico')
-icns_path = '$ROOT/icon.icns'
-img.save(icns_path)
-print('Converted icon.ico to icon.icns')
-"
+        $PYTHON_CMD -c "from PIL import Image; img = Image.open('$ROOT/icon.ico'); img.save('$ROOT/icon.icns'); print('Converted icon.ico to icon.icns')"
         ICON_FILE="$ROOT/icon.icns"
     else
         # Use system tools if available
