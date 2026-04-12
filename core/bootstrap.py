@@ -42,12 +42,13 @@ def get_detected_game_path() -> Optional[str]:
     return _detected_game_path
 
 
-def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
+def find_game_directory(base_dir: Optional[str] = None, auto_detect: bool = True) -> Optional[str]:
     """
     尝试自动检测游戏目录
 
     Args:
         base_dir: 基础目录（如果指定则直接使用）
+        auto_detect: 是否允许自动检测（默认 True）
 
     Returns:
         str: 游戏目录路径，未找到返回 None
@@ -60,7 +61,7 @@ def find_game_directory(base_dir: Optional[str] = None) -> Optional[str]:
     if base_dir:
         return base_dir
 
-    if not config.auto_detect_game:
+    if not auto_detect or not config.auto_detect_game:
         # 手动模式
         if config.game_path and os.path.exists(config.game_path):
             return config.game_path
@@ -105,26 +106,36 @@ def bootstrap_system(
 
     logger.info("Starting system bootstrap...")
 
-    # 优先使用当前目录，自动检测仅作为备用
-    default_base = base_dir or os.path.abspath(".")
-    base_dir = default_base
-    logger.info(f"Using directory: {base_dir}")
+    # 1. 初始化配置（尽早获取 config）
+    config = get_config()
 
-    # 自动检测（仅当配置启用且未明确指定目录时）
-    if not base_dir and config.auto_detect_game:
-        game_path = find_game_directory(base_dir)
-        if game_path:
-            base_dir = game_path
+    # 2. 确定游戏目录
+    # 优先级：明确指定 > 自动检测 > 当前目录
+    if base_dir:
+        # 明确指定
+        logger.info(f"Using specified directory: {base_dir}")
+    elif config.auto_detect_game:
+        # 尝试自动检测
+        logger.info("Attempting auto-detection of game directory...")
+        detected = find_game_directory(base_dir)
+        if detected:
+            base_dir = detected
             messages.append(f"Auto-detected game directory: {base_dir}")
             logger.info(f"Using auto-detected game directory: {base_dir}")
-    
+        else:
+            base_dir = os.path.abspath(".")
+            logger.info(f"Auto-detection failed, using current directory: {base_dir}")
+    else:
+        # 使用当前目录
+        base_dir = os.path.abspath(".")
+        logger.info(f"Using current directory: {base_dir}")
+
     # 更新缓存
     global _detected_game_path
     _detected_game_path = base_dir
 
-    # 1. 初始化配置
+    # 3. 配置验证
     try:
-        config = get_config()
         config_valid, errors, warnings = config.validate_config()
 
         if not config_valid:

@@ -10,8 +10,8 @@ import sys
 import platform
 import logging
 import threading
-import unicodedata
-from typing import Optional, List, Tuple
+import re
+from typing import Optional, List
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -123,11 +123,11 @@ def get_steam_library_paths() -> List[str]:
             for line in content.split('\n'):
                 line = line.strip()
                 if '"path"' in line.lower():
-                    # 提取路径
-                    import re
+                    # 提取路径 - 使用正则表达式
                     match = re.search(r'"path"\s*"([^"]+)"', line, re.IGNORECASE)
                     if match:
-                        lib_path = match.group(1).replace('\\\\', '\\')
+                        # 归一化路径（处理转义）
+                        lib_path = os.path.normpath(match.group(1))
                         if os.path.isdir(lib_path):
                             lib_steamapps = os.path.join(lib_path, "steamapps")
                             if os.path.isdir(lib_steamapps) and lib_steamapps not in paths:
@@ -136,16 +136,19 @@ def get_steam_library_paths() -> List[str]:
         except Exception as e:
             logger.debug(f"Failed to parse libraryfolders.vdf: {e}")
 
-    # Windows 上额外检查 SteamLibrary 目录（可选）
+    # Windows 上额外检查 SteamLibrary 目录
     if info.system == "windows":
         for base in ["E:\\", "D:\\"]:
             if os.path.isdir(base):
-                for entry in os.listdir(base):
-                    if "steamlibrary" in entry.lower():
-                        lib_steamapps = os.path.join(base, entry, "steamapps")
-                        if os.path.isdir(lib_steamapps) and lib_steamapps not in paths:
-                            paths.append(lib_steamapps)
-                            logger.info(f"Found Steam library: {lib_steamapps}")
+                try:
+                    for entry in os.listdir(base):
+                        if "steamlibrary" in entry.lower():
+                            lib_steamapps = os.path.join(base, entry, "steamapps")
+                            if os.path.isdir(lib_steamapps) and lib_steamapps not in paths:
+                                paths.append(lib_steamapps)
+                                logger.info(f"Found Steam library: {lib_steamapps}")
+                except (PermissionError, OSError):
+                    pass
 
     # 去重
     seen = set()
@@ -158,6 +161,26 @@ def get_steam_library_paths() -> List[str]:
 
     logger.info(f"Total Steam library paths found: {len(unique_paths)}")
     return unique_paths
+
+
+def _normalize_japanese(s: str) -> str:
+    """
+    归一化日文：平假名转片假名，统一大小写
+
+    Args:
+        s: 输入字符串
+
+    Returns:
+        str: 归一化后的字符串
+    """
+    result = []
+    for c in s:
+        # 转换平假名为片假名
+        if '\u3040' <= c <= '\u309f':  # 平假名范围
+            result.append(chr(ord(c) + 0x60))  # 转片假名
+        else:
+            result.append(c.lower())
+    return ''.join(result)
 
 
 def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None, timeout: float = 10.0) -> Optional[str]:
@@ -175,19 +198,8 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
     if search_paths is None:
         search_paths = get_steam_library_paths()
 
-    # 规范化游戏名称 (包含日文平假名/片假名归一化)
-    def normalize_japanese(s):
-        """归一化日文：平假名转片假名，统一大小写"""
-        result = []
-        for c in s:
-            # 转换平假名为片假名
-            if '\u3040' <= c <= '\u309f':  # 平假名范围
-                result.append(chr(ord(c) + 0x60))  # 转片假名
-            else:
-                result.append(c.lower())
-        return ''.join(result)
-
-    normalized_name = normalize_japanese(game_name.strip())
+    # 规范化游戏名称
+    normalized_name = _normalize_japanese(game_name.strip())
     variations = [
         normalized_name,
         normalized_name.replace(" ", "_"),
@@ -218,7 +230,7 @@ def find_game_in_steam(game_name: str, search_paths: Optional[List[str]] = None,
                 entries = os.listdir(common_dir)
                 logger.info(f"  -> Found {len(entries)} entries in common")
                 for entry in entries:
-                    entry_normalized = normalize_japanese(entry)
+                    entry_normalized = _normalize_japanese(entry)
                     logger.info(f"  -> Checking: {entry} (normalized: {entry_normalized})")
                     for var in variations:
                         if var in entry_normalized or entry_normalized in var:
@@ -258,8 +270,11 @@ def get_game_executable_name(game_name: str, system: Optional[str] = None) -> st
 
     if system == "darwin":
         return f"{game_name}.app"
-    else:
+    elif system == "windows":
         return f"{game_name}.exe"
+    else:
+        # Linux: 无扩展名
+        return game_name
 
 
 def get_resources_path(game_path: str, system: Optional[str] = None) -> str:

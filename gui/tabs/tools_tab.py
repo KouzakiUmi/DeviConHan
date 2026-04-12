@@ -9,6 +9,7 @@ from tkinter import ttk, messagebox, filedialog
 import logging
 from core.config import get_config
 from core.fuse import remove_fuse
+from core.bootstrap import get_detected_game_path
 from utils.language import T
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 from utils.constants import (
@@ -223,7 +224,7 @@ class ToolsTab(ttk.Frame):
             messagebox.showerror(T("title_error"), T("msg_reset_error").format(error=e))
 
     def _auto_scan_asar(self):
-        base = os.path.abspath(".")
+        base = get_detected_game_path() or os.path.abspath(".")
         # 跨平台资源路径处理
         if is_app_bundle(base):
             res_path = os.path.join(base, "Contents", "Resources")

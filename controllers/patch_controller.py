@@ -22,6 +22,7 @@ from core.config import get_config
 from core.steam import handle_steam_update
 from core.patch_info import save_patch_info, save_patch_meta
 from core.state_validator import StateValidator, SystemState
+from core.bootstrap import get_detected_game_path
 from utils.cleanup import force_cleanup_dir
 from utils.file_ops import safe_extract_zip
 from utils.language import T
@@ -88,7 +89,8 @@ class PatchController:
         Returns:
             (是否满足, 错误消息)
         """
-        base = os.path.abspath(".")
+        # 优先使用检测到的游戏目录，否则使用当前目录
+        base = get_detected_game_path() or os.path.abspath(".")
         cfg = get_config()
 
         # 跨平台资源路径处理
@@ -199,7 +201,7 @@ class PatchController:
         self, gui_app, _check_cancelled
     ) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
-        base = os.path.abspath(".")
+        base = get_detected_game_path() or os.path.abspath(".")
         cfg = get_config()
 
         # 跨平台资源路径处理

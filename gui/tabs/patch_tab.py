@@ -4,6 +4,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 from core.config import get_config
+from core.bootstrap import get_detected_game_path
 from utils.language import T, get_font
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
@@ -53,7 +54,7 @@ class PatchTab(ttk.Frame):
                         ),
                     )
         except Exception as e:
-            base = os.path.abspath(".")
+            base = get_detected_game_path() or os.path.abspath(".")
             if is_app_bundle(base):
                 res = os.path.join(base, "Contents", "Resources")
             else:
