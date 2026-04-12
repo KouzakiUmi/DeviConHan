@@ -19,8 +19,6 @@
 
 > **By KouzakiUmi (呜咪 / 神前海)**
 
-> [!NOTE]
-> Rebuilt with AI, cost me HKD$1500 💸
 
 ---
 
