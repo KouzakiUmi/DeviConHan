@@ -124,28 +124,46 @@ jobs:
         run: |
           echo "Cleaning up existing nightly release and tag..."
           
-          # Get the release ID for nightly tag
+          # First, try to get release by tag name
           RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/nightly" \
             | jq -r '.id')
+          
+          # If not found by tag, search for releases
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "No release found by tag, searching all releases..."
+            RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases" \
+              | jq -r '.[] | select(.tag_name == "nightly") | .id' | head -1)
+          fi
           
           # Delete the release if it exists
           if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
             echo "Deleting existing nightly release (ID: $RELEASE_ID)"
             curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
-            echo "Release deleted successfully"
+            echo "Release delete request sent"
           else
             echo "No existing nightly release found"
           fi
           
-          # Wait a moment for GitHub to process the deletion
-          sleep 5
+          # Wait for GitHub to process the deletion
+          echo "Waiting for cleanup to complete..."
+          sleep 10
           
           # Delete remote tag using multiple methods
           echo "Attempting to delete remote tag..."
-          git push origin --delete nightly 2>/dev/null || echo "Tag deletion via git failed or tag doesn't exist"
-          git push origin :refs/tags/nightly 2>/dev/null || echo "Alternative tag deletion failed"
+          git config --local advice.detachedHead false
+          git fetch origin --tags || true
+          git push origin --delete nightly 2>&1 || echo "Tag deletion method 1 failed or tag doesn't exist"
+          git push origin :refs/tags/nightly 2>&1 || echo "Tag deletion method 2 failed"
+          
+          # Verify tag is deleted
+          sleep 2
+          if git ls-remote --tags origin nightly 2>/dev/null | grep -q "nightly"; then
+            echo "WARNING: Tag still exists after cleanup attempt"
+          else
+            echo "Tag successfully deleted or didn't exist"
 
       - name: Create new nightly tag and release
         run: |
