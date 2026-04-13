@@ -158,6 +158,39 @@ class PatchController:
             logger.warning(f"Failed to check disk space: {e}")
             return True, "无法检查磁盘空间，继续操作"  # 保守策略：继续
 
+    def _separate_unpacked_files(self, extract_dir: str) -> None:
+        """
+        分离 unpacked 文件到 app.asar.unpacked 目录。
+
+        原生模块文件需要**复制**到 app.asar.unpacked 目录，
+        同时**保留**在 extract_dir 中，这样 ASAR 内部有文件路径，外部有实际文件供 Electron 加载。
+        """
+        NATIVE_EXTENSIONS = {".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"}
+
+        def should_unpack(file_path: str) -> bool:
+            ext = os.path.splitext(file_path)[1].lower()
+            return ext in NATIVE_EXTENSIONS
+
+        def copy_to_unpacked(source_dir: str, unpacked_root: str):
+            if not os.path.isdir(source_dir):
+                return
+
+            for entry in os.listdir(source_dir):
+                source_path = os.path.join(source_dir, entry)
+
+                if os.path.isdir(source_path):
+                    copy_to_unpacked(source_path, unpacked_root)
+                elif should_unpack(entry):
+                    rel_path = os.path.relpath(source_path, extract_dir)
+                    dest_path = os.path.join(unpacked_root, rel_path)
+                    dest_dir = os.path.dirname(dest_path)
+
+                    if dest_dir:
+                        os.makedirs(dest_dir, exist_ok=True)
+                    shutil.copy2(source_path, dest_path)
+
+        copy_to_unpacked(extract_dir, os.path.join(extract_dir, "app.asar.unpacked"))
+
     def run_auto_patch(self, gui_app=None, **kwargs) -> Tuple[bool, Optional[str], str]:
         """
         执行自动补丁安装（事务性版本）
@@ -287,109 +320,118 @@ class PatchController:
                     f"Failed to clean up existing temporary directory: {temp}",
                 )
 
-        # ========== 阶段 3: 事务性补丁操作 ==========
+        # ========== 阶段 3: 补丁操作 ==========
+        # 流程: 解包 → 重命名原文件为备份 → 分离unpacked文件 → 应用补丁 → 打包 → 复制unpacked目录
         try:
-            with FileTransaction() as tx:
-                # 3.1 创建备份（如果不存在）
-                if not os.path.exists(bak):
-                    self._log("Creating backup...")
-                    # 创建备份文件
-                    shutil.copy2(asar, bak)
-                    self._log("Backup created successfully.")
-                else:
-                    # 备份已存在，不需要备份到事务目录，因为备份文件本身不会被修改
-                    pass
+            # 3.1 解包 ASAR
+            self._log("Extracting ASAR...")
+            if _check_cancelled:
+                _check_cancelled()
+            self.core.run_asar("extract", asar, temp, callback=self._log)
 
-                # 3.2 解包 ASAR
-                self._log("Extracting ASAR...")
-                if _check_cancelled:
-                    _check_cancelled()
-                self.core.run_asar("extract", asar, temp, callback=self._log)
+            # 验证解压结果
+            if not os.path.exists(temp) or not os.listdir(temp):
+                raise PatchError("ASAR extraction failed or resulted in empty directory")
 
-                # 验证解压结果
-                if not os.path.exists(temp) or not os.listdir(temp):
-                    raise PatchError("ASAR extraction failed or resulted in empty directory")
+            # 3.2 分离 unpacked 文件（复制到 app.asar.unpacked）
+            self._log("Separating unpacked files...")
+            self._separate_unpacked_files(temp)
 
-                # 3.3 应用补丁
-                self._log("Applying patch...")
-                patch_zip = get_resource_path("Patch.zip")
-                patch_dir = get_resource_path("Patch")
+            # 3.3 应用补丁
+            self._log("Applying patch...")
+            patch_zip = get_resource_path("Patch.zip")
+            patch_dir = get_resource_path("Patch")
 
-                if os.path.exists(patch_zip):
-                    self._log("Extracting Patch.zip...")
-                    try:
-                        safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
-                        self._log("Patch.zip extracted successfully.")
-                    except ValueError as e:
-                        raise PatchError(f"Security violation in patch ZIP: {e}") from e
-                elif os.path.exists(patch_dir):
-                    self._log("Copying Patch directory...")
+            if os.path.exists(patch_zip):
+                self._log("Extracting Patch.zip...")
+                try:
+                    safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
+                    self._log("Patch.zip extracted successfully.")
+                except ValueError as e:
+                    raise PatchError(f"Security violation in patch ZIP: {e}") from e
+            elif os.path.exists(patch_dir):
+                self._log("Copying Patch directory...")
 
-                    def copy_with_cancel(src, dst):
-                        if _check_cancelled:
-                            _check_cancelled()
-                        shutil.copy2(src, dst)
+                def copy_with_cancel(src, dst):
+                    if _check_cancelled:
+                        _check_cancelled()
+                    shutil.copy2(src, dst)
 
-                    shutil.copytree(
-                        patch_dir,
-                        temp,
-                        dirs_exist_ok=True,
-                        copy_function=copy_with_cancel,
-                    )
-                    self._log("Patch files copied.")
-                else:
-                    raise PatchError("Patch data not found")
+                shutil.copytree(
+                    patch_dir,
+                    temp,
+                    dirs_exist_ok=True,
+                    copy_function=copy_with_cancel,
+                )
+                self._log("Patch files copied.")
+            else:
+                raise PatchError("Patch data not found")
 
-                # 3.4 打包到新临时ASAR
-                self._log("Packing ASAR...")
-                temp_asar = os.path.join(tx.tx_dir, "new_app.asar")
+            # 3.4 重命名原 ASAR 为备份（瞬间完成，不复制）
+            self._log("Renaming original ASAR to backup...")
+            if os.path.exists(bak):
+                os.remove(bak)
+            os.rename(asar, bak)
+            self._log("Backup created (rename).")
+
+            # 3.5 打包为新的 ASAR
+            # fnmatch 不支持 brace 扩展，需要 monkey-patch
+            self._log("Packing ASAR...")
+
+            import fnmatch as fnmatch_module
+
+            _original_fnmatch = fnmatch_module.fnmatch
+
+            def fnmatch_multi(filename, pattern):
+                if not pattern:
+                    return False
+                for p in pattern.replace(",", " ").split():
+                    if _original_fnmatch(filename, p):
+                        return True
+                return False
+
+            fnmatch_module.fnmatch = fnmatch_multi
+
+            try:
+                unpack_pattern = "*.node *.dll *.so *.dylib *.bin *.exe *.lib"
                 self.core.run_asar(
                     "pack",
                     temp,
-                    temp_asar,
+                    asar,
                     callback=self._log,
-                    unpack_pattern="*.{node,dll,exe,so,dylib,bin}",
+                    unpack_pattern=unpack_pattern,
                 )
+            finally:
+                fnmatch_module.fnmatch = _original_fnmatch
 
-                # 验证打包结果
-                if not os.path.exists(temp_asar):
-                    raise PatchError("ASAR packing failed - output file not created")
+            # 验证打包结果
+            if not os.path.exists(asar):
+                raise PatchError("ASAR packing failed - output file not created")
+            if os.path.getsize(asar) < 1024:
+                raise PatchError("ASAR packing failed - output file too small")
 
-                if os.path.getsize(temp_asar) < 1024:  # ASAR至少要有header
-                    raise PatchError("ASAR packing failed - output file too small")
+            # 3.6 复制 app.asar.unpacked 到 ASAR 旁边（供 Electron 加载 native 文件）
+            unpacked_src = os.path.join(temp, "app.asar.unpacked")
+            unpacked_dest = os.path.join(os.path.dirname(asar), "app.asar.unpacked")
+            if os.path.exists(unpacked_src):
+                self._log("Copying app.asar.unpacked alongside new ASAR...")
+                if os.path.exists(unpacked_dest):
+                    shutil.rmtree(unpacked_dest)
+                shutil.copytree(unpacked_src, unpacked_dest)
 
-                # 3.5 暂存新ASAR
-                tx.stage_new_file(asar, temp_asar)
+            # 3.7 生成补丁元数据
+            self._log("Generating patch metadata...")
+            try:
+                save_patch_info(base, asar, bak)
+                save_patch_meta(base, temp)
+            except Exception as e:
+                logger.warning(f"Failed to save patch metadata: {e}")
 
-                # 3.6 生成补丁元数据（在提交前）
-                self._log("Generating patch metadata...")
-                try:
-                    # 先在事务目录生成，然后暂存，以保证原子性
-                    save_patch_info(tx.tx_dir, asar, bak)
-                    save_patch_meta(tx.tx_dir, temp)
+            self._log("Patch applied successfully.")
+            self._log(T("patch_done", "✅ 安装完成！"))
 
-                    patch_info_path = os.path.join(base, cfg.patch_info_file)
-                    patch_meta_path = os.path.join(base, cfg.patch_meta_file)
+            return True, temp, ""
 
-                    # 暂存生成的元数据文件
-                    tx.stage_new_file(patch_info_path, os.path.join(tx.tx_dir, cfg.patch_info_file))
-                    tx.stage_new_file(patch_meta_path, os.path.join(tx.tx_dir, cfg.patch_meta_file))
-                except Exception as e:
-                    logger.warning(f"Failed to save patch metadata: {e}")
-                    # 非致命错误，继续
-
-                # 3.7 提交事务（原子替换）
-                self._log("Committing changes...")
-                tx.commit()
-
-                self._log("Patch applied successfully.")
-                self._log(T("patch_done", "✅ 安装完成！"))
-
-                return True, temp, ""
-
-        except TransactionError as e:
-            logger.error(f"Transaction failed: {e}")
-            return False, temp, f"Patch installation failed: {e}"
         except PatchError as e:
             logger.error(f"Patch error: {e}")
             return False, temp, str(e)
