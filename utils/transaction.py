@@ -164,9 +164,9 @@ class FileTransaction:
 
             # 第二步：移动暂存文件到目标位置
             for _target_path, staged_path in self.staged.items():
-                shutil.move(staged_path, target_path)
-                new_files_placed.append(target_path)
-                logger.info(f"Committed: {staged_path} -> {target_path}")
+                shutil.move(staged_path, _target_path)
+                new_files_placed.append(_target_path)
+                logger.info(f"Committed: {staged_path} -> {_target_path}")
 
             # 第三步：删除.old备份
             for _target_path, old_path in old_backups:
