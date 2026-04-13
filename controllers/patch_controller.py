@@ -32,7 +32,6 @@ from utils.language import T
 from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
-from utils.transaction import FileTransaction, TransactionError
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +239,6 @@ class PatchController:
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
         temp = None
-        tx = None
 
         # ========== 阶段 1: 前置检查 ==========
         ok, prereq_err = self.check_prerequisites()
