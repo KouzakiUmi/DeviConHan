@@ -118,14 +118,48 @@ jobs:
           pattern: build-*
           merge-multiple: true
 
-      - name: Update Nightly Tag
+      - name: Cleanup existing nightly release and tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Cleaning up existing nightly release and tag..."
+          
+          # Get the release ID for nightly tag
+          RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/nightly" \
+            | jq -r '.id')
+          
+          # Delete the release if it exists
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "Deleting existing nightly release (ID: $RELEASE_ID)"
+            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            echo "Release deleted successfully"
+          else
+            echo "No existing nightly release found"
+          fi
+          
+          # Wait a moment for GitHub to process the deletion
+          sleep 5
+          
+          # Delete remote tag using multiple methods
+          echo "Attempting to delete remote tag..."
+          git push origin --delete nightly 2>/dev/null || echo "Tag deletion via git failed or tag doesn't exist"
+          git push origin :refs/tags/nightly 2>/dev/null || echo "Alternative tag deletion failed"
+
+      - name: Create new nightly tag and release
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -d nightly 2>/dev/null || echo "No local tag"
-          git push origin :refs/tags/nightly || echo "No remote tag"
+          
+          # Delete local tag if exists
+          git tag -d nightly 2>/dev/null || echo "No local tag found"
+          
+          # Create and push new tag
           git tag nightly
           git push origin nightly
+          
+          echo "New nightly tag created and pushed"
 
       - name: Release Nightly
         uses: softprops/action-gh-release@v2
@@ -144,5 +178,6 @@ jobs:
           files: all_artifacts/*
           prerelease: true
           draft: false
+          update: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
