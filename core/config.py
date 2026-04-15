@@ -57,9 +57,7 @@ class AppConfig:
                 # 确保用户目录存在
                 os.makedirs(user_config_dir, exist_ok=True)
 
-                if not os.path.exists(user_config_path_obj) and os.path.exists(
-                    default_config_path
-                ):
+                if not os.path.exists(user_config_path_obj) and os.path.exists(default_config_path):
                     try:
                         shutil.copy2(default_config_path, user_config_path_obj)
                         logger.info(f"Copied default config to {user_config_path_obj}")
@@ -99,50 +97,31 @@ class AppConfig:
         self._invalidate_snapshot()
 
     def _get_config_snapshot(self) -> Dict[str, Any]:
-        """获取配置快照（线程安全，带TTL刷新）
-        """
+        """获取配置快照（线程安全，带TTL刷新）"""
         with self._acquire_lock():
             current_time = time.time()
             # 在锁内做 TTL 检查，确保检查和更新的原子性
-            if self._config_snapshot is not None and (
-                current_time - self._snapshot_time <= 2.0
-            ):
+            if self._config_snapshot is not None and (current_time - self._snapshot_time <= 2.0):
                 return self._config_snapshot
 
             self._config_snapshot = {
                 "resource_dir": self.get("main", "RESOURCE_DIR", fallback="resources"),
                 "app_name": self.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
-                "time_threshold": self.get_int(
-                    "main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3
-                ),
+                "time_threshold": self.get_int("main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3),
                 "backup_prefix": self.get("main", "BACKUP_PREFIX", fallback="Backup_"),
-                "patch_info_file": self.get(
-                    "main", "PATCH_INFO_FILE", fallback=".patch_info"
-                ),
-                "patch_meta_file": self.get(
-                    "main", "PATCH_META_FILE", fallback=".patch_meta"
-                ),
-                "target_asar_name": self.get(
-                    "main", "TARGET_ASAR_NAME", fallback="app.asar"
-                ),
-                "temp_patch_dir": self.get(
-                    "main", "TEMP_PATCH_DIR", fallback="temp_patch"
-                ),
-                "patch_zip_name": self.get(
-                    "main", "PATCH_ZIP_NAME", fallback="Patch.zip"
-                ),
+                "patch_info_file": self.get("main", "PATCH_INFO_FILE", fallback=".patch_info"),
+                "patch_meta_file": self.get("main", "PATCH_META_FILE", fallback=".patch_meta"),
+                "target_asar_name": self.get("main", "TARGET_ASAR_NAME", fallback="app.asar"),
+                "temp_patch_dir": self.get("main", "TEMP_PATCH_DIR", fallback="temp_patch"),
+                "patch_zip_name": self.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip"),
                 "patch_dir_name": self.get("main", "PATCH_DIR_NAME", fallback="Patch"),
                 "fuse_sentinel": self.get(
                     "main",
                     "FUSE_SENTINEL",
                     fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
                 ),
-                "fuse_header_length": self.get_int(
-                    "main", "FUSE_WIRE_HEADER_LENGTH", fallback=34
-                ),
-                "fuse_asar_offset": self.get_int(
-                    "main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4
-                ),
+                "fuse_header_length": self.get_int("main", "FUSE_WIRE_HEADER_LENGTH", fallback=34),
+                "fuse_asar_offset": self.get_int("main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4),
                 "check_files": self.get_list("files", "CHECK_FILES_FOR_UPDATE"),
                 "stable_files": self.get_list("files", "STABLE_FILES_FOR_VALIDATION"),
             }
@@ -180,6 +159,20 @@ class AppConfig:
             result = self.config.get(section, key, fallback=fallback, **kwargs)
             return result if result is not None else fallback
 
+    def _get_int_unsafe(self, section: str, key: str, fallback: int = 0) -> int:
+        """无锁版本 get_int，调用方必须已持有锁"""
+        try:
+            return self.config.getint(section, key)
+        except Exception:
+            return fallback
+
+    def _get_list_unsafe(self, section: str, key: str, fallback: Optional[List[str]] = None) -> List[str]:
+        """无锁版本 get_list，调用方必须已持有锁"""
+        raw_value = self.config.get(section, key, fallback="")
+        if raw_value:
+            return [line.strip() for line in raw_value.split("\n") if line.strip()]
+        return fallback if fallback is not None else []
+
     def get_int(self, section: str, key: str, fallback: int = 0) -> int:
         """
         获取配置值（整数）
@@ -216,9 +209,7 @@ class AppConfig:
             except Exception:
                 return fallback
 
-    def get_list(
-        self, section: str, key: str, fallback: Optional[List[str]] = None
-    ) -> List[str]:
+    def get_list(self, section: str, key: str, fallback: Optional[List[str]] = None) -> List[str]:
         """
         获取配置值（列表），支持多行值
 
@@ -252,9 +243,7 @@ class AppConfig:
             bool_keys = {"use_zip", "show_console"}
             if key in bool_keys:
                 fallback = (
-                    bool(default)
-                    if default is not None
-                    else (True if key == "use_zip" else False)
+                    bool(default) if default is not None else (True if key == "use_zip" else False)
                 )
                 return self.get_bool("preferences", key, fallback=fallback)
 
@@ -378,8 +367,8 @@ class AppConfig:
 
     @property
     def game_id(self):
-        """游戏标识（用于在Steam目录中查找游戏）"""
-        return self.get("main", "GAME_ID", fallback="Devil Connection")
+        """游戏标识 — Steam App ID（纯数字）或游戏名称（用于模糊匹配）"""
+        return self.get("main", "GAME_ID", fallback="3054820")
 
     @property
     def auto_detect_game(self):
@@ -409,15 +398,11 @@ class AppConfig:
     @property
     def fuse_sentinel(self):
         """Fuse 校验特征码"""
-        sentinel = self.get(
-            "main", "FUSE_SENTINEL", fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX"
-        )
+        sentinel = self.get("main", "FUSE_SENTINEL", fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX")
         if isinstance(sentinel, bytes):
             return sentinel
         return (
-            sentinel.encode("utf-8")
-            if isinstance(sentinel, str)
-            else str(sentinel).encode("utf-8")
+            sentinel.encode("utf-8") if isinstance(sentinel, str) else str(sentinel).encode("utf-8")
         )
 
     @property
@@ -490,6 +475,20 @@ class AppConfig:
         """程序名称"""
         return self.get("main", "APP_NAME", fallback="TyranoV8_Patcher")
 
+    @property
+    def game_name_variations(self):
+        """
+        游戏名称变体列表（用于Steam目录搜索）
+
+        支持多种命名变体，如罗马音、简写等。
+        从配置中读取，逗号或空格分隔。
+        """
+        variations_str = self.get("main", "GAME_NAME_VARIATIONS", fallback="")
+        if variations_str:
+            # 支持逗号或空格分隔
+            return [v.strip() for v in variations_str.replace(",", " ").split() if v.strip()]
+        return []
+
     # ================== 配置验证方法 ==================
 
     def validate_config(self) -> Tuple[bool, List[str], List[str]]:
@@ -506,7 +505,7 @@ class AppConfig:
         errors = []
         warnings = []
 
-        # 第一步：快速获取配置快照（持有锁时间最短）
+        # 第一步：快速获取配置快照和基础信息（持有锁时间最短）
         with self._acquire_lock():
             # 验证必需的配置节
             required_sections = ["main", "files"]
@@ -525,8 +524,31 @@ class AppConfig:
                     if not self.config.has_option(section, item):
                         errors.append(f"Missing required option [{section}] {item}")
 
-            # 获取配置快照版本
-            snapshot = self._get_config_snapshot()
+            # 在锁内读取快照，避免 _get_config_snapshot 内部再次获取锁
+            if self._config_snapshot is not None and (time.time() - self._snapshot_time <= 2.0):
+                snapshot = self._config_snapshot
+            else:
+                snapshot = {
+                    "resource_dir": self.config.get("main", "RESOURCE_DIR", fallback="resources"),
+                    "app_name": self.config.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
+                    "time_threshold": self._get_int_unsafe("main", "TIME_DIFF_THRESHOLD_DAYS", 3),
+                    "backup_prefix": self.config.get("main", "BACKUP_PREFIX", fallback="Backup_"),
+                    "patch_info_file": self.config.get("main", "PATCH_INFO_FILE", fallback=".patch_info"),
+                    "patch_meta_file": self.config.get("main", "PATCH_META_FILE", fallback=".patch_meta"),
+                    "target_asar_name": self.config.get("main", "TARGET_ASAR_NAME", fallback="app.asar"),
+                    "temp_patch_dir": self.config.get("main", "TEMP_PATCH_DIR", fallback="temp_patch"),
+                    "patch_zip_name": self.config.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip"),
+                    "patch_dir_name": self.config.get("main", "PATCH_DIR_NAME", fallback="Patch"),
+                    "fuse_sentinel": self.config.get(
+                        "main",
+                        "FUSE_SENTINEL",
+                        fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
+                    ),
+                    "fuse_header_length": self._get_int_unsafe("main", "FUSE_WIRE_HEADER_LENGTH", 34),
+                    "fuse_asar_offset": self._get_int_unsafe("main", "FUSE_ASAR_INTEGRITY_OFFSET", 4),
+                    "check_files": self._get_list_unsafe("files", "CHECK_FILES_FOR_UPDATE"),
+                    "stable_files": self._get_list_unsafe("files", "STABLE_FILES_FOR_VALIDATION"),
+                }
             config_file_path = self.config_file
 
         # 第二步：使用快照进行验证（无锁）
@@ -544,13 +566,9 @@ class AppConfig:
         try:
             time_threshold = snapshot.get("time_threshold", 3)
             if time_threshold < 0:
-                errors.append(
-                    f"TIME_DIFF_THRESHOLD_DAYS cannot be negative: {time_threshold}"
-                )
+                errors.append(f"TIME_DIFF_THRESHOLD_DAYS cannot be negative: {time_threshold}")
             elif time_threshold > TIME_DIFF_THRESHOLD_MAX_DAYS:
-                warnings.append(
-                    f"TIME_DIFF_THRESHOLD_DAYS is unusually large: {time_threshold}"
-                )
+                warnings.append(f"TIME_DIFF_THRESHOLD_DAYS is unusually large: {time_threshold}")
         except Exception as e:
             errors.append(f"Error validating TIME_DIFF_THRESHOLD_DAYS: {e}")
 
@@ -597,9 +615,7 @@ class AppConfig:
 
         return (len(errors) == 0, errors, warnings)
 
-    def validate_required_directory(
-        self, dir_path: str, dir_type: str = "directory"
-    ) -> bool:
+    def validate_required_directory(self, dir_path: str, dir_type: str = "directory") -> bool:
         """
         验证必需目录是否存在
 

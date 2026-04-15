@@ -33,6 +33,7 @@ from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,6 +101,8 @@ class PatchController:
         if not os.path.exists(res):
             return False, T("err_res_missing", "❌ 错误: 缺少 resources 文件夹。")
 
+        from utils.constants import ASAR_MAGIC_NUMBER
+
         asar_corrupted = False
         if os.path.exists(asar):
             if os.path.getsize(asar) < 4:
@@ -108,29 +111,35 @@ class PatchController:
                 try:
                     with open(asar, "rb") as f:
                         magic = f.read(4)
-                        if magic != b"\x04\x00\x00\x00":
+                        if magic != ASAR_MAGIC_NUMBER:
                             asar_corrupted = True
                 except Exception:
                     asar_corrupted = True
 
         if not os.path.exists(asar) or asar_corrupted:
             if os.path.exists(bak):
-                self._log("app.asar missing or corrupted, restoring from backup...")
-                try:
-                    if os.path.exists(asar):
+                # 删除损坏的 ASAR（如果存在），然后重命名 bak → app.asar
+                if asar_corrupted and os.path.exists(asar):
+                    self._log("app.asar corrupted, removing and restoring from backup...")
+                    try:
                         os.remove(asar)
-                    shutil.copy2(bak, asar)
+                    except Exception as e:
+                        return False, f"Failed to remove corrupted ASAR: {e}"
+                # 重命名 bak → app.asar（原子操作）
+                try:
+                    os.replace(bak, asar)
                     self._log("Restored app.asar from backup.")
                 except Exception as e:
-                    return False, f"Failed to restore backup: {e}"
+                    return False, f"Failed to restore from backup: {e}"
             elif asar_corrupted:
                 return (
                     False,
                     "❌ 错误: app.asar 文件已损坏且无备份，请在 Steam 中验证游戏文件完整性。",
                 )
 
-        if not os.path.exists(asar):
-            return False, T("err_asar_missing", "❌ 错误: 未找到 app.asar 文件。")
+        # ASAR 和 BAK 都不存在才算失败（BAK 存在时 run_auto_patch 可直接用 BAK 为源）
+        if not os.path.exists(asar) and not os.path.exists(bak):
+            return False, T("err_asar_missing", "❌ 错误: 未找到 app.asar 文件且无备份。")
 
         return True, ""
 
@@ -156,39 +165,6 @@ class PatchController:
         except Exception as e:
             logger.warning(f"Failed to check disk space: {e}")
             return True, "无法检查磁盘空间，继续操作"  # 保守策略：继续
-
-    def _separate_unpacked_files(self, extract_dir: str) -> None:
-        """
-        分离 unpacked 文件到 app.asar.unpacked 目录。
-
-        原生模块文件需要**复制**到 app.asar.unpacked 目录，
-        同时**保留**在 extract_dir 中，这样 ASAR 内部有文件路径，外部有实际文件供 Electron 加载。
-        """
-        NATIVE_EXTENSIONS = {".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"}
-
-        def should_unpack(file_path: str) -> bool:
-            ext = os.path.splitext(file_path)[1].lower()
-            return ext in NATIVE_EXTENSIONS
-
-        def copy_to_unpacked(source_dir: str, unpacked_root: str):
-            if not os.path.isdir(source_dir):
-                return
-
-            for entry in os.listdir(source_dir):
-                source_path = os.path.join(source_dir, entry)
-
-                if os.path.isdir(source_path):
-                    copy_to_unpacked(source_path, unpacked_root)
-                elif should_unpack(entry):
-                    rel_path = os.path.relpath(source_path, extract_dir)
-                    dest_path = os.path.join(unpacked_root, rel_path)
-                    dest_dir = os.path.dirname(dest_path)
-
-                    if dest_dir:
-                        os.makedirs(dest_dir, exist_ok=True)
-                    shutil.copy2(source_path, dest_path)
-
-        copy_to_unpacked(extract_dir, os.path.join(extract_dir, "app.asar.unpacked"))
 
     def run_auto_patch(self, gui_app=None, **kwargs) -> Tuple[bool, Optional[str], str]:
         """
@@ -319,21 +295,25 @@ class PatchController:
                 )
 
         # ========== 阶段 3: 补丁操作 ==========
-        # 流程: 解包 → 重命名原文件为备份 → 分离unpacked文件 → 应用补丁 → 打包 → 复制unpacked目录
+        # 最小化写入流程: 解包 -> 打补丁 -> 重命名 -> 打包
         try:
+            need_backup = os.path.exists(asar) and not os.path.exists(bak)
+
             # 3.1 解包 ASAR
             self._log("Extracting ASAR...")
             if _check_cancelled:
                 _check_cancelled()
-            self.core.run_asar("extract", asar, temp, callback=self._log)
+            _, unpacked_files = self.core.run_asar("extract", asar, temp, callback=self._log)
 
             # 验证解压结果
             if not os.path.exists(temp) or not os.listdir(temp):
                 raise PatchError("ASAR extraction failed or resulted in empty directory")
 
-            # 3.2 分离 unpacked 文件（复制到 app.asar.unpacked）
-            self._log("Separating unpacked files...")
-            self._separate_unpacked_files(temp)
+            # 3.2 清理解包残留的 app.asar.unpacked 目录
+            unpacked_leftover = os.path.join(temp, "app.asar.unpacked")
+            if os.path.exists(unpacked_leftover):
+                self._log("Cleaning up extraction leftover...")
+                shutil.rmtree(unpacked_leftover, ignore_errors=True)
 
             # 3.3 应用补丁
             self._log("Applying patch...")
@@ -365,42 +345,19 @@ class PatchController:
             else:
                 raise PatchError("Patch data not found")
 
-            # 3.4 重命名原 ASAR 为备份（瞬间完成，不复制）
-            self._log("Renaming original ASAR to backup...")
-            if os.path.exists(bak):
-                os.remove(bak)
-            os.rename(asar, bak)
-            self._log("Backup created (rename).")
+            # 3.4 如果需要备份，重命名 app.asar -> app.asar.bak
+            if need_backup:
+                self._log("Creating backup...")
+                os.replace(asar, bak)
+                self._log("Backup created.")
 
             # 3.5 打包为新的 ASAR
-            # fnmatch 不支持 brace 扩展，需要 monkey-patch
             self._log("Packing ASAR...")
-
-            import fnmatch as fnmatch_module
-
-            _original_fnmatch = fnmatch_module.fnmatch
-
-            def fnmatch_multi(filename, pattern):
-                if not pattern:
-                    return False
-                for p in pattern.replace(",", " ").split():
-                    if _original_fnmatch(filename, p):
-                        return True
-                return False
-
-            fnmatch_module.fnmatch = fnmatch_multi
-
-            try:
-                unpack_pattern = "*.node *.dll *.so *.dylib *.bin *.exe *.lib"
-                self.core.run_asar(
-                    "pack",
-                    temp,
-                    asar,
-                    callback=self._log,
-                    unpack_pattern=unpack_pattern,
-                )
-            finally:
-                fnmatch_module.fnmatch = _original_fnmatch
+            if _check_cancelled:
+                _check_cancelled()
+            self.core.run_asar(
+                "pack", temp, asar, callback=self._log, unpacked_files=unpacked_files
+            )
 
             # 验证打包结果
             if not os.path.exists(asar):
@@ -408,16 +365,9 @@ class PatchController:
             if os.path.getsize(asar) < 1024:
                 raise PatchError("ASAR packing failed - output file too small")
 
-            # 3.6 复制 app.asar.unpacked 到 ASAR 旁边（供 Electron 加载 native 文件）
-            unpacked_src = os.path.join(temp, "app.asar.unpacked")
-            unpacked_dest = os.path.join(os.path.dirname(asar), "app.asar.unpacked")
-            if os.path.exists(unpacked_src):
-                self._log("Copying app.asar.unpacked alongside new ASAR...")
-                if os.path.exists(unpacked_dest):
-                    shutil.rmtree(unpacked_dest)
-                shutil.copytree(unpacked_src, unpacked_dest)
+            self._log("ASAR replaced successfully.")
 
-            # 3.7 生成补丁元数据
+            # 3.6 生成补丁元数据
             self._log("Generating patch metadata...")
             try:
                 save_patch_info(base, asar, bak)
@@ -471,10 +421,12 @@ class PatchController:
             return
 
         try:
+            from utils.constants import ASAR_MAGIC_NUMBER
+
             # 验证备份完整性
             with open(bak_path, "rb") as f:
                 magic = f.read(4)
-                if magic != b"\x04\x00\x00\x00":
+                if magic != ASAR_MAGIC_NUMBER:
                     logger.error("Backup is corrupted, cannot restore")
                     return
         except Exception as e:
@@ -487,7 +439,7 @@ class PatchController:
                     os.remove(asar_path)
                 except Exception as e_rm:
                     logger.error(f"Failed to remove corrupted ASAR: {e_rm}")
-            shutil.copy2(bak_path, asar_path)
+            os.replace(bak_path, asar_path)
             self._log("Restored app.asar from backup.")
         except Exception as be:
             logger.error(f"Backup restore error: {be}")

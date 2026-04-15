@@ -1,4 +1,3 @@
-
 import logging
 import os
 import tkinter as tk
@@ -29,12 +28,12 @@ class SaveTab(ttk.Frame):
         top_backup.pack(fill="x", pady=(5, 0))
         ttk.Label(top_backup, text=T("lbl_backup_dir")).pack(side="left")
         self.app.var_backup_dir = tk.StringVar(value=self.get_backup_dir())
-        ttk.Entry(
-            top_backup, textvariable=self.app.var_backup_dir, state="readonly"
-        ).pack(side="left", fill="x", expand=True, padx=5)
-        ttk.Button(
-            top_backup, text=T("btn_change_dir"), command=self.change_backup_dir
-        ).pack(side="right")
+        ttk.Entry(top_backup, textvariable=self.app.var_backup_dir, state="readonly").pack(
+            side="left", fill="x", expand=True, padx=5
+        )
+        ttk.Button(top_backup, text=T("btn_change_dir"), command=self.change_backup_dir).pack(
+            side="right"
+        )
 
         paned = ttk.PanedWindow(self, orient="horizontal")
         paned.pack(fill="both", expand=True, pady=10)
@@ -85,9 +84,7 @@ class SaveTab(ttk.Frame):
     def get_backup_dir(self):
         d = self.app.get_config_value("backup_dir", "")
         if not d or not os.path.exists(d):
-            default_dir = os.path.join(
-                os.path.expanduser("~"), ".tyranopatcher", "backups"
-            )
+            default_dir = os.path.join(os.path.expanduser("~"), ".tyranopatcher", "backups")
             os.makedirs(default_dir, exist_ok=True)
             return default_dir
         return d
@@ -111,8 +108,8 @@ class SaveTab(ttk.Frame):
                 def _migrate_worker(cancel_event=None, _check_cancelled=None):
                     try:
                         self.app.save_controller.set_log_callback(self.app.log)
-                        migrated_count, failed_count = (
-                            self.app.save_controller.migrate_backups(old_dir, new_dir, _check_cancelled=_check_cancelled)
+                        migrated_count, failed_count = self.app.save_controller.migrate_backups(
+                            old_dir, new_dir, _check_cancelled=_check_cancelled
                         )
                         msg = T("msg_migrate_success").format(migrated=migrated_count)
                         if failed_count > 0:
@@ -198,8 +195,7 @@ class SaveTab(ttk.Frame):
                     self.after(0, self.scan_saves)
                     self.after(
                         0,
-                        lambda: messagebox.showinfo(
-                            T("title_success"), T("msg_backup_ok")),
+                        lambda: messagebox.showinfo(T("title_success"), T("msg_backup_ok")),
                     )
                 else:
                     self.after(
@@ -261,16 +257,13 @@ class SaveTab(ttk.Frame):
                     if success:
                         self.after(
                             0,
-                            lambda: messagebox.showinfo(
-                                T("title_success"), T("msg_restored")),
+                            lambda: messagebox.showinfo(T("title_success"), T("msg_restored")),
                         )
                         self.after(0, self.scan_saves)
                     else:
                         self.after(
                             0,
-                            lambda e_str=error_msg: messagebox.showerror(
-                                T("title_error"), e_str
-                            ),
+                            lambda e_str=error_msg: messagebox.showerror(T("title_error"), e_str),
                         )
                 except Exception as e:
                     from utils.error_handler import ErrorHandler
@@ -279,8 +272,8 @@ class SaveTab(ttk.Frame):
                     logger.error(f"Restore error: {e}\n{traceback_str}")
                     self.after(
                         0,
-                        lambda e_str=f"{str(e)}\n\n{traceback_str}": (
-                            messagebox.showerror(T("title_error"), e_str)
+                        lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
+                            T("title_error"), e_str
                         ),
                     )
                 finally:

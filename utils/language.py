@@ -1,4 +1,3 @@
-
 import logging
 import os
 import sys
@@ -140,6 +139,13 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "err_operation_conflict": "无法启动操作: 存在冲突的操作正在进行 ({operations})。",
         "err_lock_acquire_failed": "获取锁失败: {error}",
         # Steam Update Detection
+        "title_steam_update_detected": "Steam 更新检测",
+        "msg_steam_update_restore_confirm": "app.asar 文件缺失，但存在有效的备份。\n"
+            "这可能是 Steam 更新导致的。\n\n"
+            "建议：先在 Steam 中验证游戏文件完整性。\n\n"
+            "您确定备份是最新的，并要从备份恢复后打补丁吗？",
+        "title_asar_invalid": "ASAR 文件不合法",
+        "msg_asar_invalid": "ASAR 文件验证失败。\n请在 Steam 中验证游戏文件完整性。",
         "title_game_files_missing": "游戏文件缺失",
         "msg_game_files_missing": "app.asar 和备份文件都不存在。\n这可能表明：\n1. 游戏安装损坏\n2. 游戏下载不完整\n3. 文件被手动删除\n\n请通过 Steam 验证游戏完整性或重新安装游戏。",
         "title_asar_missing": "ASAR 文件缺失",
@@ -168,7 +174,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_first_time_patch": "首次安装补丁提醒",
         "msg_first_time_patch_warn": "未检测到原始备份文件，这似乎是您首次安装本补丁。\n\n⚠ 警告：如果您之前安装过其他汉化工具，您当前的 app.asar 可能已被篡改。继续操作将把已被篡改的文件作为您的“原版”基准备份。\n\n💡 强烈建议：如果您不确定，请在继续之前先在 Steam 中验证游戏文件的完整性。\n\n是否确认原版文件纯净，并继续备份打补丁？",
         # About Dialog
-        "about_desc": "《でびるコネクション》非营利性个人本地化工具。\nTyranoV8通用工具箱\n\n==== 技术致谢 ====\n• 核心语言: Python 3 (Pure)\n• 图形界面: Tkinter (Tcl/Tk)\n• 封包引擎: asar (Python)\n• 构建工具: PyInstaller\n\n==== 开发人员 ====\n作者：KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== 许可证 ====\n本项目仅限非营利目的使用。\n游戏内容的所有权利均归原作者 ばやちゃお 所有。\n",
+        "about_desc": "《でびるコネクション》非营利性个人本地化工具。\nTyranoV8通用工具箱\n\n==== 技术致谢 ====\n• 核心语言: Python 3 (Pure)\n• 图形界面: Tkinter (Tcl/Tk)\n• 封包引擎: ASAR (Pure Python)\n• 构建工具: PyInstaller\n\n==== 开发人员 ====\n作者：KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== 许可证 ====\n本项目仅限非营利目的使用。\n游戏内容的所有权利均归原作者 ばやちゃお 所有。\n",
         "about_version": "版本: 1.0 Release",
         "about_github_link": "访问 GitHub 主页",
         "btn_ok": "确定",
@@ -287,6 +293,13 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "err_operation_conflict": "Cannot start operation: conflicting operations in progress ({operations}).",
         "err_lock_acquire_failed": "Failed to acquire lock: {error}",
         # Steam Update Detection
+        "title_steam_update_detected": "Steam Update Detected",
+        "msg_steam_update_restore_confirm": "The app.asar file is missing, but a valid backup exists.\n"
+            "This may be caused by a Steam update.\n\n"
+            "Recommended: Verify game integrity in Steam first.\n\n"
+            "Are you sure the backup is up-to-date and want to restore from backup and apply patch?",
+        "title_asar_invalid": "ASAR Invalid",
+        "msg_asar_invalid": "ASAR file validation failed.\nPlease verify game integrity through Steam.",
         "title_game_files_missing": "Game Files Missing",
         "msg_game_files_missing": "Neither app.asar nor backup file exists.\nThis could indicate:\n1. Corrupted game installation\n2. Incomplete game download\n3. Files were manually deleted\n\nPlease verify game integrity through Steam or reinstall the game.",
         "title_asar_missing": "ASAR File Missing",
@@ -315,7 +328,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_first_time_patch": "First Time Patching Notice",
         "msg_first_time_patch_warn": "No original backup detected. This appears to be your first time installing this patch.\n\n⚠ WARNING: If you have previously installed other translation tools, your current app.asar may already be modified. Continuing will backup this modified file as your 'original' baseline.\n\n💡 STRONGLY RECOMMENDED: If you are unsure, please verify integrity of game files in Steam first before proceeding.\n\nDo you want to continue backing up the current state and apply the patch?",
         # About Dialog
-        "about_desc": "A non-profit personal localization tool for 《でびるコネクション》.\nUniversal Toolbox for TyranoV8\n\n==== Technical Credits ====\n• Core Language: Python 3 (Pure)\n• GUI Framework: Tkinter (Tcl/Tk)\n• Packaging Engine: asar (Python)\n• Build Tool: PyInstaller\n\n==== Developers ====\nAuthor: KouzakiUmi\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== License ====\nFor non-profit purposes only.\nAll rights to the game content belong to the original author, Bayachao.\n",
+        "about_desc": "A non-profit personal localization tool for 《でびるコネクション》.\nUniversal Toolbox for TyranoV8\n\n==== Technical Credits ====\n• Core Language: Python 3 (Pure)\n• GUI Framework: Tkinter (Tcl/Tk)\n• Packaging Engine: ASAR (Pure Python)\n• Build Tool: PyInstaller\n\n==== Developers ====\nAuthor: KouzakiUmi\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== License ====\nFor non-profit purposes only.\nAll rights to the game content belong to the original author, Bayachao.\n",
         "about_version": "Version: 1.0 Release",
         "about_github_link": "Visit GitHub Page",
         "btn_ok": "OK",
@@ -435,6 +448,13 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "err_delete_failed": "❌ 削除に失敗しました。ログを確認してください。",
         "err_permission_denied": "❌ アクセスが拒否されました。",
         # Steam Update Detection
+        "title_steam_update_detected": "Steam 更新を検出",
+        "msg_steam_update_restore_confirm": "app.asar ファイルは存在しませんが、有効なバックアップが存在します。\n"
+            "これは Steam 更新による可能性があります。\n\n"
+            "推奨：先に Steam でゲームファイルの整合性を確認してください。\n\n"
+            "バックアップが最新であることを確認し、バックアップから復元してパッチを適用しますか？",
+        "title_asar_invalid": "ASAR ファイルが無効",
+        "msg_asar_invalid": "ASAR ファイルの検証に失敗しました。\nSteam でゲームファイルの整合性を確認してください。",
         "title_game_files_missing": "ゲームファイルが見つかりません",
         "msg_game_files_missing": "app.asar もバックアップファイルも存在しません。\nこれは以下の可能性があります：\n1. ゲームのインストールが破損している\n2. ゲームのダウンロードが不完全\n3. ファイルが手動で削除された\n\nSteam でゲームの整合性を確認するか、ゲームを再インストールしてください。",
         "title_asar_missing": "ASAR ファイルが見つかりません",
@@ -463,7 +483,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "title_first_time_patch": "初回パッチ適用の注意",
         "msg_first_time_patch_warn": "元のバックアップが検出されませんでした。今回が初めてのパッチ適用のようです。\n\n⚠ 警告: 過去に他の翻訳ツールをインストールしたことがある場合、現在の app.asar はすでに変更されている可能性があります。続行すると、この変更されたファイルが基準となる「オリジナル」としてバックアップされます。\n\n💡 強く推奨: 不確かな場合は、続行する前にSteamでゲームファイルの整合性を確認してください。\n\n現在のファイルをバックアップしてパッチの適用を続行しますか？",
         # About Dialog
-        "about_desc": "《でびるコネクション》非営利の個人用ローカライズツール。\nTyranoV8 用 汎用ツールボックス\n\n==== 技術提供 ====\n• コア言語: Python 3 (Pure)\n• GUI: Tkinter (Tcl/Tk)\n• パッケージエンジン: asar (Python)\n• ビルドツール: PyInstaller\n\n==== 開発者 ====\n作者: KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== ライセンス ====\n本プロジェクトは非営利目的の使用に限られます。\nゲームのすべての権利は原作者である「ばやちゃお」様に帰属します。\n",
+        "about_desc": "《でびるコネクション》非営利の個人用ローカライズツール。\nTyranoV8 用 汎用ツールボックス\n\n==== 技術提供 ====\n• コア言語: Python 3 (Pure)\n• GUI: Tkinter (Tcl/Tk)\n• パッケージエンジン: ASAR (Pure Python)\n• ビルドツール: PyInstaller\n\n==== 開発者 ====\n作者: KouzakiUmi (呜咪 / 神前海)\nGitHub: https://github.com/KouzakiUmi/DeviConHan\n\n==== ライセンス ====\n本プロジェクトは非営利目的の使用に限られます。\nゲームのすべての権利は原作者である「ばやちゃお」様に帰属します。\n",
         "about_version": "バージョン: 1.0 Release",
         "about_github_link": "GitHub ページを開く",
         "btn_ok": "OK",

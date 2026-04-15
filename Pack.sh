@@ -35,7 +35,7 @@ $PYTHON_CMD --version
 
 if ! $PYTHON_CMD -m PyInstaller --version >/dev/null 2>&1; then
     echo "[Error] PyInstaller not found. Installing dependencies..."
-    pip install pyinstaller asar pillow
+    pip install pyinstaller pillow
 fi
 
 # Convert icon for macOS

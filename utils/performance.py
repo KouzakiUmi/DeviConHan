@@ -112,17 +112,13 @@ class PerformanceMonitor:
                 return None
 
             timing = self._timings[name]
-            avg_time = (
-                timing["total_time"] / timing["count"] if timing["count"] > 0 else 0.0
-            )
+            avg_time = timing["total_time"] / timing["count"] if timing["count"] > 0 else 0.0
 
             return {
                 "total_time": timing["total_time"],
                 "count": timing["count"],
                 "avg_time": avg_time,
-                "min_time": timing["min_time"]
-                if timing["min_time"] != float("inf")
-                else 0.0,
+                "min_time": timing["min_time"] if timing["min_time"] != float("inf") else 0.0,
                 "max_time": timing["max_time"],
             }
 
@@ -137,18 +133,12 @@ class PerformanceMonitor:
             result: Dict[str, Dict[str, Any]] = {}
             for name in self._timings:
                 timing = self._timings[name]
-                avg_time = (
-                    timing["total_time"] / timing["count"]
-                    if timing["count"] > 0
-                    else 0.0
-                )
+                avg_time = timing["total_time"] / timing["count"] if timing["count"] > 0 else 0.0
                 result[name] = {
                     "total_time": timing["total_time"],
                     "count": timing["count"],
                     "avg_time": avg_time,
-                    "min_time": timing["min_time"]
-                    if timing["min_time"] != float("inf")
-                    else 0.0,
+                    "min_time": timing["min_time"] if timing["min_time"] != float("inf") else 0.0,
                     "max_time": timing["max_time"],
                 }
             return result

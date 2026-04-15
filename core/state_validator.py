@@ -15,12 +15,14 @@ __all__ = [
 import json
 import logging
 import os
+import struct
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
 from utils.asar_utils import get_file_hash_in_asar
+from utils.constants import ASAR_MAGIC_NUMBER, MIN_ASAR_SIZE
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class SystemState(Enum):
     """系统状态枚举"""
+
     UNKNOWN = "unknown"
     CLEAN = "clean"  # 原始状态，未打补丁
     PATCHED = "patched"  # 已打补丁，状态正常
@@ -40,6 +43,7 @@ class SystemState(Enum):
 @dataclass
 class StateValidationError:
     """状态验证错误"""
+
     severity: str  # "critical", "warning", "info"
     message: str
     file_path: Optional[str] = None
@@ -49,6 +53,7 @@ class StateValidationError:
 @dataclass
 class FileState:
     """单个文件的状态"""
+
     path: str
     exists: bool
     size: int = 0
@@ -141,49 +146,158 @@ class StateValidator:
     def _validate_base_paths(self) -> None:
         """验证基础路径"""
         if not os.path.exists(self.res_dir):
-            self.errors.append(StateValidationError(
-                severity="critical",
-                message=f"Resources directory not found: {self.res_dir}",
-                file_path=self.res_dir,
-                suggestion="Please ensure the patcher is in the game directory"
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message=f"Resources directory not found: {self.res_dir}",
+                    file_path=self.res_dir,
+                    suggestion="The game directory may not be detected correctly. You can select it manually.",
+                )
+            )
 
     def _validate_asar(self) -> FileState:
-        """验证ASAR文件"""
+        """验证ASAR文件（支持 8 字节和 16 字节两种格式）"""
         state = FileState(path=self.asar_path, exists=os.path.exists(self.asar_path))
 
         if not state.exists:
-            self.warnings.append(StateValidationError(
-                severity="warning",
-                message="ASAR file not found",
-                file_path=self.asar_path,
-                suggestion="If Steam just updated, restore from backup first"
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message="ASAR file not found",
+                    file_path=self.asar_path,
+                    suggestion="If Steam just updated, restore from backup first",
+                )
+            )
             return state
 
         try:
-            state.size = os.path.getsize(self.asar_path)
+            with open(self.asar_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                state.size = f.tell()
+                f.seek(0)
 
-            # 检查ASAR完整性（magic number）
-            with open(self.asar_path, 'rb') as f:
-                magic = f.read(4)
-                if magic != b'\x04\x00\x00\x00':  # ASAR magic number
-                    self.errors.append(StateValidationError(
-                        severity="critical",
-                        message=f"ASAR file is corrupted (invalid magic number: {magic.hex()})",
-                        file_path=self.asar_path,
-                        suggestion="Restore from backup or verify game files in Steam"
-                    ))
+                if state.size < MIN_ASAR_SIZE:
+                    self.errors.append(
+                        StateValidationError(
+                            severity="critical",
+                            message=f"ASAR file too small ({state.size} bytes)",
+                            file_path=self.asar_path,
+                            suggestion="File is likely corrupted, restore from backup",
+                        )
+                    )
                     state.is_valid = False
-                else:
-                    state.is_valid = True
+                    return state
 
+                header_buf = f.read(16)
+                if len(header_buf) < 8:
+                    self.errors.append(
+                        StateValidationError(
+                            severity="critical",
+                            message="ASAR header truncated",
+                            file_path=self.asar_path,
+                            suggestion="File is corrupted, restore from backup",
+                        )
+                    )
+                    state.is_valid = False
+                    return state
+
+                header_size_8byte = struct.unpack("<I", header_buf[0:4])[0]
+                padding = struct.unpack("<I", header_buf[4:8])[0]
+
+                MAX_HEADER_SIZE = 50 * 1024 * 1024
+
+                if header_size_8byte > 0 and header_size_8byte <= MAX_HEADER_SIZE and padding == 0:
+                    json_size = header_size_8byte
+                    json_start = 8
+                else:
+                    if len(header_buf) < 16:
+                        self.errors.append(
+                            StateValidationError(
+                                severity="critical",
+                                message="ASAR file too small for header format",
+                                file_path=self.asar_path,
+                                suggestion="File may be corrupted, restore from backup",
+                            )
+                        )
+                        state.is_valid = False
+                        return state
+                    json_size = struct.unpack("<I", header_buf[12:16])[0]
+                    json_start = 16
+
+                if json_size == 0 or json_size > MAX_HEADER_SIZE:
+                    self.errors.append(
+                        StateValidationError(
+                            severity="critical",
+                            message=f"ASAR JSON size invalid ({json_size} bytes)",
+                            file_path=self.asar_path,
+                            suggestion="File may be corrupted, restore from backup",
+                        )
+                    )
+                    state.is_valid = False
+                    return state
+
+                header_bytes = header_buf[json_start : json_start + json_size]
+                if len(header_bytes) < json_size:
+                    f.seek(json_start)
+                    header_bytes = f.read(json_size)
+
+                try:
+                    header_dict = json.loads(header_bytes.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                    self.errors.append(
+                        StateValidationError(
+                            severity="critical",
+                            message=f"ASAR header JSON corrupted: {e}",
+                            file_path=self.asar_path,
+                            suggestion="File is corrupted, restore from backup",
+                        )
+                    )
+                    state.is_valid = False
+                    return state
+
+                if "files" not in header_dict:
+                    self.errors.append(
+                        StateValidationError(
+                            severity="critical",
+                            message="ASAR header missing 'files' key",
+                            file_path=self.asar_path,
+                            suggestion="Invalid ASAR format, restore from backup",
+                        )
+                    )
+                    state.is_valid = False
+                    return state
+
+                files = header_dict.get("files", {})
+                if "package.json" not in files:
+                    self.warnings.append(
+                        StateValidationError(
+                            severity="warning",
+                            message="ASAR missing package.json",
+                            file_path=self.asar_path,
+                            suggestion="ASAR may be incomplete or corrupted",
+                        )
+                    )
+
+                state.is_valid = True
+
+        except OSError as e:
+            self.errors.append(
+                StateValidationError(
+                    severity="critical",
+                    message=f"Failed to read ASAR file: {e}",
+                    file_path=self.asar_path,
+                )
+            )
+            state.is_valid = False
         except Exception as e:
-            self.errors.append(StateValidationError(
-                severity="critical",
-                message=f"Failed to validate ASAR: {e}",
-                file_path=self.asar_path
-            ))
+            self.errors.append(
+                StateValidationError(
+                    severity="critical",
+                    message=f"Failed to validate ASAR: {e}",
+                    file_path=self.asar_path,
+                )
+            )
+            state.is_valid = False
 
         return state
 
@@ -192,35 +306,41 @@ class StateValidator:
         state = FileState(path=self.bak_path, exists=os.path.exists(self.bak_path))
 
         if not state.exists:
-            self.infos.append(StateValidationError(
-                severity="info",
-                message="Backup file not found - this is normal for first-time patching",
-                file_path=self.bak_path
-            ))
+            self.infos.append(
+                StateValidationError(
+                    severity="info",
+                    message="Backup file not found - this is normal for first-time patching",
+                    file_path=self.bak_path,
+                )
+            )
             return state
 
         try:
             state.size = os.path.getsize(self.bak_path)
 
             # 验证备份完整性
-            with open(self.bak_path, 'rb') as f:
+            with open(self.bak_path, "rb") as f:
                 magic = f.read(4)
-                if magic != b'\x04\x00\x00\x00':
-                    self.warnings.append(StateValidationError(
-                        severity="warning",
-                        message="Backup file is corrupted",
-                        file_path=self.bak_path,
-                        suggestion="Backup will be recreated when you apply patch"
-                    ))
+                if magic != ASAR_MAGIC_NUMBER:
+                    self.warnings.append(
+                        StateValidationError(
+                            severity="warning",
+                            message="Backup file is corrupted",
+                            file_path=self.bak_path,
+                            suggestion="Backup will be recreated when you apply patch",
+                        )
+                    )
                 else:
                     state.is_valid = True
 
         except Exception as e:
-            self.warnings.append(StateValidationError(
-                severity="warning",
-                message=f"Failed to validate backup: {e}",
-                file_path=self.bak_path
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message=f"Failed to validate backup: {e}",
+                    file_path=self.bak_path,
+                )
+            )
 
         return state
 
@@ -230,32 +350,38 @@ class StateValidator:
             return None
 
         try:
-            with open(self.patch_meta_path, encoding='utf-8') as f:
+            with open(self.patch_meta_path, encoding="utf-8") as f:
                 meta = json.load(f)
 
             # 验证必要字段
-            if 'patch_files' not in meta:
-                self.warnings.append(StateValidationError(
-                    severity="warning",
-                    message="Patch meta is missing 'patch_files' field",
-                    file_path=self.patch_meta_path
-                ))
+            if "patch_files" not in meta:
+                self.warnings.append(
+                    StateValidationError(
+                        severity="warning",
+                        message="Patch meta is missing 'patch_files' field",
+                        file_path=self.patch_meta_path,
+                    )
+                )
 
             return meta
 
         except json.JSONDecodeError as e:
-            self.warnings.append(StateValidationError(
-                severity="warning",
-                message=f"Patch meta is corrupted (JSON error): {e}",
-                file_path=self.patch_meta_path,
-                suggestion="Meta file will be regenerated when you apply patch"
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message=f"Patch meta is corrupted (JSON error): {e}",
+                    file_path=self.patch_meta_path,
+                    suggestion="Meta file will be regenerated when you apply patch",
+                )
+            )
         except Exception as e:
-            self.warnings.append(StateValidationError(
-                severity="warning",
-                message=f"Failed to read patch meta: {e}",
-                file_path=self.patch_meta_path
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message=f"Failed to read patch meta: {e}",
+                    file_path=self.patch_meta_path,
+                )
+            )
 
         return None
 
@@ -265,15 +391,17 @@ class StateValidator:
             return None
 
         try:
-            with open(self.patch_info_path, encoding='utf-8') as f:
+            with open(self.patch_info_path, encoding="utf-8") as f:
                 info = json.load(f)
             return info
         except Exception as e:
-            self.warnings.append(StateValidationError(
-                severity="warning",
-                message=f"Failed to read patch info: {e}",
-                file_path=self.patch_info_path
-            ))
+            self.warnings.append(
+                StateValidationError(
+                    severity="warning",
+                    message=f"Failed to read patch info: {e}",
+                    file_path=self.patch_info_path,
+                )
+            )
             return None
 
     def _analyze_state(
@@ -281,7 +409,7 @@ class StateValidator:
         asar_state: FileState,
         bak_state: FileState,
         meta_state: Optional[Dict],
-        info_state: Optional[Dict]
+        info_state: Optional[Dict],
     ) -> SystemState:
         """
         综合分析系统状态
@@ -298,9 +426,16 @@ class StateValidator:
         if asar_state.exists and not asar_state.is_valid:
             return SystemState.CORRUPTED
 
-        # ASAR和备份都不存在
+        # ASAR和备份都不存在（可能不在游戏目录中）
         if not asar_state.exists and not bak_state.exists:
-            return SystemState.CORRUPTED
+            self.infos.append(
+                StateValidationError(
+                    severity="info",
+                    message="No game files found in the current directory",
+                    suggestion="Select the game directory or let auto-detection find it",
+                )
+            )
+            return SystemState.UNKNOWN
 
         # ASAR不存在但备份存在 - Steam更新
         if not asar_state.exists and bak_state.exists:
@@ -310,11 +445,13 @@ class StateValidator:
         if asar_state.exists and not bak_state.exists:
             if meta_state or info_state:
                 # 有元数据但没有备份 - 不一致
-                self.warnings.append(StateValidationError(
-                    severity="warning",
-                    message="Patch metadata exists but no backup found",
-                    suggestion="The patch may have been applied by another tool"
-                ))
+                self.warnings.append(
+                    StateValidationError(
+                        severity="warning",
+                        message="Patch metadata exists but no backup found",
+                        suggestion="The patch may have been applied by another tool",
+                    )
+                )
                 return SystemState.INCONSISTENT
             return SystemState.CLEAN
 
@@ -328,11 +465,13 @@ class StateValidator:
                     return SystemState.PARTIAL_PATCH
             else:
                 # 有备份但没有元数据
-                self.warnings.append(StateValidationError(
-                    severity="warning",
-                    message="Backup exists but no patch metadata",
-                    suggestion="You may need to reapply the patch"
-                ))
+                self.warnings.append(
+                    StateValidationError(
+                        severity="warning",
+                        message="Backup exists but no patch metadata",
+                        suggestion="You may need to reapply the patch",
+                    )
+                )
                 return SystemState.INCONSISTENT
 
         return SystemState.UNKNOWN
@@ -343,7 +482,7 @@ class StateValidator:
 
         检查ASAR中的关键文件是否与元数据中的哈希匹配
         """
-        patch_files = meta.get('patch_files', {})
+        patch_files = meta.get("patch_files", {})
         if not patch_files:
             return True
 
@@ -395,9 +534,9 @@ class StateValidator:
             return False, "Backup file not found"
 
         try:
-            with open(self.bak_path, 'rb') as f:
+            with open(self.bak_path, "rb") as f:
                 magic = f.read(4)
-                if magic != b'\x04\x00\x00\x00':
+                if magic != b"\x04\x00\x00\x00":
                     return False, "Backup file is corrupted"
         except Exception as e:
             return False, f"Cannot read backup: {e}"
@@ -405,7 +544,9 @@ class StateValidator:
         return True, "Ready to restore"
 
 
-def validate_system_state(base_dir: Optional[str] = None) -> Tuple[SystemState, List[StateValidationError]]:
+def validate_system_state(
+    base_dir: Optional[str] = None,
+) -> Tuple[SystemState, List[StateValidationError]]:
     """
     便捷函数：验证系统状态
 

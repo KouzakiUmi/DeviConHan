@@ -77,22 +77,16 @@ class PatcherFileNotFoundError(PatcherError):
 
     def __init__(self, message: str, file_path: Optional[str] = None):
         details = {"file_path": file_path} if file_path else {}
-        super().__init__(
-            message, ErrorCategory.FILE_NOT_FOUND, ErrorSeverity.ERROR, details
-        )
+        super().__init__(message, ErrorCategory.FILE_NOT_FOUND, ErrorSeverity.ERROR, details)
         self.file_path = file_path
 
 
 class PatcherPermissionError(PatcherError):
     """权限异常"""
 
-    def __init__(
-        self, message: str, path: Optional[str] = None, operation: Optional[str] = None
-    ):
+    def __init__(self, message: str, path: Optional[str] = None, operation: Optional[str] = None):
         details = {"path": path, "operation": operation} if path or operation else {}
-        super().__init__(
-            message, ErrorCategory.PERMISSION_DENIED, ErrorSeverity.ERROR, details
-        )
+        super().__init__(message, ErrorCategory.PERMISSION_DENIED, ErrorSeverity.ERROR, details)
         self.path = path
         self.operation = operation
 
@@ -102,9 +96,7 @@ class AsarCorruptedError(PatcherError):
 
     def __init__(self, message: str, asar_path: Optional[str] = None):
         details = {"asar_path": asar_path} if asar_path else {}
-        super().__init__(
-            message, ErrorCategory.CORRUPTED_DATA, ErrorSeverity.ERROR, details
-        )
+        super().__init__(message, ErrorCategory.CORRUPTED_DATA, ErrorSeverity.ERROR, details)
         self.asar_path = asar_path
 
 
@@ -113,9 +105,7 @@ class ConfigError(PatcherError):
 
     def __init__(self, message: str, config_key: Optional[str] = None):
         details = {"config_key": config_key} if config_key else {}
-        super().__init__(
-            message, ErrorCategory.CONFIG_ERROR, ErrorSeverity.ERROR, details
-        )
+        super().__init__(message, ErrorCategory.CONFIG_ERROR, ErrorSeverity.ERROR, details)
         self.config_key = config_key
 
 
@@ -231,9 +221,7 @@ class ErrorHandler:
     @staticmethod
     def format_traceback(error: Exception) -> str:
         """格式化异常堆栈跟踪"""
-        return "".join(
-            traceback.format_exception(type(error), error, error.__traceback__)
-        )
+        return "".join(traceback.format_exception(type(error), error, error.__traceback__))
 
 
 # 全局错误处理器实例

@@ -1,4 +1,3 @@
-
 __all__ = [
     "get_resource_path",
     "normalize_path",
@@ -107,11 +106,16 @@ def safe_path_within(path: str, base_dir: str) -> Optional[str]:
         abs_path = os.path.normpath(os.path.abspath(os.path.join(abs_base, path)))
 
         # 边界检查：确保结果严格位于 base_dir 内
-        # 确保 base_dir 有尾随分隔符，避免 /foo/bar 被误判为 /foo/barbaz 的子路径
-        # 同时处理根目录 (如 C:\) 的边缘情况
-        base_with_sep = abs_base if abs_base.endswith(os.sep) else abs_base + os.sep
+        # 统一使用小写比较（Windows不区分大小写，Unix下无影响）
+        # 统一使用正斜杠进行比较（处理混合分隔符的情况）
+        base_lower = abs_base.lower().replace("\\", "/").rstrip("/") + "/"
+        path_lower = abs_path.lower().replace("\\", "/")
 
-        if abs_path != abs_base and not abs_path.startswith(base_with_sep):
+        # 处理完全相等的情况（允许访问 base_dir 本身）
+        path_normalized = path_lower.rstrip("/") + "/"
+        base_normalized = base_lower.rstrip("/") + "/"
+
+        if path_normalized != base_normalized and not path_normalized.startswith(base_normalized):
             logger.warning(
                 f"Path traversal detected: '{path}' resolves to '{abs_path}' "
                 f"which is outside base '{abs_base}'"

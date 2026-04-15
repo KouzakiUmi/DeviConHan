@@ -14,7 +14,7 @@ authors = [
 maintainers = [
     {name = "KouzakiUmi", email = "kouzaki@outlook.com"}
 ]
-keywords = ["tyrano", "localization", "patcher", "electron", "asar"]
+keywords = ["tyrano", "localization", "patcher", "electron"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
@@ -34,7 +34,7 @@ classifiers = [
     "Topic :: System :: Archiving :: Packaging"
 ]
 requires-python = ">=3.8"
-dependencies = ["asar>=3.0.0"]
+dependencies = []
 
 [project.optional-dependencies]
 build = ["pyinstaller"]

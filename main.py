@@ -99,6 +99,7 @@ def main() -> int:
                 _ctypes = ctypes
                 # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
                 if ctypes.windll.kernel32.AllocConsole():
+                    # 在重定向之前先备份原有的 stdout/stderr，并重置到已关闭状态
                     new_stdout = open("CONOUT$", "w", encoding="utf-8")
                     new_stderr = open("CONOUT$", "w", encoding="utf-8")
                     sys.stdout = new_stdout
@@ -114,16 +115,17 @@ def main() -> int:
         return 0
     except Exception:
         logger.exception("Fatal error in main")
-        # messagebox.showerror(T("err_fatal_error"), T("err_unexpected_error", error=str(e)))
         return 1
     finally:
         # 清理控制台句柄
         if _console_opened and _ctypes is not None:
             try:
+                # 必须先恢复原始句柄，确保后续代码不会尝试写入已关闭的流
                 if sys.stdout and sys.stdout != _original_stdout:
                     sys.stdout.close()
                 if sys.stderr and sys.stderr != _original_stderr:
                     sys.stderr.close()
+                
                 sys.stdout = _original_stdout
                 sys.stderr = _original_stderr
                 _ctypes.windll.kernel32.FreeConsole()

@@ -79,6 +79,7 @@ class AsyncOperationManager:
         self._operations: Dict[str, ProgressInfo] = {}
         self._lock = threading.Lock()
         self._progress_callback: Optional[Callable[[ProgressInfo], None]] = None
+        self._shutdown_called = False
         atexit.register(self._atexit_shutdown)
 
     def set_progress_callback(self, callback: Callable[[ProgressInfo], None]) -> None:
@@ -118,8 +119,7 @@ class AsyncOperationManager:
             existing = self._operations.get(operation_id)
             if existing is not None and existing.state == OperationState.RUNNING:
                 logger.warning(
-                    f"Operation '{operation_id}' is already running. "
-                    "Ignoring duplicate submit."
+                    f"Operation '{operation_id}' is already running. Ignoring duplicate submit."
                 )
                 return existing.future  # type: ignore[return-value]
 
@@ -199,9 +199,7 @@ class AsyncOperationManager:
 
         return future
 
-    def update_progress(
-        self, operation_id: str, progress: int, message: str = ""
-    ) -> None:
+    def update_progress(self, operation_id: str, progress: int, message: str = "") -> None:
         """
         更新操作进度
 
@@ -210,13 +208,15 @@ class AsyncOperationManager:
             progress: 进度值 (0-100)
             message: 进度消息
         """
+        progress_info = None
         with self._lock:
             if operation_id in self._operations:
                 progress_info = self._operations[operation_id]
                 progress_info.progress = max(0, min(100, progress))
                 if message:
                     progress_info.message = message
-                self._notify_progress(progress_info)
+        if progress_info is not None:
+            self._notify_progress(progress_info)
 
     def cancel(self, operation_id: str) -> bool:
         """
@@ -226,10 +226,9 @@ class AsyncOperationManager:
             operation_id: 操作ID
 
         Returns:
-            bool: 是否成功取消
+            bool: 是否已发起取消请求
         """
         progress_to_notify: Optional[ProgressInfo] = None
-        result = False
 
         with self._lock:
             if operation_id not in self._operations:
@@ -248,13 +247,16 @@ class AsyncOperationManager:
                     progress_info.state = OperationState.CANCELLED
                     progress_info.message = "Cancelled"
                     progress_to_notify = progress_info
-                result = cancelled
+                else:
+                    progress_info.state = OperationState.CANCELLING
+                    progress_info.message = "Cancelling..."
+                    progress_to_notify = progress_info
 
         # 在锁外执行回调，避免死锁
         if progress_to_notify is not None:
             self._notify_progress(progress_to_notify)
 
-        return result
+        return True
 
     def get_progress(self, operation_id: str) -> Optional[ProgressInfo]:
         """
@@ -283,9 +285,7 @@ class AsyncOperationManager:
                 OperationState.FAILED,
             }
             to_remove = [
-                op_id
-                for op_id, info in self._operations.items()
-                if info.state in completed_states
+                op_id for op_id, info in self._operations.items() if info.state in completed_states
             ]
             for op_id in to_remove:
                 del self._operations[op_id]
@@ -297,6 +297,10 @@ class AsyncOperationManager:
         Args:
             wait: 是否等待任务完成
         """
+        with self._lock:
+            if self._shutdown_called:
+                return
+            self._shutdown_called = True
         self._executor.shutdown(wait=wait)
 
     def __enter__(self) -> "AsyncOperationManager":
@@ -310,15 +314,14 @@ class AsyncOperationManager:
     def _atexit_shutdown(self) -> None:
         """解释器退出时的清理钩子（通过 atexit 注册，比 __del__ 更可靠）"""
         try:
-            self._executor.shutdown(wait=False)
+            self.shutdown(wait=False)
         except Exception:
             pass
 
     def __del__(self) -> None:
-        """析构函数（保留作为次要保险，主要清理由 atexit 完成）
-        """
+        """析构函数（保留作为次要保险，主要清理由 atexit 完成）"""
         try:
-            self._executor.shutdown(wait=False)
+            self.shutdown(wait=False)
         except Exception:
             pass
 

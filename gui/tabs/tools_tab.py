@@ -22,11 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsTab(ttk.Frame):
-    _PLATFORM_PATTERNS: dict = {
-        "win": "*.{node,dll,exe}",
-        "nix": "*.{node,dll,so,dylib,bin}",
-    }
-
     def __init__(self, parent, app):
         super().__init__(parent, padding=10)
         self.app = app
@@ -415,10 +410,6 @@ class ToolsTab(ttk.Frame):
 
         out_path = self._get_out_path_for_packing(src)
 
-        pat = self._PLATFORM_PATTERNS.get(
-            self.app.var_plat.get() if self.app.var_plat else "win", "*.{node,dll,exe}"
-        )
-
         if os.path.exists(out_path):
             if not messagebox.askyesno(T("title_confirm"), T("confirm_overwrite")):
                 return
@@ -438,7 +429,7 @@ class ToolsTab(ttk.Frame):
 
         def _t():
             try:
-                core.run_asar("pack", src, out_path, callback=self.app.log, unpack_pattern=pat)
+                core.run_asar("pack", src, out_path, callback=self.app.log)
                 self.after(
                     0,
                     lambda packed_path=out_path: messagebox.showinfo(
@@ -498,10 +489,12 @@ class ToolsTab(ttk.Frame):
         try:
             t = self.app.var_exe.get()
             if not t:
-                return messagebox.showwarning(T("title_warning"), T("warn_no_file", "请选择文件"))
+                messagebox.showwarning(T("title_warning"), T("warn_no_file", "请选择文件"))
+                return
 
             if not os.path.exists(t):
-                return messagebox.showerror(T("title_error"), T("err_path_not_exist", "路径不存在"))
+                messagebox.showerror(T("title_error"), T("err_path_not_exist", "路径不存在"))
+                return
 
             current_offset = get_config().fuse_asar_integrity_offset
             warn_msg = T("msg_fuse_warn").format(offset=current_offset)

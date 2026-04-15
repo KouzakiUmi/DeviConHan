@@ -8,7 +8,6 @@ plans/
 RAG文档/
 .graphRAG/
 .kilo/
-.ruff_cache/
 
 # Environment and dependency files
 .env
@@ -80,3 +79,7 @@ resources/*.asar
 # Unpacked ASAR directories
 resources/app.asar.unpacked/
 resources/app_repacked.asar.unpacked/
+
+# Runtime patch metadata (generated files)
+.patch_info
+.patch_meta

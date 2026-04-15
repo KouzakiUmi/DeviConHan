@@ -92,10 +92,9 @@ def validate_not_empty(*arg_names: str) -> Callable:
             for name in names_to_check:
                 if name in bound_args.arguments:
                     val = bound_args.arguments[name]
-                    if val is None or not isinstance(val, str) or not val.strip():
-                        raise ValidationError(
-                            f"Empty or None argument not allowed: {name}"
-                        )
+                    str_val = str(val) if val is not None else ""
+                    if not str_val.strip():
+                        raise ValidationError(f"Empty or None argument not allowed: {name}")
 
             return func(*args, **kwargs)
 

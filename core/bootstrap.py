@@ -8,7 +8,12 @@
 4. 配置验证
 """
 
-__all__ = ["bootstrap_system", "find_game_directory", "get_detected_game_path", "SystemBootstrapError"]
+__all__ = [
+    "bootstrap_system",
+    "find_game_directory",
+    "get_detected_game_path",
+    "SystemBootstrapError",
+]
 
 import logging
 import os
@@ -27,6 +32,7 @@ _detected_game_path: Optional[str] = None
 
 class SystemBootstrapError(Exception):
     """系统启动错误"""
+
     pass
 
 
@@ -84,9 +90,9 @@ def is_game_directory(path: str, config=None) -> bool:
     unpacked_path = os.path.join(res_path, f"{asar_name}.unpacked")
 
     has_game_files = (
-        os.path.isfile(asar_path) or  # app.asar
-        os.path.isfile(bak_path) or  # app.asar.bak
-        os.path.isdir(unpacked_path)   # app.asar.unpacked/
+        os.path.isfile(asar_path)  # app.asar
+        or os.path.isfile(bak_path)  # app.asar.bak
+        or os.path.isdir(unpacked_path)  # app.asar.unpacked/
     )
 
     if has_game_files:
@@ -129,7 +135,14 @@ def find_game_directory(base_dir: Optional[str] = None, auto_detect: bool = True
 
     # 在 Steam 目录中查找游戏
     search_paths = get_steam_library_paths()
-    game_path = find_game_in_steam(config.game_id, search_paths)
+    game_path = find_game_in_steam(
+        config.game_id, search_paths, extra_variations=config.game_name_variations
+    )
+
+    # 自动检测失败时回退到手动配置路径
+    if not game_path and config.game_path and os.path.exists(config.game_path):
+        game_path = config.game_path
+        logger.info(f"Auto-detection failed, falling back to configured game path: {game_path}")
 
     # 缓存结果
     global _detected_game_path
@@ -176,9 +189,9 @@ def bootstrap_system(
         base_dir = current_dir
         logger.info(f"Current directory is valid game directory: {base_dir}")
     elif config.auto_detect_game:
-        # 尝试自动检测
+        # 自动检测模式
         logger.info("Current directory is not a game directory. Attempting auto-detection...")
-        detected = find_game_directory(base_dir)
+        detected = find_game_directory(auto_detect=True)
         if detected:
             base_dir = detected
             messages.append(f"Auto-detected game directory: {base_dir}")
@@ -195,7 +208,7 @@ def bootstrap_system(
     global _detected_game_path
     _detected_game_path = base_dir
 
-    # 3. 配置验证
+    # 2. 配置验证
     try:
         config_valid, errors, warnings = config.validate_config()
 
@@ -208,7 +221,7 @@ def bootstrap_system(
     except Exception as e:
         raise SystemBootstrapError(f"Failed to initialize configuration: {e}") from e
 
-    # 2. 系统状态一致性检查
+    # 3. 系统状态一致性检查
     if not skip_state_check:
         logger.info("Checking system state consistency...")
         state, issues = validate_system_state(base_dir)
@@ -228,7 +241,7 @@ def bootstrap_system(
 
         logger.info(f"System state: {state.value}")
 
-    # 3. 磁盘空间检查
+    # 4. 磁盘空间检查
     if not skip_disk_check:
         logger.info("Checking disk space...")
         try:
@@ -249,7 +262,7 @@ def bootstrap_system(
         except Exception as e:
             messages.append(f"Warning: Could not check disk space: {e}")
 
-    # 4. 初始化操作锁
+    # 5. 初始化操作锁
     try:
         _ = get_operation_lock()
         logger.debug("Operation lock initialized")

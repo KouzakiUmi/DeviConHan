@@ -16,7 +16,6 @@ from utils.paths import get_resource_path
 logger = logging.getLogger(__name__)
 
 
-
 def has_embedded_patch():
     """
     检测是否包含内置汉化补丁
@@ -37,6 +36,11 @@ def _atomic_write_json(file_path, data):
     """
     temp_file = file_path + ".tmp"
     try:
+        # 确保目标目录存在
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir and not os.path.exists(parent_dir):
+            os.makedirs(parent_dir, exist_ok=True)
+
         with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.flush()
@@ -95,5 +99,3 @@ def save_patch_meta(base_dir, temp_dir):
     _atomic_write_json(meta_file, meta_info)
 
     logger.info(f"Saved patch meta to: {meta_file}")
-
-

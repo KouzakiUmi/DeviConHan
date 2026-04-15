@@ -19,7 +19,7 @@ DELAYED_CLEANUP_DELAY: int = 60
 
 # ================= 文件大小限制 =================
 MIN_ASAR_SIZE: int = 1024
-MAX_ASAR_SIZE: int = 2 * 1024 * 1024 * 1024
+MAX_ASAR_SIZE: int = 8 * 1024 * 1024 * 1024
 
 # ================= UI 常量 =================
 DEFAULT_FONT_SIZE: int = 9
@@ -57,14 +57,16 @@ MAX_OPERATION_HISTORY: int = 50
 
 # ================= 存档相关常量 =================
 BACKUP_TIMESTAMP_FORMAT: str = "%Y%m%d%H%M%S"
-DEFAULT_BACKUP_DIR: str = os.path.join(
-    os.path.expanduser("~"), ".tyranopatcher", "backups"
-)
+DEFAULT_BACKUP_DIR: str = os.path.join(os.path.expanduser("~"), ".tyranopatcher", "backups")
 
-# ================= ASAR 常量 =================
+# ================= ASAR 协议常量 =================
 ASAR_MAGIC_NUMBER: bytes = b"\x04\x00\x00\x00"
-ASAR_HEADER_FIXED_SIZE: int = 8
-REQUIRED_ASAR_FILES: List[str] = ["package.json", "index.html"]
+ASAR_DATA_SIZE: int = 4
+ASAR_BLOCK_SIZE: int = 4 * 1024 * 1024
+ASAR_ALGORITHM: str = "SHA256"
+ASAR_HEADER_STRUCT_FMT: str = "<4I"
+ASAR_HEADER_READ_SIZE: int = 16
+ASAR_MAGIC_BYTES_SIZE: int = 4
 
 # ================= Fuse 常量 =================
 FUSE_ENABLED_BYTE: bytes = b"\x31"
@@ -73,11 +75,12 @@ FUSE_VALIDATION_MIN_SIZE: int = 1024
 FUSE_PARTIAL_HASH_HEAD_SIZE: int = 1024 * 1024  # 1 MB
 FUSE_PARTIAL_HASH_TAIL_SIZE: int = 1024 * 1024  # 1 MB
 
-# ================= ASAR 解包常量 =================
-ASAR_UNPACK_PATTERN: str = "*.{node,dll,so,dylib,exe,bin}"
+# ================= ASAR 原生模块扩展名 =================
+NATIVE_EXTENSIONS = frozenset({".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"})
 
 # ================= 配置验证常量 =================
-TIME_DIFF_THRESHOLD_MAX_DAYS: int = 2000
+# 与 config.ini 中的 TIME_DIFF_THRESHOLD_DAYS 保持一致（默认 730 天，约 2 年）
+TIME_DIFF_THRESHOLD_MAX_DAYS: int = 730
 
 # ================= 默认配置值 =================
 DEFAULT_ASAR_TIMEOUT_SECONDS: int = 300  # ASAR 操作超时时间（秒）

@@ -112,9 +112,7 @@ def _verify_backup_with_full_hash(exe_path: str, backup_path: str) -> bool:
         return False
 
     if src_hash != dst_hash:
-        logger.error(
-            f"Full hash mismatch! src={src_hash[:16]}..., dst={dst_hash[:16]}..."
-        )
+        logger.error(f"Full hash mismatch! src={src_hash[:16]}..., dst={dst_hash[:16]}...")
         return False
 
     logger.info("Full hash verification passed")
@@ -346,9 +344,7 @@ def remove_fuse(exe_path, callback=None):
                 offset = mm.find(fuse_sentinel)
 
                 if offset == -1:
-                    logger.info(
-                        "Fuse sentinel not found - already removed or never present"
-                    )
+                    logger.info("Fuse sentinel not found - already removed or never present")
                     return False
 
                 # 计算目标偏移量
@@ -356,9 +352,7 @@ def remove_fuse(exe_path, callback=None):
 
                 # 边界检查
                 if target + 1 > mm.size():
-                    logger.error(
-                        f"Target position {target} exceeds file size {mm.size()}"
-                    )
+                    logger.error(f"Target position {target} exceeds file size {mm.size()}")
                     return False
 
                 current_byte = mm[target : target + 1]
@@ -379,9 +373,7 @@ def remove_fuse(exe_path, callback=None):
                         )
                         raise FuseError("Modification verification failed")
 
-                    logger.info(
-                        "Fuse checksum byte modified (0x31 -> 0x30) and verified"
-                    )
+                    logger.info("Fuse checksum byte modified (0x31 -> 0x30) and verified")
                     if callback:
                         callback("Fuse removed and verified.")
 
@@ -391,9 +383,7 @@ def remove_fuse(exe_path, callback=None):
                         callback("Fuse already disabled.")
                     return True
                 else:
-                    logger.warning(
-                        f"Unexpected byte at target position: {current_byte}"
-                    )
+                    logger.warning(f"Unexpected byte at target position: {current_byte}")
                     return False
 
         # 最终验证：重新打开文件检查

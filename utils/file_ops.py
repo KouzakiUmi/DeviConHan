@@ -6,6 +6,7 @@
 
 __all__ = [
     "compute_file_hash",
+    "quick_file_hash",
     "migrate_backup",
     "safe_extract_zip",
     "verify_directory_safe",
@@ -15,6 +16,7 @@ import hashlib
 import logging
 import os
 import shutil
+import struct
 import zipfile
 from typing import Callable, Optional
 
@@ -23,6 +25,50 @@ from utils.constants import HASH_CHUNK_SIZE, MAX_ZIP_EXTRACT_FILES, MAX_ZIP_EXTR
 from utils.paths import safe_path_within
 
 logger = logging.getLogger(__name__)
+
+
+def quick_file_hash(file_path: str, head_size: int = 65536, tail_size: int = 65536) -> str:
+    """
+    快速计算文件的 SHA256 哈希值（仅读取首尾部分）
+
+    适用于大文件的快速比较，不保证完全准确，但性能极优。
+    读取文件头部、尾部和文件大小作为指纹。
+
+    Args:
+        file_path: 文件路径
+        head_size: 头部读取字节数（默认64KB）
+        tail_size: 尾部读取字节数（默认64KB）
+
+    Returns:
+        str: 哈希值，失败返回空字符串
+    """
+    try:
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            return ""
+
+        file_size = os.path.getsize(file_path)
+        sha256_hash = hashlib.sha256()
+
+        # 加入文件大小作为指纹一部分
+        sha256_hash.update(struct.pack("<Q", file_size))
+
+        with open(file_path, "rb") as f:
+            # 读取头部
+            sha256_hash.update(f.read(head_size))
+
+            # 如果文件足够大，读取尾部
+            if file_size > head_size + tail_size:
+                f.seek(-tail_size, 2)
+                sha256_hash.update(f.read(tail_size))
+            elif file_size > head_size:
+                # 文件不大，读取剩余部分
+                f.seek(head_size)
+                sha256_hash.update(f.read())
+
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logger.error(f"Failed to compute quick hash for {file_path}: {e}")
+        return ""
 
 
 def compute_file_hash(file_path: str, chunk_size: int = HASH_CHUNK_SIZE) -> str:

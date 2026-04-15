@@ -13,6 +13,7 @@ from utils.paths import get_resource_path
 
 logger = logging.getLogger(__name__)
 
+
 def show_about_dialog(parent):
     """显示关于对话框"""
     about_app_label = T("menu_about_app")
@@ -57,17 +58,18 @@ def _create_about_avatar(parent_frame, dlg):
     try:
         import base64
         import struct
+
         icon_path = get_resource_path("icon.ico")
         if os.path.exists(icon_path):
-            with open(icon_path, 'rb') as f:
+            with open(icon_path, "rb") as f:
                 f.read(4)
-                n = struct.unpack('<H', f.read(2))[0]
+                n = struct.unpack("<H", f.read(2))[0]
                 for _ in range(n):
-                    img_w, img_h, _, _, _, _, size, offset = struct.unpack('<BBBBHHII', f.read(16))
+                    img_w, img_h, _, _, _, _, size, offset = struct.unpack("<BBBBHHII", f.read(16))
                     if img_w == 0 and img_h == 0:
                         f.seek(offset)
                         png_data = f.read(size)
-                        if png_data.startswith(b'\x89PNG'):
+                        if png_data.startswith(b"\x89PNG"):
                             b64_data = base64.b64encode(png_data)
                             tk_img = tk.PhotoImage(data=b64_data)
                             avatar_img = tk_img.subsample(2, 2)
@@ -99,6 +101,7 @@ def _create_about_info(parent_frame, dlg):
 
     # 使用带滚动条的文本框展示 Credits
     from tkinter import scrolledtext
+
     text_area = scrolledtext.ScrolledText(info_frame, wrap=tk.WORD, height=8, font=get_font(9))
     text_area.insert(tk.END, desc)
     text_area.config(state="disabled")
@@ -107,6 +110,7 @@ def _create_about_info(parent_frame, dlg):
     # 链接标签
     def open_url(event):
         import webbrowser
+
         webbrowser.open(GITHUB_REPO_URL)
 
     about_github_link = T("about_github_link")

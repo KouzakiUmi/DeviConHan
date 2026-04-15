@@ -29,8 +29,7 @@ class SaveService:
         self.core = core_logic
 
     def _cleanup_temp(self, temp_path: str, is_dir: bool = False) -> None:
-        """安全清理临时资源（文件或目录）
-        """
+        """安全清理临时资源（文件或目录）"""
         if not os.path.exists(temp_path):
             return
         try:
@@ -100,9 +99,7 @@ class SaveService:
         try:
             os.makedirs(backup_dir, exist_ok=True)
         except OSError as e:
-            raise PatcherError(
-                f"Cannot create backup directory '{backup_dir}': {e}"
-            ) from e
+            raise PatcherError(f"Cannot create backup directory '{backup_dir}': {e}") from e
 
         from core.config import get_config
 
@@ -126,12 +123,9 @@ class SaveService:
                             abs_path = os.path.normpath(os.path.join(root, file))
                             abs_root = os.path.normpath(os.path.abspath(root))
                             if not (
-                                abs_root.startswith(base_path + os.sep)
-                                or abs_root == base_path
+                                abs_root.startswith(base_path + os.sep) or abs_root == base_path
                             ):
-                                logger.warning(
-                                    f"Skipped path outside base directory: {abs_root}"
-                                )
+                                logger.warning(f"Skipped path outside base directory: {abs_root}")
                                 continue
                             # 正确的相对路径：从规范化基础路径之后截取
                             rel_path = abs_path[base_len:].lstrip(os.sep)
@@ -217,12 +211,8 @@ class SaveService:
         prepared_restore_path = os.path.join(temp_dir, "to_restore")
         if is_zip:
             os.makedirs(prepared_restore_path, exist_ok=True)
-            safe_extract_zip(
-                backup_src, prepared_restore_path, check_cancelled=check_cancelled
-            )
-            logger.info(
-                f"Extracted backup to temp for restore: {prepared_restore_path}"
-            )
+            safe_extract_zip(backup_src, prepared_restore_path, check_cancelled=check_cancelled)
+            logger.info(f"Extracted backup to temp for restore: {prepared_restore_path}")
         else:
             shutil.copytree(
                 backup_src,
@@ -244,9 +234,7 @@ class SaveService:
         """步骤4: 原子替换目标目录"""
         if os.path.exists(save_dir):
             if not self.clear_save_directory(save_dir):
-                raise RuntimeError(
-                    "Failed to clear current save directory. Aborting restore."
-                )
+                raise RuntimeError("Failed to clear current save directory. Aborting restore.")
 
         if prepared_restore_path and os.path.exists(prepared_restore_path):
             os.makedirs(save_dir, exist_ok=True)
@@ -262,9 +250,7 @@ class SaveService:
                 os.makedirs(save_dir, exist_ok=True)
                 safe_extract_zip(backup_src, save_dir, check_cancelled=check_cancelled)
             else:
-                shutil.copytree(
-                    backup_src, save_dir, dirs_exist_ok=True, copy_function=copy_func
-                )
+                shutil.copytree(backup_src, save_dir, dirs_exist_ok=True, copy_function=copy_func)
 
     def _rollback_restore(
         self,
@@ -292,14 +278,17 @@ class SaveService:
         except Exception as restore_err:
             logger.error(f"Rollback failed: {restore_err}")
             raise PatcherError(
-                f"{original_error}\n\nRollback failed. Current save may be lost. Error: {restore_err}",
+                f"[{type(original_error).__name__}] {original_error}\n\n"
+                f"Rollback failed. Current save may be lost. "
+                f"[{type(restore_err).__name__}] {restore_err}",
                 category=ErrorCategory.CORRUPTED_DATA,
                 severity=ErrorSeverity.CRITICAL,
             ) from restore_err
 
         # 回滚成功：仍抛出异常以通知调用方"还原操作失败"，但附带回滚成功信息
         raise PatcherError(
-            f"{original_error}\n\nCurrent save has been restored from backup.",
+            f"[{type(original_error).__name__}] {original_error}\n\n"
+            f"Current save has been restored from backup.",
             category=ErrorCategory.UNKNOWN_ERROR,
             severity=ErrorSeverity.WARNING,
         )
@@ -365,16 +354,10 @@ class SaveService:
 
         except Exception as e:
             logger.error(f"Restore error: {e}")
-            if (
-                temp_dir
-                and current_save_backup_path
-                and os.path.exists(current_save_backup_path)
-            ):
-                self._rollback_restore(
-                    save_dir, current_save_backup_path, shutil.copy2, e
-                )
+            if temp_dir and current_save_backup_path and os.path.exists(current_save_backup_path):
+                self._rollback_restore(save_dir, current_save_backup_path, shutil.copy2, e)
             else:
-                raise PatcherError(str(e)) from e
+                raise PatcherError(f"{type(e).__name__}: {e}") from e
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 try:
@@ -388,9 +371,7 @@ class SaveService:
         """
         backup_src = normalize_path(backup_src)
         if not os.path.exists(backup_src):
-            logger.warning(
-                f"Backup not found (already deleted?): {backup_src}"
-            )
+            logger.warning(f"Backup not found (already deleted?): {backup_src}")
             return
         try:
             if os.path.isfile(backup_src):

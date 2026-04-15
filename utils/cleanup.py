@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 # ================= 清理模块常量 =================
 # MAX_CLEANUP_RETRIES, CLEANUP_RETRY_DELAY, DELAYED_CLEANUP_DELAY
 # 现已从 utils.constants 统一导入，避免重复定义。
-FORCE_CLOSE_HANDLE_TIMEOUT: float = 2.0  # 秒
 
 
 def retry_operation(
@@ -62,17 +61,13 @@ def retry_operation(
             result = operation()
             # 如果操作返回 False，认为是失败
             if result is False:
-                logger.warning(
-                    f"{operation_name} returned False, attempt {attempt}/{max_retries}"
-                )
+                logger.warning(f"{operation_name} returned False, attempt {attempt}/{max_retries}")
                 if attempt < max_retries:
                     time.sleep(delay)
                 continue
             return True
         except Exception as e:
-            logger.warning(
-                f"{operation_name} failed on attempt {attempt}/{max_retries}: {e}"
-            )
+            logger.warning(f"{operation_name} failed on attempt {attempt}/{max_retries}: {e}")
             if attempt < max_retries:
                 time.sleep(delay)
             else:
@@ -100,15 +95,17 @@ def force_cleanup_dir(temp_dir: str, max_retries: int = 3) -> bool:
     def chmod_recursive():
         for root, dirs, files in os.walk(temp_dir):
             for name in files:
+                file_path = os.path.join(root, name)
                 try:
-                    os.chmod(os.path.join(root, name), stat.S_IWRITE | stat.S_IRUSR)
-                except Exception:
-                    pass
+                    os.chmod(file_path, stat.S_IWRITE | stat.S_IRUSR)
+                except OSError as e:
+                    logger.debug(f"Failed to chmod file during cleanup: {file_path} - {e}")
             for name in dirs:
+                dir_path = os.path.join(root, name)
                 try:
-                    os.chmod(os.path.join(root, name), stat.S_IWRITE | stat.S_IRUSR)
-                except Exception:
-                    pass
+                    os.chmod(dir_path, stat.S_IWRITE | stat.S_IRUSR)
+                except OSError as e:
+                    logger.debug(f"Failed to chmod directory during cleanup: {dir_path} - {e}")
 
     # 2. 尝试使用 shutil.rmtree
     def rmtree_attempt():
@@ -167,9 +164,7 @@ def force_cleanup_dir(temp_dir: str, max_retries: int = 3) -> bool:
     )
 
 
-def schedule_delayed_cleanup(
-    dir_path: str, delay_seconds: int = DELAYED_CLEANUP_DELAY
-) -> None:
+def schedule_delayed_cleanup(dir_path: str, delay_seconds: int = DELAYED_CLEANUP_DELAY) -> None:
     """
     安排延迟清理
 

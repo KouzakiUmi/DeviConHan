@@ -102,9 +102,23 @@ class App(tk.Tk):
             pass
         self.after(50, self._process_ui_queue)
 
+    def _on_window_close(self):
+        """窗口关闭时的清理逻辑"""
+        logger.info("Window closing, cleaning up resources...")
+        try:
+            # 停止所有运行中的异步操作并等待线程池关闭
+            self.async_manager.shutdown(wait=True)
+        except Exception as e:
+            logger.warning(f"Error during async manager shutdown: {e}")
+        finally:
+            self.destroy()
+
     def init_ui(self):
         for widget in self.winfo_children():
             widget.destroy()
+
+        # 设置窗口关闭协议，确保异步操作正确清理
+        self.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
         self.title(T("app_title"))
         self.geometry(f"{WINDOW_MIN_WIDTH}x{WINDOW_MIN_HEIGHT}")
@@ -209,7 +223,13 @@ class App(tk.Tk):
                         logger.info(f"Backed up corrupted config to: {backup_file}")
                     except Exception as backup_err:
                         logger.warning(f"Failed to backup corrupted config: {backup_err}")
-                    # 配置文件损坏：让 AppConfig 重新从默认配置加载
+                    # 配置文件损坏：用默认配置覆盖后重新加载
+                    try:
+                        default_config_path = get_resource_path("config.ini")
+                        shutil.copy2(default_config_path, self.config_file)
+                        logger.info("Replaced corrupted config with default config")
+                    except Exception as replace_err:
+                        logger.warning(f"Failed to replace corrupted config: {replace_err}")
                     self.app_config.reload()
                     return True
 
@@ -403,7 +423,7 @@ class App(tk.Tk):
                 q.put(res)
             except Exception as e:
                 logger.error(f"Error in {log_prefix} dialog: {e}")
-                q.put(default_value if not isinstance(default_value, Exception) else e)
+                q.put(default_value)
 
         try:
             if not self._window_alive():

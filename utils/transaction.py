@@ -54,6 +54,7 @@ class FileTransaction:
         self.staged: dict = {}  # 目标路径 -> 临时路径
         self.committed = False
         self._cleanup_on_exit = True
+        self._backup_to_bak: list = []  # 需要 rename 为 bak 的文件
 
     def __enter__(self):
         """进入上下文，创建事务目录"""
@@ -74,7 +75,7 @@ class FileTransaction:
 
     def backup_original(self, file_path: str) -> str:
         """
-        备份原始文件到事务目录
+        备份原始文件到事务目录（用于回滚）
 
         Args:
             file_path: 原始文件路径
@@ -104,6 +105,16 @@ class FileTransaction:
 
         except Exception as e:
             raise TransactionError(f"Failed to backup {file_path}: {e}") from e
+
+    def mark_backup_to_bak(self, file_path: str) -> None:
+        """
+        标记文件在提交时需要原子替换为 .bak
+
+        Args:
+            file_path: 需要备份的文件路径
+        """
+        if os.path.exists(file_path):
+            self._backup_to_bak.append(file_path)
 
     def stage_new_file(self, target_path: str, source_path: str) -> None:
         """
@@ -140,9 +151,9 @@ class FileTransaction:
         提交所有暂存的更改
 
         执行顺序：
-        1. 将原始文件移动到 .old 备份
+        1. 将需要备份的文件 rename 为 .bak
         2. 将暂存文件移动到目标位置
-        3. 删除 .old 备份
+        3. 清理回滚备份
 
         Raises:
             TransactionError: 如果提交失败
@@ -154,7 +165,16 @@ class FileTransaction:
         new_files_placed = []
 
         try:
-            # 第一步：移动原始文件到.old
+            # 第一步：将需要备份的文件 rename 为 .bak
+            for file_path in self._backup_to_bak:
+                if os.path.exists(file_path):
+                    bak_path = file_path + ".bak"
+                    if os.path.exists(bak_path):
+                        os.remove(bak_path)
+                    os.replace(file_path, bak_path)
+                    logger.debug(f"Renamed {file_path} -> {bak_path}")
+
+            # 第二步：移动原始文件到 .tx_old（仅针对会被 staged 文件替换的目标）
             for target_path in self.staged.keys():
                 if os.path.exists(target_path):
                     old_path = target_path + ".tx_old"
@@ -162,13 +182,13 @@ class FileTransaction:
                     old_backups.append((target_path, old_path))
                     logger.debug(f"Moved original to {old_path}")
 
-            # 第二步：移动暂存文件到目标位置
+            # 第三步：移动暂存文件到目标位置
             for _target_path, staged_path in self.staged.items():
                 shutil.move(staged_path, _target_path)
                 new_files_placed.append(_target_path)
                 logger.info(f"Committed: {staged_path} -> {_target_path}")
 
-            # 第三步：删除.old备份
+            # 第四步：删除 .tx_old 备份
             for _target_path, old_path in old_backups:
                 if os.path.isfile(old_path):
                     os.remove(old_path)
@@ -233,8 +253,11 @@ class FileTransaction:
                     else:
                         shutil.copytree(backup_path, temp_restore)
 
-                    if os.path.exists(original_path) and os.path.isdir(original_path):
-                        shutil.rmtree(original_path)
+                    if os.path.exists(original_path):
+                        if os.path.isdir(original_path):
+                            shutil.rmtree(original_path)
+                        else:
+                            os.remove(original_path)
                     os.replace(temp_restore, original_path)
                     logger.debug(f"Restored original file from backup: {original_path}")
             except Exception as e:

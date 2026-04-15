@@ -1,4 +1,3 @@
-
 import logging
 import os
 import sys
@@ -7,8 +6,7 @@ from typing import Optional
 
 
 class NewlineSanitizingFormatter(logging.Formatter):
-    """格式化器，将日志消息中的换行符转义以防止日志注入
-    """
+    """格式化器，将日志消息中的换行符转义以防止日志注入"""
 
     def format(self, record):
         # 只在消息确实包含换行 / 回车符时才进行副本。
@@ -74,9 +72,7 @@ def setup_logging(
             continue
 
     if actual_log_dir is None:
-        print(
-            "Warning: Could not create log directory in any location. Logging to console only."
-        )
+        print("Warning: Could not create log directory in any location. Logging to console only.")
         actual_log_dir = "."
 
     log_path = os.path.join(actual_log_dir, log_file)

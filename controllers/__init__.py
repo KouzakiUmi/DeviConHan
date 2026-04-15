@@ -7,4 +7,4 @@
 from controllers.patch_controller import PatchController
 from controllers.save_manager_controller import SaveManagerController
 
-__all__ = ['SaveManagerController', 'PatchController']
+__all__ = ["SaveManagerController", "PatchController"]

@@ -23,12 +23,13 @@ logger = logging.getLogger(__name__)
 
 class OperationType(Enum):
     """操作类型"""
-    PATCH = "patch"              # 打补丁
-    RESTORE = "restore"          # 恢复备份
+
+    PATCH = "patch"  # 打补丁
+    RESTORE = "restore"  # 恢复备份
     FUSE_REMOVE = "fuse_remove"  # 移除Fuse
-    FUSE_RESTORE = "fuse_restore" # 恢复Fuse
-    EXTRACT = "extract"          # 解压ASAR
-    PACK = "pack"                # 打包ASAR
+    FUSE_RESTORE = "fuse_restore"  # 恢复Fuse
+    EXTRACT = "extract"  # 解压ASAR
+    PACK = "pack"  # 打包ASAR
     SAVE_IMPORT = "save_import"  # 导入存档
     SAVE_EXPORT = "save_export"  # 导出存档
 
@@ -36,17 +37,21 @@ class OperationType(Enum):
 # 互斥的操作组
 MUTEX_GROUPS = {
     # ASAR操作组：不能同时进行
-    frozenset({
-        OperationType.PATCH,
-        OperationType.RESTORE,
-        OperationType.EXTRACT,
-        OperationType.PACK,
-    }),
+    frozenset(
+        {
+            OperationType.PATCH,
+            OperationType.RESTORE,
+            OperationType.EXTRACT,
+            OperationType.PACK,
+        }
+    ),
     # Fuse操作组：不能同时进行
-    frozenset({
-        OperationType.FUSE_REMOVE,
-        OperationType.FUSE_RESTORE,
-    }),
+    frozenset(
+        {
+            OperationType.FUSE_REMOVE,
+            OperationType.FUSE_RESTORE,
+        }
+    ),
 }
 
 
@@ -133,6 +138,7 @@ class OperationLock:
 
 class OperationConflictError(Exception):
     """操作冲突错误"""
+
     pass
 
 
@@ -160,18 +166,20 @@ def with_operation_lock(op_type: OperationType):
         def apply_patch():
             pass
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             lock = get_operation_lock()
             if not lock.acquire(op_type):
                 raise OperationConflictError(
-                    f"Cannot execute {func.__name__}: "
-                    f"conflicting operation in progress"
+                    f"Cannot execute {func.__name__}: conflicting operation in progress"
                 )
             try:
                 return func(*args, **kwargs)
             finally:
                 lock.release(op_type)
+
         return wrapper
+
     return decorator

@@ -63,9 +63,7 @@ def _show_info(gui_app, title, msg):
 
 def _handle_both_missing(on_error):
     """处理 ASAR 和备份都不存在的情况"""
-    logger.error(
-        "Neither ASAR nor backup file exists - game files may be corrupted or incomplete"
-    )
+    logger.error("Neither ASAR nor backup file exists - game files may be corrupted or incomplete")
     if on_error:
         on_error(T("title_game_files_missing"), T("msg_game_files_missing"))
     return (False, True)
@@ -82,9 +80,7 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
             )
         return (False, True)
 
-    logger.warning(
-        "ASAR file missing but backup exists - possible Steam update detected"
-    )
+    logger.warning("ASAR file missing but backup exists - possible Steam update detected")
 
     if not _validate_backup_integrity(bak_path, core):
         logger.error("Backup file is corrupted")
@@ -93,15 +89,25 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
         return (False, True)
 
     if on_ask_yes_no:
+        # 弹窗提醒去Steam验证完整性，询问是否确认备份是最新并从BAK恢复打补丁
         result = on_ask_yes_no(
-            T("title_asar_missing"), T("msg_asar_missing_valid_backup")
+            T("title_steam_update_detected", "Steam Update Detected"),
+            T(
+                "msg_steam_update_restore_confirm",
+                "ASAR file is missing but backup exists.\n"
+                "This may be caused by a Steam update.\n\n"
+                "Recommended: Verify game integrity in Steam first.\n\n"
+                "Are you sure the backup is up-to-date and want to restore from backup and apply patch?",
+            ),
         )
         if not result:
             return (False, True)
 
     logger.info("Restoring ASAR from backup...")
     try:
-        shutil.copy2(bak_path, asar_path)
+        if os.path.exists(asar_path):
+            os.remove(asar_path)
+        os.replace(bak_path, asar_path)
         logger.info(f"Successfully restored ASAR from backup: {bak_path}")
         return (True, False)
     except OSError as e:
@@ -130,99 +136,6 @@ def _handle_backup_missing(core, asar_path, on_error, on_ask_yes_no):
             return (False, True)
 
     return (True, False)
-
-
-def _verify_update_hash(core, asar_path, bak_path, patch_files, on_info, on_ask_yes_no):
-    """验证补丁哈希以检测 Steam 更新"""
-    check_files = get_config().check_files_for_update
-
-    if not check_files:
-        logger.warning(
-            "check_files_for_update is empty; skipping hash verification and continuing."
-        )
-        return (True, False)
-
-    all_match_patch = True
-    mismatched_files = []
-
-    for file_path in check_files:
-        expected_hash = patch_files.get(file_path)
-        if not expected_hash:
-            continue
-
-        current_hash = get_file_hash_in_asar(asar_path, file_path)
-        if current_hash != expected_hash:
-            all_match_patch = False
-            mismatched_files.append((file_path, expected_hash, current_hash))
-            logger.info(
-                f"File {file_path} in ASAR hash mismatch. Expected: {expected_hash}, Got: {current_hash}"
-            )
-            # 不再break，继续检查所有文件
-            # 这样可以提供完整的变化报告
-
-    if all_match_patch:
-        logger.info("All crucial files in ASAR match the patch meta. Patch is active.")
-        if on_info:
-            on_info(
-                T("title_success", "Already Patched"),
-                T(
-                    "msg_already_patched",
-                    "The game is already patched. No need to apply again.",
-                ),
-            )
-        return (False, False)
-    else:
-        logger.info(
-            f"ASAR crucial files do not match patch meta. "
-            f"Mismatched files: {len(mismatched_files)}. "
-            f"Checking if it's a Steam update..."
-        )
-        # 记录所有不匹配的文件
-        for file_path, expected, actual in mismatched_files:
-            logger.debug(
-                f"  - {file_path}: expected={expected[:16]}..., actual={actual[:16]}..."
-            )
-
-        all_match_bak = True
-        for file_path, _expected_hash, _current_hash in mismatched_files:
-            bak_hash = get_file_hash_in_asar(bak_path, file_path)
-            asar_hash = get_file_hash_in_asar(asar_path, file_path)
-
-            if bak_hash != asar_hash:
-                all_match_bak = False
-                logger.info(
-                    f"File {file_path} differs between ASAR and backup. Bak: {bak_hash}, ASAR: {asar_hash}"
-                )
-                # 只检查第一个不匹配的文件来判断是否是Steam更新
-                break
-
-        if all_match_bak:
-            logger.info("ASAR crucial files match backup files. Steam update detected.")
-            _remove_backup_safely(bak_path)
-            return (True, False)
-        else:
-            logger.warning(
-                "ASAR files do not match patch OR backup. Possible third-party patch or major Steam update detected."
-            )
-
-            if on_ask_yes_no:
-                result = on_ask_yes_no(
-                    T("title_inconsistent_state", "Inconsistent File State"),
-                    T(
-                        "msg_inconsistent_state",
-                        "Game file and backup differ, and neither matches this patch.\nIf you just verified game integrity in Steam, click 'Yes' to discard old backup and apply patch.\nIf you have NOT verified integrity, click 'No', go to Steam to verify integrity first, then try again.",
-                    ),
-                )
-                if result:
-                    _remove_backup_safely(bak_path)
-                return (result, not result)
-            else:
-                logger.warning(
-                    "Batch mode: inconsistent file state detected between ASAR and backup. "
-                    "Discarding old backup and repatching (consider verifying game integrity via Steam)."
-                )
-                _remove_backup_safely(bak_path, log_error=True)
-                return (True, False)
 
 
 def _get_fallback_patch_hashes():
@@ -270,9 +183,7 @@ def _get_fallback_patch_hashes():
     return hashes
 
 
-def _handle_both_exist(
-    core, base_dir, asar_path, bak_path, on_info, on_ask_yes_no, on_error
-):
+def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_no, on_error):
     """处理 ASAR 存在，备份也存在的情况"""
     logger.info("Both ASAR and backup exist - checking patch status via file hashes")
 
@@ -292,7 +203,36 @@ def _handle_both_exist(
         return (False, True)
 
     if not bak_valid and asar_valid:
-        logger.warning("Backup file is corrupted, but ASAR is valid")
+        logger.warning("Backup file is corrupted, but ASAR appears valid (header check passed)")
+
+        # 进一步用 stable_files 验证 ASAR 的合法性
+        stable_files = get_config().stable_files_for_validation
+        asar_legitimate = True
+        if stable_files:
+            for file_path in stable_files:
+                asar_hash = get_file_hash_in_asar(asar_path, file_path)
+                # 简单检查：文件存在且能读取到hash
+                if not asar_hash:
+                    logger.warning(f"ASAR missing stable file: {file_path}")
+                    asar_legitimate = False
+                    break
+            if asar_legitimate:
+                logger.info("ASAR passed stable_files validation, appears legitimate")
+        else:
+            logger.warning("No stable_files configured, skipping deep validation")
+
+        if not asar_legitimate:
+            logger.error("ASAR failed stable_files validation, may be corrupted or modified")
+            if on_error:
+                on_error(
+                    T("title_asar_invalid", "ASAR Invalid"),
+                    T(
+                        "msg_asar_invalid",
+                        "ASAR failed validation. Please verify game files in Steam.",
+                    ),
+                )
+            return (False, True)
+
         if on_ask_yes_no:
             result = on_ask_yes_no(
                 T("title_backup_corrupted_asar_valid"),
@@ -306,9 +246,7 @@ def _handle_both_exist(
         return (True, False)
 
     if bak_valid and not asar_valid:
-        logger.warning(
-            "ASAR is corrupted, but Backup is valid. Reverting ASAR to Backup."
-        )
+        logger.warning("ASAR is corrupted, but Backup is valid. Reverting ASAR to Backup.")
         if on_ask_yes_no:
             result = on_ask_yes_no(
                 T("title_asar_corrupted"),
@@ -321,7 +259,9 @@ def _handle_both_exist(
                 return (False, True)
 
         try:
-            shutil.copy2(bak_path, asar_path)
+            if os.path.exists(asar_path):
+                os.remove(asar_path)
+            os.replace(bak_path, asar_path)
             logger.info(f"Successfully restored ASAR from backup: {bak_path}")
         except OSError as e:
             logger.error(f"Failed to restore ASAR from backup: {e}")
@@ -332,10 +272,17 @@ def _handle_both_exist(
         return (True, False)
 
     # Both are valid, proceed to verify patch hashes
+    check_files = get_config().check_files_for_update
+
+    if not check_files:
+        logger.warning(
+            "check_files_for_update is empty; skipping hash verification and continuing."
+        )
+        return (True, False)
+
     patch_meta_file = get_config().patch_meta_file
     meta_file = os.path.join(base_dir, patch_meta_file)
-
-    patch_files = None
+    patch_files = {}
 
     if os.path.exists(meta_file):
         try:
@@ -351,23 +298,112 @@ def _handle_both_exist(
         )
         patch_files = _get_fallback_patch_hashes()
 
-    if patch_files:
-        return _verify_update_hash(
-            core, asar_path, bak_path, patch_files, on_info, on_ask_yes_no
-        )
+    if not patch_files:
+        patch_info_file = get_config().patch_info_file
+        info_file = os.path.join(base_dir, patch_info_file)
+        if not os.path.exists(info_file):
+            logger.warning(
+                "Patch info and meta files missing - may be old version patch or used other tools"
+            )
+            if on_ask_yes_no:
+                result = on_ask_yes_no(T("title_no_patch_info"), T("msg_no_patch_info"))
+                return (result, not result)
+            return (True, False)
+        else:
+            logger.warning("Found old patch info without meta file - recommend repatching")
+            return (True, False)
 
-    patch_info_file = get_config().patch_info_file
-    info_file = os.path.join(base_dir, patch_info_file)
-    if not os.path.exists(info_file):
+    # 简化版哈希比较：判断三种状态
+    # 1. 检查 ASAR 是否已打补丁（用 check_files 对比 patch meta）
+    asar_match_patch = True
+    mismatched_against_patch = []
+
+    for file_path in check_files:
+        expected_hash = patch_files.get(file_path)
+        if not expected_hash:
+            continue
+
+        asar_hash = get_file_hash_in_asar(asar_path, file_path)
+        if asar_hash != expected_hash:
+            asar_match_patch = False
+            mismatched_against_patch.append((file_path, expected_hash, asar_hash))
+
+    # 2. 检查 ASAR 是否和 BAK 相同（用 check_files 判定 Steam 更新）
+    # check_files 是会被补丁修改的文件，如果它们在 ASAR 和 BAK 中相同，
+    # 但 ASAR 整体 hash 不同，说明 Steam 更新了其他非核心文件
+    check_files_match_bak = True
+
+    for file_path in check_files:
+        expected_hash = patch_files.get(file_path)
+        if not expected_hash:
+            continue
+        asar_hash = get_file_hash_in_asar(asar_path, file_path)
+        bak_hash = get_file_hash_in_asar(bak_path, file_path)
+        if asar_hash != bak_hash:
+            check_files_match_bak = False
+            break
+
+    if asar_match_patch:
+        logger.info("All crucial files in ASAR match the patch meta. Patch is active.")
+        if on_info:
+            on_info(
+                T("title_success", "Already Patched"),
+                T(
+                    "msg_already_patched",
+                    "The game is already patched. No need to apply again.",
+                ),
+            )
+        return (False, False)
+
+    if not check_files_match_bak:
+        # ASAR 的 check_files 和 BAK 不同 → 已打补丁或第三方修改
         logger.warning(
-            "Patch info and meta files missing - may be old version patch or used other tools"
+            f"ASAR check files differ from backup. "
+            f"Mismatched files against patch: {len(mismatched_against_patch)}."
         )
+        for file_path, expected, asar_h in mismatched_against_patch:
+            logger.debug(f"  - {file_path}: patch={expected[:16]}..., asar={asar_h[:16]}...")
+
         if on_ask_yes_no:
-            result = on_ask_yes_no(T("title_no_patch_info"), T("msg_no_patch_info"))
+            result = on_ask_yes_no(
+                T("title_inconsistent_state", "Inconsistent File State"),
+                T(
+                    "msg_inconsistent_state",
+                    "Game file and backup differ, and neither matches this patch.\n"
+                    "If you just verified game integrity in Steam, click 'Yes' to discard old backup and apply patch.\n"
+                    "If you have NOT verified integrity, click 'No', go to Steam to verify integrity first, then try again.",
+                ),
+            )
+            if result:
+                _remove_backup_safely(bak_path)
             return (result, not result)
+        else:
+            logger.warning(
+                "Batch mode: inconsistent file state detected between ASAR and backup. "
+                "Discarding old backup and repatching (consider verifying game integrity via Steam)."
+            )
+            _remove_backup_safely(bak_path, log_error=True)
+            return (True, False)
+
+    # check_files 匹配 BAK，进一步用快速 hash 比较整体差异以判定 Steam 更新
+    from utils.file_ops import quick_file_hash
+
+    asar_quick_hash = quick_file_hash(asar_path)
+    bak_quick_hash = quick_file_hash(bak_path)
+
+    if asar_quick_hash == bak_quick_hash:
+        logger.info(
+            "ASAR quick hash matches backup. The game appears to be in its original state. "
+            "Removing old backup and allowing re-patch."
+        )
+        _remove_backup_safely(bak_path)
         return (True, False)
     else:
-        logger.warning("Found old patch info without meta file - recommend repatching")
+        logger.info(
+            "Crucial files match backup but overall ASAR differs (quick hash). Steam update detected. "
+            "Removing old backup and allowing re-patch."
+        )
+        _remove_backup_safely(bak_path)
         return (True, False)
 
 
@@ -438,8 +474,7 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
     """
     验证归档文件（ASAR 或备份）的完整性
 
-    使用纯 Python 解析 ASAR header（与 asar_utils.py 同源逻辑），
-    替代原先的 node.exe 子进程调用，避免约 0.5-1s 的进程启动开销。
+    支持 8 字节和 16 字节两种 ASAR 格式。
 
     Args:
         archive_path: 归档文件路径
@@ -451,62 +486,50 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
     """
     import struct
 
-    from utils.constants import ASAR_MAGIC_NUMBER
-
     monitor = get_performance_monitor()
     monitor.start(f"validate_{archive_type}")
 
     try:
         file_size = os.path.getsize(archive_path)
         if file_size < MIN_ASAR_SIZE:
-            logger.warning(
-                f"{archive_type.capitalize()} file too small: {file_size} bytes"
-            )
+            logger.warning(f"{archive_type.capitalize()} file too small: {file_size} bytes")
             return False
 
         try:
             with open(archive_path, "rb") as f:
-                magic = f.read(4)
-                if magic != ASAR_MAGIC_NUMBER:
-                    logger.warning(
-                        f"{archive_type.capitalize()} invalid ASAR magic number"
-                    )
+                header_buf = f.read(16)
+                if len(header_buf) < 8:
+                    logger.warning(f"{archive_type.capitalize()} header truncated")
                     return False
 
-                header_size_bytes = f.read(4)
-                if len(header_size_bytes) != 4:
-                    logger.warning(f"{archive_type.capitalize()} truncated header size")
-                    return False
+                header_size_8byte = struct.unpack("<I", header_buf[0:4])[0]
+                padding = struct.unpack("<I", header_buf[4:8])[0]
 
-                header_size = struct.unpack("<I", header_size_bytes)[0]
-
-                # 增加最大Header Size限制（例如50MB），防止OOM
                 MAX_HEADER_SIZE = 50 * 1024 * 1024
-                if header_size > MAX_HEADER_SIZE:
-                    logger.warning(
-                        f"{archive_type.capitalize()} header too large ({header_size} bytes)"
-                    )
+
+                if header_size_8byte > 0 and header_size_8byte <= MAX_HEADER_SIZE and padding == 0:
+                    json_size = header_size_8byte
+                    json_start = 8
+                else:
+                    if len(header_buf) < 16:
+                        logger.warning(f"{archive_type.capitalize()} header too short for format")
+                        return False
+                    json_size = struct.unpack("<I", header_buf[12:16])[0]
+                    json_start = 16
+
+                if json_size == 0 or json_size > MAX_HEADER_SIZE:
+                    logger.warning(f"{archive_type.capitalize()} invalid JSON size: {json_size}")
                     return False
 
-                header_data = f.read(header_size)
-                if len(header_data) != header_size or len(header_data) < 8:
-                    logger.warning(f"{archive_type.capitalize()} truncated header data")
-                    return False
+                header_bytes = header_buf[json_start : json_start + json_size]
+                if len(header_bytes) < json_size:
+                    f.seek(json_start)
+                    header_bytes = f.read(json_size)
 
-                json_size = struct.unpack("<I", header_data[4:8])[0]
-                if json_size == 0 or (8 + json_size) > len(header_data):
-                    logger.warning(
-                        f"{archive_type.capitalize()} invalid json_size in header"
-                    )
-                    return False
+                header_dict = json.loads(header_bytes.decode("utf-8"))
 
-                json_str = header_data[8 : 8 + json_size].decode("utf-8")
-                header_dict = json.loads(json_str)
-
-                if "files" not in header_dict or "package.json" not in header_dict.get(
-                    "files", {}
-                ):
-                    logger.warning(f"File not found in {archive_type}: package.json")
+                if "files" not in header_dict:
+                    logger.warning(f"{archive_type.capitalize()} missing 'files' key")
                     return False
 
         except (json.JSONDecodeError, struct.error, UnicodeDecodeError) as e:

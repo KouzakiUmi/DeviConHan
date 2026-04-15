@@ -25,6 +25,7 @@ SAFETY_MARGIN = 1.5
 
 class DiskSpaceError(Exception):
     """磁盘空间不足错误"""
+
     pass
 
 
@@ -45,20 +46,20 @@ def get_disk_free_space(path: str) -> int:
         abs_path = os.path.abspath(path)
 
         # Windows和Unix都支持
-        if hasattr(shutil, 'disk_usage'):
-            usage = shutil.disk_usage(os.path.dirname(abs_path) if os.path.isfile(abs_path) else abs_path)
+        if hasattr(shutil, "disk_usage"):
+            usage = shutil.disk_usage(
+                os.path.dirname(abs_path) if os.path.isfile(abs_path) else abs_path
+            )
             return usage.free
         else:
             # 旧版本Python回退方案
             import ctypes
-            if os.name == 'nt':  # Windows
+
+            if os.name == "nt":  # Windows
                 drive = os.path.splitdrive(abs_path)[0]
                 free_bytes = ctypes.c_ulonglong(0)
                 ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-                    ctypes.c_wchar_p(drive),
-                    ctypes.pointer(free_bytes),
-                    None,
-                    None
+                    ctypes.c_wchar_p(drive), ctypes.pointer(free_bytes), None, None
                 )
                 return free_bytes.value
             else:  # Unix
@@ -73,7 +74,7 @@ def check_disk_space(
     path: str,
     required_bytes: int,
     safety_margin: float = SAFETY_MARGIN,
-    raise_on_error: bool = True
+    raise_on_error: bool = True,
 ) -> Tuple[bool, int]:
     """
     检查磁盘是否有足够空间
@@ -188,7 +189,7 @@ def validate_write_permission(path: str) -> bool:
         # 尝试创建临时文件
         test_file = os.path.join(check_path, ".write_test_tmp")
         try:
-            with open(test_file, 'w') as f:
+            with open(test_file, "w") as f:
                 f.write("test")
             os.remove(test_file)
             return True
@@ -210,17 +211,14 @@ def format_bytes(bytes_value: int) -> str:
     Returns:
         str: 格式化后的字符串（如 "1.5 GB"）
     """
-    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
         if bytes_value < 1024.0:
             return f"{bytes_value:.1f} {unit}"
         bytes_value /= 1024.0
     return f"{bytes_value:.1f} PB"
 
 
-def check_operation_space(
-    operations: list,
-    base_path: str = "."
-) -> Tuple[bool, str]:
+def check_operation_space(operations: list, base_path: str = ".") -> Tuple[bool, str]:
     """
     检查一系列操作所需的磁盘空间
 
@@ -259,7 +257,9 @@ def check_operation_space(
             detail_lines.append("  ✓ 空间充足")
             return True, "\n".join(detail_lines)
         else:
-            detail_lines.append(f"  ✗ 空间不足，缺少 {format_bytes(required_with_margin - free_space)}")
+            detail_lines.append(
+                f"  ✗ 空间不足，缺少 {format_bytes(required_with_margin - free_space)}"
+            )
             return False, "\n".join(detail_lines)
 
     except Exception as e:
