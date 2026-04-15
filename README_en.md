@@ -1,6 +1,6 @@
 # Tyrano Patch Toolbox
 
-**The でびるコネクション (Devil Connection) localization patch is the built-in example.**
+**The でびるコネクショん (Devil Connection) localization patch is the built-in example.**
 
 **Developer Note**: This is a general-purpose toolbox for TyranoV8/Electron-based games. It can be adapted to other games by modifying `config.ini` (e.g. `WINDOWS_EXE`, `MACOS_APP`, `LINUX_BINARY`, `FUSE_SENTINEL`, `CHECK_FILES_FOR_UPDATE`) and providing a corresponding `patch.zip` containing the game's localization files with matching directory structure. See [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) for full plugin development guide.
 

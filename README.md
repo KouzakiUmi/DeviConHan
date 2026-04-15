@@ -1,6 +1,6 @@
 # Tyrano补丁工具箱
 
-**でびるコネクション汉化补丁是自带示例作品。**
+**でびるコネクショん汉化补丁是自带示例作品。**
 
 ![Status](https://img.shields.io/badge/Status-RC-orange?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Win%20|%20Mac%20|%20Linux-blue?style=flat-square)
@@ -19,11 +19,11 @@
 
 </div>
 
-**开发者说明**：本工具箱为通用 **Tyrano补丁工具**，`でびるコネクション` 汉化补丁为自带示例。通过**修改 `config.ini`**（WINDOWS_EXE、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATE 等）并替换 `patch.zip`（包含对应游戏的汉化文件ZIP），即可适配其他 Tyrano/Electron 游戏。详见 [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)。
+**开发者说明**：本工具箱为通用 **Tyrano补丁工具**，`でびるコネクショん` 汉化补丁为自带示例。通过**修改 `config.ini`**（WINDOWS_EXE、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATE 等）并替换 `patch.zip`（包含对应游戏的汉化文件ZIP），即可适配其他 Tyrano/Electron 游戏。详见 [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)。
 
 ---
 
-本项目起源是《恶魔连接（でびるコネクション）》的非营利性个人本地化工具。
+本项目起源是《恶魔连接（でびるコネクショん）》的非营利性个人本地化工具。
 采用全图形化界面 (GUI)，支持 Windows/macOS/Linux，集成了强大的存档管理与开发者工具。现已更新为通用工具箱。
 
 **✨ 核心功能：**
