@@ -10,6 +10,7 @@ import logging
 import os
 import platform
 import re
+import string
 import sys
 import threading
 from dataclasses import dataclass
@@ -192,17 +193,19 @@ def get_steam_library_paths() -> List[str]:
             logger.debug(f"Failed to parse libraryfolders.vdf: {e}")
 
     if info.system == "windows":
-        for base in ["E:\\", "D:\\"]:
-            if os.path.isdir(base):
-                try:
-                    for entry in os.listdir(base):
-                        if "steamlibrary" in entry.lower():
-                            lib_steamapps = os.path.join(base, entry, "steamapps")
-                            if os.path.isdir(lib_steamapps) and lib_steamapps not in paths:
-                                paths.append(lib_steamapps)
-                                logger.info(f"Found Steam library: {lib_steamapps}")
-                except (PermissionError, OSError):
-                    pass
+        for drive_letter in string.ascii_uppercase:
+            base = f"{drive_letter}:\\"
+            if not os.path.isdir(base):
+                continue
+            try:
+                for entry in os.listdir(base):
+                    if "steamlibrary" in entry.lower():
+                        lib_steamapps = os.path.join(base, entry, "steamapps")
+                        if os.path.isdir(lib_steamapps) and lib_steamapps not in paths:
+                            paths.append(lib_steamapps)
+                            logger.info(f"Found Steam library: {lib_steamapps}")
+            except (PermissionError, OSError):
+                pass
 
     seen = set()
     unique_paths = []
@@ -253,7 +256,7 @@ def _parse_acf_manifest(filepath: str) -> Optional[Dict[str, str]]:
     return None
 
 
-def scan_steam_apps() -> List[SteamAppInfo]:
+def scan_steam_apps(steamapps_dirs: Optional[List[str]] = None) -> List[SteamAppInfo]:
     """
     扫描所有 Steam 库中的已安装应用
 
@@ -261,7 +264,8 @@ def scan_steam_apps() -> List[SteamAppInfo]:
         List[SteamAppInfo]: 所有已安装应用的列表
     """
     apps = []
-    steamapps_dirs = get_steam_library_paths()
+    if steamapps_dirs is None:
+        steamapps_dirs = get_steam_library_paths()
 
     for steamapps_dir in steamapps_dirs:
         try:
@@ -286,7 +290,7 @@ def scan_steam_apps() -> List[SteamAppInfo]:
     return apps
 
 
-def find_game_by_appid(appid: str) -> Optional[str]:
+def find_game_by_appid(appid: str, steamapps_dirs: Optional[List[str]] = None) -> Optional[str]:
     """
     通过 Steam App ID 精确查找游戏安装路径
 
@@ -296,7 +300,8 @@ def find_game_by_appid(appid: str) -> Optional[str]:
     Returns:
         str: 游戏安装路径，未找到返回 None
     """
-    steamapps_dirs = get_steam_library_paths()
+    if steamapps_dirs is None:
+        steamapps_dirs = get_steam_library_paths()
 
     for steamapps_dir in steamapps_dirs:
         manifest_path = os.path.join(steamapps_dir, f"appmanifest_{appid}.acf")
@@ -342,7 +347,7 @@ def find_game_in_steam(
     # 策略 1: 如果 game_id 是纯数字，优先按 AppID 精确匹配
     stripped_id = game_id.strip()
     if stripped_id.isdigit():
-        result = find_game_by_appid(stripped_id)
+        result = find_game_by_appid(stripped_id, search_paths)
         if result:
             return result
         logger.info(f"AppID {stripped_id} not found, falling back to name search")
@@ -362,7 +367,7 @@ def find_game_in_steam(
     if extra_variations:
         variations.extend([_normalize_japanese(v) for v in extra_variations if v.strip()])
 
-    apps = scan_steam_apps()
+    apps = scan_steam_apps(search_paths)
     for app in apps:
         app_name_normalized = _normalize_japanese(app.name)
         app_dir_normalized = _normalize_japanese(app.install_dir)

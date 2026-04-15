@@ -557,8 +557,15 @@ class AppConfig:
             resource_dir = snapshot.get("resource_dir", "")
             if not resource_dir:
                 errors.append("RESOURCE_DIR cannot be empty")
-            elif not os.path.exists(resource_dir):
-                warnings.append(f"Resource directory does not exist: {resource_dir}")
+            else:
+                resolved_resource_dir = (
+                    resource_dir if os.path.isabs(resource_dir) else get_resource_path(resource_dir)
+                )
+                if not os.path.exists(resolved_resource_dir):
+                    warnings.append(
+                        f"Resource directory does not exist: {resource_dir} "
+                        f"(resolved: {resolved_resource_dir})"
+                    )
         except Exception as e:
             errors.append(f"Error validating RESOURCE_DIR: {e}")
 

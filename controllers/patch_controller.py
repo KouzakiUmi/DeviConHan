@@ -17,7 +17,7 @@ import os
 import shutil
 from typing import Callable, Optional, Tuple
 
-from core.bootstrap import get_detected_game_path
+from core.bootstrap import get_runtime_game_path
 from core.config import get_config
 from core.patch_info import save_patch_info, save_patch_meta
 from core.state_validator import StateValidator, SystemState
@@ -89,7 +89,7 @@ class PatchController:
             (是否满足, 错误消息)
         """
         # 优先使用检测到的游戏目录，否则使用当前目录
-        base = get_detected_game_path() or os.path.abspath(".")
+        base = get_runtime_game_path() or os.path.abspath(".")
         cfg = get_config()
 
         # 跨平台资源路径处理
@@ -206,7 +206,7 @@ class PatchController:
 
     def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
-        base = get_detected_game_path() or os.path.abspath(".")
+        base = get_runtime_game_path() or os.path.abspath(".")
         cfg = get_config()
 
         # 跨平台资源路径处理

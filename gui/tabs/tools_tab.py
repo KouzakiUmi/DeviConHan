@@ -6,17 +6,19 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from core.bootstrap import get_detected_game_path
+from core.bootstrap import get_runtime_game_path
 from core.config import get_config
 from core.fuse import remove_fuse
 from utils.constants import (
     ASAR_EXTENSION,
     EXTRACTED_SUFFIX,
+    MAX_PATH_LENGTH,
     PACKED_DIR_NAME,
     UNPACKED_DIR_NAME,
 )
 from utils.language import T
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+from utils.validators import ValidationError, sanitize_user_path
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +37,16 @@ class ToolsTab(ttk.Frame):
         label_widget.pack(side="left")
 
         var = tk.StringVar()
-        entry = ttk.Entry(f, textvariable=var, width=50)
+        validate_cmd = (self.register(self._validate_path_entry), "%P")
+        entry = ttk.Entry(
+            f,
+            textvariable=var,
+            width=50,
+            validate="key",
+            validatecommand=validate_cmd,
+        )
         entry.pack(side="left", fill="x", expand=True, padx=5)
+        entry.bind("<FocusOut>", lambda _event, v=var: self._normalize_path_var(v))
 
         def _browse():
             try:
@@ -84,6 +94,56 @@ class ToolsTab(ttk.Frame):
         browse_btn.pack(side="right")
 
         return var
+
+    def _validate_path_entry(self, proposed: str) -> bool:
+        if proposed == "":
+            return True
+        if len(proposed) > 4096:
+            self.bell()
+            return False
+        if any(ord(ch) < 32 for ch in proposed):
+            self.bell()
+            return False
+        return True
+
+    def _normalize_path_var(self, var: tk.StringVar) -> None:
+        current = var.get()
+        if not current:
+            return
+        try:
+            normalized = sanitize_user_path(current, allow_empty=True)
+        except ValidationError:
+            return
+        if normalized and normalized != current:
+            var.set(normalized)
+
+    def _get_validated_input_path(
+        self,
+        raw_value: str,
+        *,
+        must_exist: bool = True,
+        path_type: str | None = None,
+        allowed_exts: tuple[str, ...] | None = None,
+    ) -> str:
+        path = sanitize_user_path(raw_value, allow_empty=False)
+
+        if len(path) > MAX_PATH_LENGTH and not path.startswith("\\\\?\\"):
+            raise ValidationError(f"Path exceeds maximum supported length ({MAX_PATH_LENGTH})")
+
+        if must_exist and not os.path.exists(path):
+            raise ValidationError(T("err_path_not_exist", f"Path does not exist: {path}"))
+
+        if path_type == "file" and os.path.exists(path) and not os.path.isfile(path):
+            raise ValidationError(T("warn_no_file", "Please select a file"))
+
+        if path_type == "dir" and os.path.exists(path) and not os.path.isdir(path):
+            raise ValidationError(T("warn_not_dir", "Please select a directory"))
+
+        if allowed_exts and os.path.isfile(path):
+            if not path.lower().endswith(tuple(ext.lower() for ext in allowed_exts)):
+                raise ValidationError(f"Unexpected file type: {os.path.basename(path)}")
+
+        return path
 
     def _init_ui(self):
         lf = ttk.LabelFrame(self, text=T("grp_asar"), padding=10)
@@ -204,7 +264,7 @@ class ToolsTab(ttk.Frame):
             messagebox.showerror(T("title_error"), T("msg_reset_error").format(error=e))
 
     def _auto_scan_asar(self):
-        base = get_detected_game_path() or os.path.abspath(".")
+        base = get_runtime_game_path() or os.path.abspath(".")
         # 跨平台资源路径处理
         if is_app_bundle(base):
             res_path = os.path.join(base, "Contents", "Resources")
@@ -222,7 +282,7 @@ class ToolsTab(ttk.Frame):
 
     def _auto_scan_exe(self):
         exe_name = get_config().auto_target_exe
-        base = get_detected_game_path() or os.path.abspath(".")
+        base = get_runtime_game_path() or os.path.abspath(".")
 
         # 默认优先在检测到的目录查找
         p = os.path.abspath(os.path.join(base, exe_name))
@@ -255,9 +315,16 @@ class ToolsTab(ttk.Frame):
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
-        src = self.app.var_ext_src.get()
-        if not src or not os.path.exists(src):
-            return messagebox.showwarning(T("title_warning"), T("warn_no_file"))
+        try:
+            src = self._get_validated_input_path(
+                self.app.var_ext_src.get(),
+                must_exist=True,
+                path_type="file",
+                allowed_exts=(".asar",),
+            )
+        except ValidationError as e:
+            return messagebox.showwarning(T("title_warning"), str(e))
+        self.app.var_ext_src.set(src)
 
         fname = os.path.basename(src)
         out_dir = os.path.join(os.getcwd(), UNPACKED_DIR_NAME, f"{fname}{EXTRACTED_SUFFIX}")
@@ -334,18 +401,10 @@ class ToolsTab(ttk.Frame):
             messagebox.showwarning(T("title_warning"), T("warn_no_extracted"))
 
     def _validate_asar_source_for_packing(self, src: str) -> bool:
-        if not src:
-            messagebox.showwarning(T("title_warning"), T("warn_no_file"))
-            return False
-
-        if not os.path.exists(src):
-            messagebox.showerror(
-                T("title_error"), T("err_path_not_exist", f"Path does not exist: {src}")
-            )
-            return False
-
-        if not os.path.isdir(src):
-            messagebox.showwarning(T("title_warning"), T("warn_not_dir"))
+        try:
+            src = self._get_validated_input_path(src, must_exist=True, path_type="dir")
+        except ValidationError as e:
+            messagebox.showerror(T("title_error"), str(e))
             return False
 
         src_basename = os.path.basename(os.path.normpath(src))
@@ -404,7 +463,11 @@ class ToolsTab(ttk.Frame):
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
 
-        src = self.app.var_pack_src.get()
+        try:
+            src = sanitize_user_path(self.app.var_pack_src.get(), allow_empty=False)
+        except ValidationError as e:
+            return messagebox.showwarning(T("title_warning"), str(e))
+        self.app.var_pack_src.set(src)
         if not self._validate_asar_source_for_packing(src):
             return
 
@@ -487,14 +550,17 @@ class ToolsTab(ttk.Frame):
             )
 
         try:
-            t = self.app.var_exe.get()
-            if not t:
-                messagebox.showwarning(T("title_warning"), T("warn_no_file", "请选择文件"))
+            try:
+                t = self._get_validated_input_path(
+                    self.app.var_exe.get(),
+                    must_exist=True,
+                    path_type="file",
+                    allowed_exts=(".exe",),
+                )
+            except ValidationError as e:
+                messagebox.showerror(T("title_error"), str(e))
                 return
-
-            if not os.path.exists(t):
-                messagebox.showerror(T("title_error"), T("err_path_not_exist", "路径不存在"))
-                return
+            self.app.var_exe.set(t)
 
             current_offset = get_config().fuse_asar_integrity_offset
             warn_msg = T("msg_fuse_warn").format(offset=current_offset)

@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hash_in_asar, validate_asar_with_reason
+from utils.asar_utils import get_file_hashes_in_asar, validate_asar_with_reason
 from utils.constants import MIN_ASAR_SIZE
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
@@ -399,18 +399,20 @@ class StateValidator:
         if not patch_files:
             return True
 
-        # 只检查前3个文件，避免太慢
-        check_count = 0
+        try:
+            actual_hashes = get_file_hashes_in_asar(self.asar_path, list(patch_files.keys()))
+        except Exception:
+            return False
+
         for file_path, expected_hash in patch_files.items():
-            if check_count >= 3:
-                break
-            try:
-                actual_hash = get_file_hash_in_asar(self.asar_path, file_path)
-                if actual_hash != expected_hash:
-                    return False
-                check_count += 1
-            except Exception:
-                # 如果无法读取，可能是部分补丁
+            actual_hash = actual_hashes.get(file_path)
+            if actual_hash != expected_hash:
+                logger.warning(
+                    "Patch integrity mismatch for %s: expected=%s actual=%s",
+                    file_path,
+                    expected_hash,
+                    actual_hash,
+                )
                 return False
 
         return True

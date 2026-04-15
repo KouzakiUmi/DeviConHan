@@ -34,6 +34,7 @@ from utils.language import T, get_font, get_mono_font
 from utils.operation_lock import OperationType, get_operation_lock
 from utils.paths import get_resource_path, get_user_config_path
 from utils.performance import get_performance_monitor
+from utils.validators import ValidationError, sanitize_user_path
 
 logger = logging.getLogger(__name__)
 
@@ -290,13 +291,17 @@ class App(tk.Tk):
                 config_dict["show_console"] = str(self.var_console.get()).lower()
 
             if hasattr(self, "var_backup_dir") and self.var_backup_dir is not None:
-                config_dict["backup_dir"] = str(self.var_backup_dir.get())
+                backup_dir = sanitize_user_path(str(self.var_backup_dir.get()), allow_empty=True)
+                config_dict["backup_dir"] = backup_dir
 
             # 使用批量设置方法，在持锁状态下一次性设置所有配置项
             if config_dict:
                 return self.app_config.set_gui_config_batch(config_dict)
             return True
 
+        except ValidationError as e:
+            logger.error(f"Invalid GUI config input: {e}")
+            return False
         except Exception as e:
             logger.error(T("err_config_save_failed").format(error=str(e)))
             return False

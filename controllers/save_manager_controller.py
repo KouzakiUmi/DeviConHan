@@ -57,9 +57,9 @@ class SaveManagerController:
         Returns:
             存档目录路径，未找到返回 None
         """
-        from core.bootstrap import get_detected_game_path
+        from core.bootstrap import get_runtime_game_path
 
-        base_dir = get_detected_game_path() or os.path.abspath(".")
+        base_dir = get_runtime_game_path() or os.path.abspath(".")
 
         for candidate in self.SAVE_DIR_CANDIDATES:
             path = os.path.join(base_dir, candidate)

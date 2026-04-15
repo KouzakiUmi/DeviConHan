@@ -12,6 +12,7 @@ __all__ = [
     "bootstrap_system",
     "find_game_directory",
     "get_detected_game_path",
+    "get_runtime_game_path",
     "SystemBootstrapError",
 ]
 
@@ -44,6 +45,27 @@ def get_detected_game_path() -> Optional[str]:
         str: 检测到的游戏目录，未检测返回 None
     """
     return _detected_game_path
+
+
+def get_runtime_game_path() -> Optional[str]:
+    """
+    获取当前运行时应使用的游戏目录。
+
+    优先返回已缓存且仍然有效的目录；若缓存为空或无效，则重新尝试自动检测。
+    """
+    config = get_config()
+
+    if _detected_game_path and is_game_directory(_detected_game_path, config):
+        return _detected_game_path
+
+    detected = find_game_directory(auto_detect=True)
+    if detected and is_game_directory(detected, config):
+        return detected
+
+    if config.game_path and is_game_directory(config.game_path, config):
+        return config.game_path
+
+    return None
 
 
 def is_game_directory(path: str, config=None) -> bool:
@@ -204,9 +226,9 @@ def bootstrap_system(
         base_dir = current_dir
         logger.info(f"Using current directory: {base_dir}")
 
-    # 更新缓存
+    # 仅缓存真实游戏目录，避免把任意工作目录误当作检测结果
     global _detected_game_path
-    _detected_game_path = base_dir
+    _detected_game_path = base_dir if is_game_directory(base_dir, config) else None
 
     # 2. 配置验证
     try:

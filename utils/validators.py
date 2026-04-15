@@ -6,6 +6,8 @@
 
 __all__ = [
     "ValidationError",
+    "sanitize_text_input",
+    "sanitize_user_path",
     "validate_path",
     "validate_not_empty",
 ]
@@ -15,11 +17,54 @@ import inspect
 import os
 from typing import Callable, List, Optional, Union
 
+from utils.constants import MAX_PATH_LENGTH
+
 
 class ValidationError(Exception):
     """验证错误异常"""
 
     pass
+
+
+def sanitize_text_input(
+    value: str,
+    *,
+    max_length: int = MAX_PATH_LENGTH,
+    allow_empty: bool = True,
+) -> str:
+    """
+    清理并验证用户输入文本，拒绝控制字符和超长输入。
+    """
+    if value is None:
+        return "" if allow_empty else ""
+
+    text = str(value).strip()
+    if not text:
+        if allow_empty:
+            return ""
+        raise ValidationError("Empty input is not allowed")
+
+    if len(text) > max_length:
+        raise ValidationError(f"Input exceeds maximum length ({max_length})")
+
+    if any(ord(ch) < 32 for ch in text):
+        raise ValidationError("Input contains control characters")
+
+    return text
+
+
+def sanitize_user_path(path: str, *, allow_empty: bool = True, max_length: int = 4096) -> str:
+    """
+    清理并规范化用户输入路径。
+    """
+    text = sanitize_text_input(path, max_length=max_length, allow_empty=allow_empty)
+    if not text:
+        return ""
+
+    normalized = os.path.normpath(os.path.abspath(text))
+    if len(normalized) > max_length:
+        raise ValidationError(f"Path exceeds maximum length ({max_length})")
+    return normalized
 
 
 def validate_path(
