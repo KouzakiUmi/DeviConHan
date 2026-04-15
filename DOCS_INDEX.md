@@ -2,7 +2,15 @@
 
 > **项目状态：RC (Release Candidate)**
 
-> **文档系统**：默认`README.md`为中文，提供醒目的三语切换链接至纯英文(`README_en.md`)和纯日文(`README_ja.md`)独立文档。各语言文件不混用其他语言。标题统一为Tyrano补丁工具箱，でびるコネクション为自带示例。
+> **文档系统**：默认`README.md`为中文，提供醒目的三语切换链接至纯英文(`README_en.md`)和纯日文(`README_ja.md`)独立文档。模块补充文档和文档索引也提供三语版本。各语言文件不混用其他语言。标题统一为Tyrano补丁工具箱，でびるコネクション为自带示例。
+
+<div align="center">
+
+**🌐 语言 / Language / 言語**
+
+**[中文 🇨🇳 (当前)](DOCS_INDEX.md)** • **[English 🇬🇧](DOCS_INDEX_en.md)** • **[日本語 🇯🇵](DOCS_INDEX_ja.md)**
+
+</div>
 
 本文档汇总了项目中的所有说明文档，帮助您快速找到需要的信息。
 
@@ -15,13 +23,15 @@
 | 文档 | 说明 | 阅读顺序 |
 |------|------|----------|
 | [README.md](README.md) | 项目介绍、安装指南、使用说明 | ⭐ 第1步 |
-| [UTILS_GUIDE.md](UTILS_GUIDE.md) | 工具模块使用指南 | 第2步 |
+| [MODULE_GUIDE.md](MODULE_GUIDE.md) | 模块补充文档，覆盖此前说明不足的模块 | 第2步 |
+| [UTILS_GUIDE.md](UTILS_GUIDE.md) | 工具模块使用指南 | 第3步 |
 
 ### 开发者文档
 
 | 文档 | 说明 | 目标读者 |
 |------|------|----------|
 | [PROJECT_SPECS.md](PROJECT_SPECS.md) | 项目架构和技术规范 | 开发者 |
+| [MODULE_GUIDE.md](MODULE_GUIDE.md) | 核心/GUI/工具模块补充说明 | 开发者 |
 | [API_DOCS.md](API_DOCS.md) | API 参考文档 | 开发者 |
 | [UTILS_GUIDE.md](UTILS_GUIDE.md) | 工具模块详细说明 | 开发者 |
 
@@ -51,6 +61,22 @@
 - 首次使用本项目
 - 了解项目功能
 - 安装和配置
+
+---
+
+### MODULE_GUIDE.md
+
+**内容**：
+- 入口与构建模块补充说明
+- Core 未单独成文模块说明
+- GUI 标签页职责说明
+- Utils 补充模块边界说明
+- 文档和代码的多语言约定
+
+**适用场景**：
+- 对照源码理解模块职责
+- 查找 README 未展开说明的模块
+- 适配其他游戏前快速建立全局认知
 
 ---
 
@@ -168,6 +194,7 @@
 | 2026-04-12 | 添加插件机制说明：通过patch.zip文件替换实现多游戏支持 |
 | 2026-04-12 | 创建PLUGIN_GUIDE.md插件开发指南 |
 | 2026-04-12 | 更新文档结构，完善README和PROJECT_SPECS.md |
+| 2026-04-16 | 新增三语 DOCS_INDEX 入口与三语 MODULE_GUIDE 模块补充文档，移除 README 中过时的说明性占位文字 |
 | 2026-04-12 | 技术债清理：移除死代码(TempDirectoryManager/validate_asar_source)、简化锁机制、优化ASAR校验为纯Python实现 |
 | 2026-04-09 | 更新文档索引，移除已弃用的改进文档 |
 | 2026-04-09 | 添加 RC 阶段状态说明 |
@@ -191,5 +218,5 @@
 
 ---
 
-*文档版本：2.2*  
-*最后更新：2026-04-12*
+*文档版本：2.3*  
+*最后更新：2026-04-16*

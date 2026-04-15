@@ -234,7 +234,7 @@ schedule_delayed_cleanup("C:\\temp\\old_dir", delay_seconds=60)
 | `T(key)` | 多语言翻译函数（线程安全，带缓存） |
 | `set_language(code)` | 设置界面语言（线程安全） |
 | `init_lang()` | 初始化语言设置 |
-| `detect_lang_fallback()` | 使用环境变量检测语言 |
+| `detect_lang()` | 自动检测系统语言 |
 | `get_font(size, weight)` | 根据平台和语言返回合适的 UI 字体 |
 | `get_mono_font(size)` | 返回合适的等宽字体 |
 
@@ -374,7 +374,9 @@ except ValidationError as e:
 |------|------|
 | `parse_asar_header(asar_path)` | 解析 ASAR 头部并返回格式、JSON 大小和数据区偏移 |
 | `is_valid_asar(asar_path)` | 验证 ASAR 是否可被支持的解析器成功读取 |
-| `get_file_hash_in_asar(asar_path, file_path)` | 获取 ASAR 内部文件的 SHA256 Hash |
+| `validate_asar_with_reason(asar_path)` | 验证 ASAR 并返回失败原因 |
+| `open_asar_reader(asar_path)` | 以只读方式打开 ASAR 读取器 |
+| `get_file_hashes_in_asar(asar_path, file_paths)` | 批量获取 ASAR 内文件的 SHA256 Hash |
 
 ### 核心特性
 
@@ -386,16 +388,16 @@ except ValidationError as e:
 ### 使用示例
 
 ```python
-from utils.asar_utils import get_file_hash_in_asar, parse_asar_header
+from utils.asar_utils import get_file_hashes_in_asar, parse_asar_header
 
 # 解析头部
 header = parse_asar_header("app.asar")
 print(header.format_name, header.base_offset)
 
-# 获取 ASAR 内文件的 Hash（无需解包）
-file_hash = get_file_hash_in_asar("app.asar", "tyrano/lang.js")
-if file_hash:
-    print(f"File hash: {file_hash}")
+# 批量获取 ASAR 内文件的 Hash（无需解包）
+hashes = get_file_hashes_in_asar("app.asar", ["tyrano/lang.js", "index.html"])
+for path, file_hash in hashes.items():
+    print(path, file_hash)
 ```
 
 
@@ -448,139 +450,136 @@ value = config.get("preferences", "language", fallback="en")
 value_int = config.get_int("advanced", "timeout", fallback=30)
 value_bool = config.get_bool("settings", "auto_backup", fallback=True)
 
-# 验证配置（使用快照，无锁竞争）
-valid, messages = config.validate_config()
+# 验证配置（返回 valid, errors, warnings）
+valid, errors, warnings = config.validate_config()
 if not valid:
-    logger.error(f"Config validation failed: {messages}")
+    logger.error(f"Config validation failed: {errors}")
 
 # 设置配置值（自动加锁）
-    config.set_gui_config("language", "cn")
-    ```
+config.set_gui_config("language", "cn")
+```
 
-    ---
+---
 
-    ## 磁盘工具 (utils/disk_utils)
+## 磁盘工具 (utils/disk_utils)
 
-    ### 主要功能
+### 主要功能
 
-    | 函数 | 描述 |
-    |------|------|
-    | `get_disk_free_space(path)` | 获取磁盘剩余空间 |
-    | `check_disk_space(path, required_bytes)` | 检查是否有足够磁盘空间 |
-    | `estimate_asar_size(source_path)` | 估算ASAR打包后的大小 |
-    | `validate_write_permission(path)` | 验证写入权限 |
-    | `format_bytes(bytes_value)` | 格式化字节数为人类可读格式 |
-    | `check_operation_space(operations, base_path)` | 检查一系列操作所需的磁盘空间 |
+| 函数 | 描述 |
+|------|------|
+| `get_disk_free_space(path)` | 获取磁盘剩余空间 |
+| `check_disk_space(path, required_bytes)` | 检查是否有足够磁盘空间 |
+| `estimate_asar_size(source_path)` | 估算ASAR打包后的大小 |
+| `validate_write_permission(path)` | 验证写入权限 |
+| `format_bytes(bytes_value)` | 格式化字节数为人类可读格式 |
+| `check_operation_space(operations, base_path)` | 检查一系列操作所需的磁盘空间 |
 
-    ### 使用示例
+### 使用示例
 
-    ```python
-    from utils.disk_utils import get_disk_free_space, check_disk_space
+```python
+from utils.disk_utils import check_disk_space, estimate_asar_size, format_bytes, get_disk_free_space
 
-    # 检查磁盘空间
-    free_space = get_disk_free_space("/game")
-    ok, available = check_disk_space("/game", 100*1024*1024)  # 100MB
-    if not ok:
-        print(f"空间不足，仅剩 {available} 字节")
+# 检查磁盘空间
+free_space = get_disk_free_space("/game")
+ok, available = check_disk_space("/game", 100 * 1024 * 1024)  # 100MB
+if not ok:
+    print(f"空间不足，仅剩 {available} 字节")
 
-    # 估算ASAR大小
-    size = estimate_asar_size("source_dir")
-    print(f"预计大小: {format_bytes(size)}")
-    ```
+# 估算ASAR大小
+size = estimate_asar_size("source_dir")
+print(f"预计大小: {format_bytes(size)}")
+```
 
-    ---
+---
 
-    ## 操作锁 (utils/operation_lock)
+## 操作锁 (utils/operation_lock)
 
-    ### 主要功能
+### 主要功能
 
-    | 类/函数 | 描述 |
-    |------|------|
-    | `OperationLock` | 操作互斥锁类 |
-    | `OperationType` | 操作类型枚举 |
-    | `get_operation_lock()` | 获取全局操作锁实例 |
-    | `with_operation_lock(op_type)` | 装饰器形式的操作锁 |
+| 类/函数 | 描述 |
+|------|------|
+| `OperationLock` | 操作互斥锁类 |
+| `OperationType` | 操作类型枚举 |
+| `get_operation_lock()` | 获取全局操作锁实例 |
+| `with_operation_lock(op_type)` | 装饰器形式的操作锁 |
 
-    ### 使用示例
+### 使用示例
 
-    ```python
-    from utils.operation_lock import get_operation_lock, OperationType
+```python
+from utils.operation_lock import OperationType, get_operation_lock, with_operation_lock
 
-    op_lock = get_operation_lock()
+op_lock = get_operation_lock()
 
-    # 检查操作是否可以开始
-    if op_lock.is_operation_running(OperationType.PATCH):
-        print("补丁操作正在进行中")
-        return
-
-    # 获取锁
+# 检查操作是否可以开始
+if op_lock.is_operation_running(OperationType.PATCH):
+    print("补丁操作正在进行中")
+else:
     if op_lock.acquire(OperationType.PATCH):
         try:
-            # 执行操作
             apply_patch()
         finally:
             op_lock.release(OperationType.PATCH)
 
-    # 或使用上下文管理器
-    with op_lock.acquire_context(OperationType.PATCH):
-        apply_patch()
+with op_lock.acquire_context(OperationType.PATCH):
+    apply_patch()
 
-    # 或使用装饰器
-    @with_operation_lock(OperationType.PATCH)
-    def apply_patch():
-        pass
-    ```
+@with_operation_lock(OperationType.PATCH)
+def apply_patch():
+    pass
+```
 
-    ---
+---
 
-    ## 平台工具 (utils/platform)
+## 平台工具 (utils/platform)
 
-    ### 主要功能
+### 主要功能
 
-    | 函数/常量 | 描述 |
-    |------|------|
-    | `IS_WIN` | 是否为Windows平台 |
-    | 平台检测函数 | 检测当前运行平台 |
+| 函数/类 | 描述 |
+|------|------|
+| `PlatformInfo` | 当前平台及主 Steam 路径信息 |
+| `SteamAppInfo` | 从 ACF 清单解析出的 Steam 应用信息 |
+| `get_platform_info()` | 获取平台信息 |
+| `get_steam_library_paths()` | 获取所有 Steam 库路径 |
+| `find_game_by_appid(appid)` | 通过 AppID 精确查找游戏 |
+| `find_game_in_steam(game_id)` | 通过 AppID 或名称变体查找游戏 |
+| `get_resources_path(game_path)` | 获取游戏 resources 路径 |
+| `get_asar_path(game_path, asar_name)` | 获取 ASAR 文件路径 |
+| `is_app_bundle(path)` | 判断是否为 macOS `.app` bundle |
 
-    ### 使用示例
+### 使用示例
 
-    ```python
-    from utils.platform import IS_WIN
+```python
+from utils.platform import find_game_in_steam, get_asar_path, get_platform_info
 
-    if IS_WIN:
-        # Windows特有代码
-        use_windows_path_separator()
-    else:
-        # Unix类系统代码
-        use_unix_path_separator()
-    ```
+info = get_platform_info()
+print(info.system, info.steam_common_path)
 
-    ---
+game_dir = find_game_in_steam("3054820")
+if game_dir:
+    print(get_asar_path(game_dir))
+```
 
-    ## 事务管理 (utils/transaction)
+---
 
-    ### 主要功能
+## 事务管理 (utils/transaction)
 
-    | 类 | 描述 |
-    |------|------|
-    | `TransactionManager` | 文件操作事务管理器 |
-    | `AtomicFileWriter` | 原子文件写入器 |
+### 主要功能
 
-    ### 使用示例
+| 类/函数 | 描述 |
+|------|------|
+| `FileTransaction` | 文件操作事务管理器 |
+| `atomic_rename(src, dst)` | 原子重命名 |
+| `safe_backup(file_path)` | 创建安全备份 |
 
-    ```python
-    from utils.transaction import TransactionManager
+### 使用示例
 
-    # 创建事务管理器
-    with TransactionManager() as tx:
-        # 暂存文件操作
-        tx.stage_file("source.txt", "dest.txt")
-        tx.stage_file("config.json", "config.json.backup")
+```python
+from utils.transaction import FileTransaction
 
-        # 执行事务（原子操作）
-        tx.commit()
+with FileTransaction() as tx:
+    tx.backup_original("app.asar")
+    tx.stage_new_file("app.asar", "app.asar.new")
+    tx.commit()
+```
 
-        # 如果出错，自动回滚
-    ```
-
-    ---
+---

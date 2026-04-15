@@ -34,7 +34,7 @@ This project is a non-profit personal localization toolbox for TyranoV8-based ga
 - **⚙️ Isolated Config System**: User config in home dir with hot-reload, validation, and template fallback.
 - **🔒 Safety Protections**: Concurrency locks, confirmation dialogs, hash checks, atomic writes.
 - **🌐 Multilingual**: Chinese/English/Japanese, runtime switching via menu.
-- **📚 Comprehensive Docs**: See [PROJECT_SPECS.md](PROJECT_SPECS.md), [API_DOCS.md](API_DOCS.md), [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
+- **📚 Comprehensive Docs**: Start with [DOCS_INDEX_en.md](DOCS_INDEX_en.md), then use [MODULE_GUIDE_en.md](MODULE_GUIDE_en.md), [PROJECT_SPECS.md](PROJECT_SPECS.md), [API_DOCS.md](API_DOCS.md), and [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md).
 
 ---
 
@@ -60,7 +60,7 @@ Outputs in `dist/`:
 
 ### macOS / Linux
 
-Requires Python 3.8+, PyInstaller.
+Requires Python 3.8+. Packaging additionally requires PyInstaller.
 
 ```bash
 pip install pyinstaller
@@ -93,13 +93,13 @@ See [UTILS_GUIDE.md](UTILS_GUIDE.md) for implementation details.
 
 ## For Developers
 
-See [PROJECT_SPECS.md](PROJECT_SPECS.md) for full architecture, design principles, and technical specs.
+See [DOCS_INDEX_en.md](DOCS_INDEX_en.md) for the English documentation entry point and [PROJECT_SPECS.md](PROJECT_SPECS.md) for full architecture, design principles, and technical specs.
 
 **Key Adaptation for Other Games** (as noted above): Modify config and patch.zip. The code uses modern pure-Python ASAR handling via pure Python implementation in `utils/asar_writer.py` with fallback validation in `utils/asar_utils.py` and `core/state_validator.py`. Packaging scripts updated to reflect current logic (no node.exe dependency in core operations).
 
 **Current Architecture Highlights** (updated from code analysis):
 - `main.py`: Argparse, bootstrap, GUI or batch mode.
-- `core/`: bootstrap.py, patcher.py (CoreLogic with delayed import of utils.asar_writer), config.py (singleton with snapshot/TTL/hot-reload/user-dir priority), steam.py (state machine), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py.
+- `core/`: bootstrap.py, patcher.py (CoreLogic calling `utils.asar_writer.asar_extract` / `asar_pack`), config.py (singleton with snapshot/TTL/hot-reload/user-dir priority), steam.py (state machine), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py.
 - `gui/`: main_window.py, about_dialog.py, tabs/ (patch_tab.py, save_tab.py, tools_tab.py).
 - `controllers/`: patch_controller.py, save_manager_controller.py.
 - `utils/`: language.py (system lang detection + ini prefs), paths.py (MEIPASS support), async_ops.py, file_ops.py, etc.
@@ -113,7 +113,7 @@ User config copied from template to `~/.tyranopatcher/config.ini` (or equivalent
 
 **Running Logic** (from code):
 1. Bootstrap: config load, paths, state validation (ASAR/bak/meta integrity via hashes).
-2. Patch flow: Steam update detection (using patch_meta hashes), backup, extract (utils.asar_writer.asar_extract), apply patch files, repack (utils.asar_writer.asar_pack), save meta/info atomically, cleanup.
+2. Patch flow: Steam update detection (using `patch_meta` hashes), backup, extract (`utils.asar_writer.asar_extract`), apply patch files, repack (`utils.asar_writer.asar_pack`), save meta/info atomically, cleanup.
 3. Save ops: independent of game dir, ZIP support, migration with hash check.
 4. Fuse removal: configurable offset, binary patch on EXE.
 

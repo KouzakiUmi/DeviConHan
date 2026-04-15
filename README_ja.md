@@ -34,7 +34,7 @@
 - **⚙️ 隔離設定システム**: ホームディレクトリのユーザー設定、ホットリロード、検証、テンプレートフォールバック。
 - **🔒 安全保護**: 同時実行ロック、確認ダイアログ、ハッシュチェック、原子性書き込み。
 - **🌐 多言語対応**: 中/英/日、メニューによるランタイム切替。
-- **📚 包括的なドキュメント**: [PROJECT_SPECS.md](PROJECT_SPECS.md)、[API_DOCS.md](API_DOCS.md)、[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)を参照。
+- **📚 包括的なドキュメント**: まず [DOCS_INDEX_ja.md](DOCS_INDEX_ja.md) を参照し、その後 [MODULE_GUIDE_ja.md](MODULE_GUIDE_ja.md)、[PROJECT_SPECS.md](PROJECT_SPECS.md)、[API_DOCS.md](API_DOCS.md)、[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) を利用してください。
 
 ---
 
@@ -60,7 +60,7 @@ cd DeviConHan
 
 ### macOS / Linux
 
-Python 3.8+、PyInstallerが必要。
+Python 3.8+ が必要です。パッケージング時のみ PyInstaller も必要です。
 
 ```bash
 pip install pyinstaller
@@ -93,13 +93,13 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
 
 ## 開発者向け
 
-完全なアーキテクチャと設計原則は[PROJECT_SPECS.md](PROJECT_SPECS.md)を参照。
+日本語ドキュメント入口は [DOCS_INDEX_ja.md](DOCS_INDEX_ja.md)、完全なアーキテクチャと設計原則は [PROJECT_SPECS.md](PROJECT_SPECS.md) を参照。
 
 **他のゲームへの適応**（上記参照）：configとpatch.zipを修正。現在のコードは`utils/asar_writer.py`による純粋Python ASAR処理、`utils/asar_utils.py`と`core/state_validator.py`での検証、bootstrap、state machineを採用。パッケージングスクリプトも現在のロジックに更新（node.exe依存をコア操作から除去）。
 
 **現在のアーキテクチャ**（コード分析に基づく更新）:
 - `main.py`: 引数解析、bootstrap、GUI/バッチモード。
-- `core/`: bootstrap.py, patcher.py (遅延asarインポート付きCoreLogic), config.py (スナップショット/TTL/ホットリロード/ユーザーディレクトリ優先のシングルトン), steam.py (ステートマシン), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py。
+- `core/`: bootstrap.py, patcher.py (`utils.asar_writer.asar_extract` / `asar_pack` を呼ぶ CoreLogic), config.py (スナップショット/TTL/ホットリロード/ユーザーディレクトリ優先のシングルトン), steam.py (ステートマシン), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py。
 - `gui/`: main_window.py, tabs/(patch_tab.py, save_tab.py, tools_tab.py)。
 - `controllers/`: patch_controller, save_manager_controller。
 - `utils/`: language.py (システム言語検出+ini設定), paths.py, async_ops.py など。
@@ -113,7 +113,7 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
 
 **実行ロジック**（コードから）:
 1. Bootstrap: 設定ロード、パス、状態検証 (ASAR/bak/metaのハッシュ整合性)。
-2. パッチフロー: Steam更新検出 (patch_metaハッシュ使用)、バックアップ、抽出 (asar.extract_archive)、パッチ適用、再パック (asar.create_archive)、メタ/情報原子性保存、クリーンアップ。
+2. パッチフロー: Steam更新検出 (`patch_meta` ハッシュ使用)、バックアップ、抽出 (`utils.asar_writer.asar_extract`)、パッチ適用、再パック (`utils.asar_writer.asar_pack`)、メタ/情報原子性保存、クリーンアップ。
 3. セーブ操作: ゲームディレクトリ独立、ZIP対応、ハッシュチェック付き移行。
 4. Fuse除去: 設定可能オフセット、EXEへのバイナリパッチ。
 
