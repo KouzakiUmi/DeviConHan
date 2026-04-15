@@ -2,7 +2,7 @@
 
 **でびるコネクション漢化パッチは組み込みサンプル作品です。**
 
-**開発者向け説明**: このツールボックスはTyranoV8/Electronベースのゲーム向けの汎用ツールです。`config.ini`を修正（AUTO_TARGET_EXE、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATEなど）し、対象ゲームのローカライズファイルを含む`patch.zip`を提供することで、他のゲームに適応できます。詳細は[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)を参照してください。
+**開発者向け説明**: このツールボックスはTyranoV8/Electronベースのゲーム向けの汎用ツールです。`config.ini`を修正（WINDOWS_EXE、MACOS_APP、LINUX_BINARY、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATEなど）し、対象ゲームのローカライズファイルを含む`patch.zip`を提供することで、他のゲームに適応できます。詳細は[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)を参照してください。
 
 <div align="center">
 
@@ -30,7 +30,7 @@
 
 - **🚀 ワンクリックパッチ適用**: グラフィカルUIで自動インストール、バックアップ、Fuse完全性チェック除去。
 - **💾 プロフェッショナルセーブマネージャー**: 独立したバックアップ場所(`~/.tyranopatcher/backups`)、ZIP/Dir対応、ハッシュ検証付きスムーズ移行。
-- **🛠️ 開発者ツールボックス**: Python `asar`ライブラリによるASAR展開/パック、動的Fuseオフセット設定、設定検証。
+- **🛠️ 開発者ツールボックス**: 純粋Python ASAR展開/パック、動的Fuseオフセット設定、設定検証。
 - **⚙️ 隔離設定システム**: ホームディレクトリのユーザー設定、ホットリロード、検証、テンプレートフォールバック。
 - **🔒 安全保護**: 同時実行ロック、確認ダイアログ、ハッシュチェック、原子性書き込み。
 - **🌐 多言語対応**: 中/英/日、メニューによるランタイム切替。
@@ -70,9 +70,9 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
   --name "Tyrano_Toolbox" main.py
 ```
 
-パッチ版はまず`Patch.zip`を準備（`python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"`）してから追加データとして指定。
+パッチ版は既存の`Patch.zip`を使うか、`Patch/`ディレクトリをそのまま置いてください。Packスクリプトがビルド中に一時的な`Patch.zip`を作成し、追跡中のパッチ資産は変更しません。
 
-**注意**: Pack.cmd/Pack.shはPatch/をPatch.zipに自動圧縮して起動性能を向上させ、適切な実行ファイルを作成します。
+**注意**: `Pack.cmd`/`Pack.sh` は一時ビルドディレクトリでのみ staged `Patch.zip` を作成し、ビルド後にクリーンアップするため、git 作業ツリーを汚しません。
 
 ---
 
@@ -95,7 +95,7 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
 
 完全なアーキテクチャと設計原則は[PROJECT_SPECS.md](PROJECT_SPECS.md)を参照。
 
-**他のゲームへの適応**（上記参照）：configとpatch.zipを修正。現在のコードは`asar` Pythonパッケージを使用した純粋Python ASAR処理、`utils/asar_utils.py`と`core/state_validator.py`での検証、bootstrap、state machineを採用。パッケージングスクリプトも現在のロジックに更新（node.exe依存をコア操作から除去）。
+**他のゲームへの適応**（上記参照）：configとpatch.zipを修正。現在のコードは`utils/asar_writer.py`による純粋Python ASAR処理、`utils/asar_utils.py`と`core/state_validator.py`での検証、bootstrap、state machineを採用。パッケージングスクリプトも現在のロジックに更新（node.exe依存をコア操作から除去）。
 
 **現在のアーキテクチャ**（コード分析に基づく更新）:
 - `main.py`: 引数解析、bootstrap、GUI/バッチモード。
@@ -106,7 +106,7 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
 - Bootstrapは起動前に包括的なシステムチェックを実行。
 
 **パッケージングスクリプト分析**:
-- `Pack.cmd`/`Pack.sh`: 依存チェック、ツールボックスビルド、Patch圧縮、必要時パッチャービルド、クリーンアップ。現在のPyInstaller仕様と純Python ASARに更新。
+- `Pack.cmd`/`Pack.sh`: 依存チェック、ツールボックスビルド、必要に応じた `Patch/` の一時ZIP化、パッチャービルド、クリーンアップ。現在のPyInstaller仕様と純Python ASARに更新。
 
 **設定**:
 テンプレートから`~/.tyranopatcher/config.ini`へコピー。すべてのキーに対応。Toolsタブで検証/リセット可能。

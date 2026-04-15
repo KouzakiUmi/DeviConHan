@@ -11,8 +11,9 @@ import os
 import platform
 import re
 import sys
+import threading
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -436,12 +437,11 @@ def _find_game_by_directory_scan(
     search_thread.join(timeout=timeout)
 
     if result[0] is None:
-        logger.warning(f"Game not found by any method")
+        logger.warning("Game not found by any method")
 
     return result[0]
 
 
-import threading
 
 
 def _normalize_japanese(s: str) -> str:

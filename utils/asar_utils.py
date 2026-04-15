@@ -2,7 +2,7 @@
 ASAR 工具模块
 
 提供与 ASAR 文件操作相关的辅助函数，例如从包内计算哈希。
-与 electron/asar 官方格式兼容：8字节头部 + JSON header + 文件数据
+支持现代 Pickle ASAR 头部以及历史遗留布局。
 """
 
 import hashlib
@@ -10,8 +10,7 @@ import json
 import logging
 import os
 import struct
-
-from utils.constants import ASAR_MAGIC_NUMBER
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +18,304 @@ HEADER_SIZE_BYTES = 8
 MAX_HEADER_SIZE = 50 * 1024 * 1024
 
 
+@dataclass(frozen=True)
+class AsarHeaderInfo:
+    """解析后的 ASAR 头部信息"""
+
+    header_dict: dict
+    json_size: int
+    base_offset: int
+    format_name: str
+
+
+@dataclass(frozen=True)
+class AsarReader:
+    """复用同一份 header 信息与文件元数据的 ASAR 读取器"""
+
+    asar_path: str
+    header_info: AsarHeaderInfo
+    file_size: int
+
+
+def _parse_pickle_header(f) -> AsarHeaderInfo | None:
+    """解析 @electron/asar 当前 Pickle 头部格式"""
+    f.seek(0)
+    size_buf = f.read(8)
+    if len(size_buf) < 8:
+        return None
+
+    size_payload_size, header_buf_len = struct.unpack("<II", size_buf)
+    if size_payload_size != 4 or header_buf_len < 8 or header_buf_len > MAX_HEADER_SIZE:
+        return None
+
+    header_buf = f.read(header_buf_len)
+    if len(header_buf) != header_buf_len:
+        return None
+
+    payload_size, json_size = struct.unpack("<II", header_buf[:8])
+    if payload_size < 4 or payload_size > header_buf_len or json_size <= 0 or json_size > MAX_HEADER_SIZE:
+        return None
+
+    json_end = 8 + json_size
+    if json_end > header_buf_len:
+        return None
+
+    header_dict = json.loads(header_buf[8:json_end].decode("utf-8"))
+    if "files" not in header_dict:
+        return None
+
+    return AsarHeaderInfo(
+        header_dict=header_dict,
+        json_size=json_size,
+        base_offset=8 + header_buf_len,
+        format_name="modern_pickle",
+    )
+
+
+def _parse_legacy_8_header(f) -> AsarHeaderInfo | None:
+    """解析旧 8 字节头部格式 [json_size][padding]"""
+    f.seek(0)
+    header_buf = f.read(8)
+    if len(header_buf) < 8:
+        return None
+
+    json_size, padding = struct.unpack("<II", header_buf)
+    if json_size <= 0 or json_size > MAX_HEADER_SIZE or padding != 0:
+        return None
+
+    header_bytes = f.read(json_size)
+    if len(header_bytes) != json_size:
+        return None
+
+    header_dict = json.loads(header_bytes.decode("utf-8"))
+    if "files" not in header_dict:
+        return None
+
+    return AsarHeaderInfo(
+        header_dict=header_dict,
+        json_size=json_size,
+        base_offset=8 + json_size,
+        format_name="legacy_8",
+    )
+
+
+def _parse_legacy_16_header(f) -> AsarHeaderInfo | None:
+    """解析旧 16 字节头部格式"""
+    f.seek(0)
+    header_buf = f.read(16)
+    if len(header_buf) < 16:
+        return None
+
+    _data_size, header_size, header_object_size, json_size = struct.unpack("<IIII", header_buf)
+    if (
+        header_size <= 0
+        or header_object_size <= 0
+        or json_size <= 0
+        or header_size > MAX_HEADER_SIZE
+        or header_object_size > MAX_HEADER_SIZE
+        or json_size > MAX_HEADER_SIZE
+        or header_object_size < json_size
+    ):
+        return None
+
+    header_bytes = f.read(json_size)
+    if len(header_bytes) != json_size:
+        return None
+
+    header_dict = json.loads(header_bytes.decode("utf-8"))
+    if "files" not in header_dict:
+        return None
+
+    return AsarHeaderInfo(
+        header_dict=header_dict,
+        json_size=json_size,
+        base_offset=16 + header_object_size,
+        format_name="legacy_16",
+    )
+
+
+def parse_asar_header(asar_path: str) -> AsarHeaderInfo | None:
+    """
+    解析 ASAR 头部，按已知格式依次尝试。
+
+    优先现代 Pickle 格式，再回退旧格式，避免把 Pickle 文件误判为旧 16 字节格式。
+    """
+    if not os.path.exists(asar_path):
+        return None
+
+    parsers = (
+        _parse_pickle_header,
+        _parse_legacy_8_header,
+        _parse_legacy_16_header,
+    )
+
+    try:
+        with open(asar_path, "rb") as f:
+            for parser in parsers:
+                try:
+                    result = parser(f)
+                except (json.JSONDecodeError, UnicodeDecodeError, struct.error, ValueError):
+                    result = None
+
+                if result is not None:
+                    logger.debug(f"Detected ASAR format {result.format_name} for {asar_path}")
+                    return result
+    except OSError as e:
+        logger.error(f"Failed to read ASAR header from {asar_path}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to parse ASAR header from {asar_path}: {e}")
+        return None
+
+    logger.error(f"Failed to detect a supported ASAR header format for {asar_path}")
+    return None
+
+
+def _is_suspicious_asar_name(name: str) -> bool:
+    """检查 ASAR header 键名是否可疑"""
+    if not name or name in {".", ".."}:
+        return True
+    return (
+        "/" in name
+        or "\\" in name
+        or name.startswith("/")
+        or name.startswith("\\")
+        or ":" in name
+        or "\x00" in name
+    )
+
+
+def _is_safe_link_target(link: str, current_prefix: str) -> bool:
+    """检查 link 目标是否仍位于归档逻辑根内"""
+    if not link or link.startswith("/") or link.startswith("\\") or ":" in link or "\x00" in link:
+        return False
+
+    parts = [p for p in current_prefix.split("/") if p]
+    resolved = parts[:-1]
+    for part in link.replace("\\", "/").split("/"):
+        if not part or part == ".":
+            continue
+        if part == "..":
+            if not resolved:
+                return False
+            resolved.pop()
+        else:
+            resolved.append(part)
+    return True
+
+
+def _validate_file_ranges(
+    node: dict, base_offset: int, file_size: int, prefix: str = ""
+) -> tuple[bool, str]:
+    """验证 header 中所有条目的路径、link 和 offset/size 是否安全"""
+    if "files" not in node:
+        return True, ""
+
+    for name, child in node["files"].items():
+        rel_path = f"{prefix}/{name}" if prefix else name
+
+        if _is_suspicious_asar_name(name):
+            return False, f"ASAR entry has suspicious name: {rel_path!r}"
+
+        if "files" in child:
+            ok, reason = _validate_file_ranges(child, base_offset, file_size, rel_path)
+            if not ok:
+                return False, reason
+            continue
+
+        if "link" in child:
+            link_target = child.get("link")
+            if not isinstance(link_target, str) or not _is_safe_link_target(link_target, rel_path):
+                return False, f"ASAR symlink escapes archive root: {rel_path!r} -> {link_target!r}"
+            continue
+
+        if child.get("unpacked"):
+            continue
+
+        if "offset" not in child or "size" not in child:
+            return False, f"ASAR entry missing offset/size: {rel_path}"
+
+        try:
+            offset = int(child["offset"])
+            size = int(child["size"])
+        except (TypeError, ValueError):
+            return False, f"ASAR entry has invalid offset/size: {rel_path}"
+
+        if offset < 0 or size < 0:
+            return False, f"ASAR entry has negative offset/size: {rel_path}"
+
+        data_start = base_offset + offset
+        data_end = data_start + size
+        if data_start < base_offset or data_end > file_size:
+            return (
+                False,
+                f"ASAR entry points outside archive: {rel_path} "
+                f"(start={data_start}, end={data_end}, file_size={file_size})",
+            )
+
+    return True, ""
+
+
+def validate_asar_with_reason(asar_path: str) -> tuple[bool, str]:
+    """验证 ASAR 并返回可用于日志或 UI 的失败原因"""
+    if not os.path.exists(asar_path):
+        return False, f"ASAR file not found: {asar_path}"
+
+    header_info = parse_asar_header(asar_path)
+    if header_info is None:
+        return False, "Unsupported or unreadable ASAR header"
+
+    try:
+        file_size = os.path.getsize(asar_path)
+    except OSError as e:
+        return False, f"Failed to stat ASAR file: {e}"
+
+    if header_info.base_offset > file_size:
+        return (
+            False,
+            f"ASAR base offset exceeds file size: "
+            f"base_offset={header_info.base_offset}, file_size={file_size}",
+        )
+
+    ok, reason = _validate_file_ranges(header_info.header_dict, header_info.base_offset, file_size)
+    if not ok:
+        return False, reason
+
+    return True, ""
+
+
+def open_asar_reader(asar_path: str) -> AsarReader | None:
+    """打开一个可复用的 ASAR 读取器"""
+    ok, reason = validate_asar_with_reason(asar_path)
+    if not ok:
+        logger.error(f"ASAR validation failed for {asar_path}: {reason}")
+        return None
+
+    header_info = parse_asar_header(asar_path)
+    if header_info is None:
+        return None
+
+    try:
+        file_size = os.path.getsize(asar_path)
+    except OSError:
+        return None
+
+    return AsarReader(asar_path=asar_path, header_info=header_info, file_size=file_size)
+
+
+def is_valid_asar(asar_path: str) -> bool:
+    """检查 ASAR 结构是否可解析，且所有已打包文件范围都在归档内"""
+    return open_asar_reader(asar_path) is not None
+
+
 def _read_header_from_asar(asar_path: str) -> tuple:
     """
-    从 ASAR 文件读取头部信息，支持两种格式：
-    - 官方 8 字节格式: [4字节 header_size][4字节 padding][JSON][文件数据]
-    - 旧 16 字节格式: [4字节 data_size][4字节 header_size][4字节 header_object_size][4字节 header_string_size][JSON][文件数据]
+    从 ASAR 文件读取头部信息。
+
+    兼容格式：
+    - modern_pickle: [sizePickle 8B][headerPickle NB][file data...]
+    - legacy_8:      [json_size][padding][json][file data...]
+    - legacy_16:     [data_size][header_size][header_object_size][json_size][json][file data...]
 
     Args:
         asar_path: ASAR 文件路径
@@ -35,59 +327,14 @@ def _read_header_from_asar(asar_path: str) -> tuple:
             - base_offset: 文件数据起始偏移量
             失败返回 (None, None, None)
     """
-    if not os.path.exists(asar_path):
+    reader = open_asar_reader(asar_path)
+    if reader is None:
         return None, None, None
-
-    try:
-        with open(asar_path, "rb") as f:
-            header_buf = f.read(16)
-            if len(header_buf) < 8:
-                logger.error(f"Failed to read ASAR header from {asar_path}")
-                return None, None, None
-
-            header_size_8byte = struct.unpack("<I", header_buf[0:4])[0]
-            padding = struct.unpack("<I", header_buf[4:8])[0]
-
-            if header_size_8byte > 0 and header_size_8byte <= MAX_HEADER_SIZE and padding == 0:
-                is_8byte_format = True
-            elif header_size_8byte > MAX_HEADER_SIZE:
-                is_8byte_format = False
-            else:
-                is_8byte_format = False
-
-            if is_8byte_format:
-                json_size = header_size_8byte
-                base_offset = 8 + header_size_8byte
-            else:
-                if len(header_buf) < 16:
-                    logger.error(f"File too small for 16-byte format header: {asar_path}")
-                    return None, None, None
-                header_object_size = struct.unpack("<I", header_buf[8:12])[0]
-                json_size = struct.unpack("<I", header_buf[12:16])[0]
-                base_offset = 16 + header_object_size
-
-            if json_size == 0 or json_size > MAX_HEADER_SIZE:
-                logger.error(f"Invalid ASAR JSON size: {json_size}")
-                return None, None, None
-
-            json_start = 8 if is_8byte_format else 16
-            header_bytes = header_buf[json_start : json_start + json_size]
-            if len(header_bytes) < json_size:
-                with open(asar_path, "rb") as f:
-                    f.seek(json_start)
-                    header_bytes = f.read(json_size)
-                    if len(header_bytes) != json_size:
-                        logger.error(f"Failed to read ASAR header data from {asar_path}")
-                        return None, None, None
-
-            json_str = header_bytes.decode("utf-8")
-            header_dict = json.loads(json_str)
-
-            return header_dict, json_size, base_offset
-
-    except Exception as e:
-        logger.error(f"Failed to read ASAR header from {asar_path}: {e}")
-        return None, None, None
+    return (
+        reader.header_info.header_dict,
+        reader.header_info.json_size,
+        reader.header_info.base_offset,
+    )
 
 
 def check_asar_path_traversal(asar_path: str) -> bool:
@@ -118,6 +365,76 @@ def check_asar_path_traversal(asar_path: str) -> bool:
     return check_node(header_dict)
 
 
+def _resolve_node(header_dict: dict, file_path: str) -> dict | None:
+    """在 header 树中定位目标文件节点"""
+    path_parts = [p for p in file_path.replace("\\", "/").split("/") if p]
+
+    node = header_dict
+    for part in path_parts:
+        if "files" in node and part in node["files"]:
+            node = node["files"][part]
+        else:
+            return None
+
+    return node
+
+
+def _compute_node_hash(asar_file, base_offset: int, node: dict):
+    """对单个 ASAR 文件节点计算哈希"""
+    if "offset" not in node or "size" not in node:
+        return None
+
+    if "integrity" in node and node["integrity"].get("algorithm") == "SHA256":
+        return node["integrity"].get("hash")
+
+    offset = int(node["offset"])
+    size = node["size"]
+
+    asar_file.seek(base_offset + offset)
+
+    dynamic_chunk = min(max(65536, size // 1000), 4 * 1024 * 1024)
+
+    sha256_hash = hashlib.sha256()
+    bytes_read = 0
+
+    while bytes_read < size:
+        chunk_size = min(dynamic_chunk, size - bytes_read)
+        chunk = asar_file.read(chunk_size)
+        if not chunk:
+            break
+        sha256_hash.update(chunk)
+        bytes_read += len(chunk)
+
+    return sha256_hash.hexdigest()
+
+
+def get_file_hashes_in_asar(asar_path: str, file_paths: list[str]) -> dict[str, str | None]:
+    """
+    一次性读取多个 ASAR 内文件的 SHA256 哈希值，避免重复解析 header 和重复打开文件。
+    """
+    reader = open_asar_reader(asar_path)
+    if reader is None:
+        return {file_path: None for file_path in file_paths}
+
+    results: dict[str, str | None] = {}
+    try:
+        with open(asar_path, "rb") as f:
+            for file_path in file_paths:
+                node = _resolve_node(reader.header_info.header_dict, file_path)
+                if node is None:
+                    results[file_path] = None
+                    continue
+                results[file_path] = _compute_node_hash(f, reader.header_info.base_offset, node)
+    except OSError as e:
+        logger.debug(f"OS error reading ASAR file {asar_path}: {e}")
+        return {file_path: None for file_path in file_paths}
+    except Exception as e:
+        logger.debug(f"Error parsing ASAR file {asar_path}: {e}")
+        return {file_path: None for file_path in file_paths}
+
+    return results
+
+
 def get_file_hash_in_asar(asar_path, file_path):
     """
     计算 ASAR 包内特定文件的 SHA256 哈希值
@@ -130,47 +447,20 @@ def get_file_hash_in_asar(asar_path, file_path):
     Returns:
         str: 文件的 SHA256 哈希值，失败返回 None
     """
-    header_dict, json_size, base_offset = _read_header_from_asar(asar_path)
-    if header_dict is None:
+    reader = open_asar_reader(asar_path)
+    if reader is None:
         return None
 
-    path_parts = [p for p in file_path.replace("\\", "/").split("/") if p]
-
-    node = header_dict
-    for part in path_parts:
-        if "files" in node and part in node["files"]:
-            node = node["files"][part]
-        else:
-            return None
-
-    if "offset" not in node or "size" not in node:
+    node = _resolve_node(reader.header_info.header_dict, file_path)
+    if node is None:
         return None
-
-    if "integrity" in node and node["integrity"].get("algorithm") == "SHA256":
-        return node["integrity"].get("hash")
-
-    offset = int(node["offset"])
-    size = node["size"]
 
     try:
         with open(asar_path, "rb") as f:
-            f.seek(base_offset + offset)
-
-            dynamic_chunk = min(max(65536, size // 1000), 4 * 1024 * 1024)
-
-            sha256_hash = hashlib.sha256()
-            bytes_read = 0
-
-            while bytes_read < size:
-                chunk_size = min(dynamic_chunk, size - bytes_read)
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                sha256_hash.update(chunk)
-                bytes_read += len(chunk)
-
-            return sha256_hash.hexdigest()
-
+            return _compute_node_hash(f, reader.header_info.base_offset, node)
+    except OSError as e:
+        logger.debug(f"OS error reading ASAR file {asar_path} for {file_path}: {e}")
+        return None
     except Exception as e:
         logger.debug(f"Error parsing ASAR file {asar_path} for {file_path}: {e}")
         return None

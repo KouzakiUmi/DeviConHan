@@ -9,6 +9,8 @@ ROOT="$(pwd)"
 PY_SCRIPT="main.py"
 OUT_TOOL="Tyrano_Toolbox"
 OUT_PATCH="DevilConnection_Patch"
+BUILD_ASSETS="$ROOT/.build_assets"
+PATCH_ASSET="$ROOT/Patch.zip"
 
 echo "=========================================="
 echo "   Tyrano Builder (Mac/Linux)"
@@ -35,7 +37,7 @@ $PYTHON_CMD --version
 
 if ! $PYTHON_CMD -m PyInstaller --version >/dev/null 2>&1; then
     echo "[Error] PyInstaller not found. Installing dependencies..."
-    pip install pyinstaller pillow
+    $PYTHON_CMD -m pip install pyinstaller pillow
 fi
 
 # Convert icon for macOS
@@ -56,6 +58,8 @@ echo "[1/2] Building Toolbox..."
 echo "------------------------------------------"
 
 rm -rf "dist"
+rm -rf "$BUILD_ASSETS"
+mkdir -p "$BUILD_ASSETS"
 
 $PYTHON_CMD -m PyInstaller -F -w --clean \
     -i "${ICON_FILE:-$ROOT/icon.ico}" \
@@ -83,17 +87,17 @@ if [ -f "$ROOT/Patch.zip" ]; then
     echo "- Patch.zip found."
     BUILD_PATCHER=1
     HAS_PATCH_DATA=1
+    PATCH_ASSET="$ROOT/Patch.zip"
 fi
 
 if [ -d "$ROOT/Patch" ]; then
     if [ "$(ls -A "$ROOT/Patch")" ]; then
-        echo "- Patch folder found. Compressing to Patch.zip to boost startup performance..."
-        rm -f "$ROOT/Patch.zip"
-        $PYTHON_CMD -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
-        
-        if [ -f "$ROOT/Patch.zip" ]; then
-            echo "- Cleaning up original Patch directory..."
-            rm -rf "$ROOT/Patch"
+        echo "- Patch folder found. Creating staged Patch.zip for build..."
+        PATCH_ASSET="$BUILD_ASSETS/Patch.zip"
+        rm -f "$PATCH_ASSET"
+        $PYTHON_CMD -c "import shutil; shutil.make_archive(r'$BUILD_ASSETS/Patch', 'zip', r'$ROOT/Patch')"
+
+        if [ -f "$PATCH_ASSET" ]; then
             BUILD_PATCHER=1
             HAS_PATCH_DATA=1
         else
@@ -114,7 +118,7 @@ if [ "$BUILD_PATCHER" -eq 1 ]; then
         --workpath "build_patcher" \
         --add-data "$ROOT/icon.ico:." \
         --add-data "$ROOT/config.ini:." \
-        --add-data "$ROOT/Patch.zip:." \
+        --add-data "$PATCH_ASSET:." \
         --name "$OUT_PATCH" \
         "$ROOT/$PY_SCRIPT"
 
@@ -131,9 +135,10 @@ fi
 
 echo
 echo "[Cleanup] Cleaning up..."
-rm -rf "build_toolbox" "build_patcher" "__pycache__"
+rm -rf "build_toolbox" "build_patcher" "__pycache__" "$BUILD_ASSETS"
 find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
 rm -f *.spec
+rm -f "$ROOT/icon.icns" "$ROOT/icon.png"
 
 echo
 echo "=========================================="

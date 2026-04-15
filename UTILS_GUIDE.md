@@ -304,7 +304,7 @@ logger.error("发生错误")
 | `MAX_CONFIG_FILE_SIZE` | 配置文件大小限制 (1MB) |
 | `DEFAULT_ASAR_TIMEOUT` | ASAR操作超时 (300秒) |
 | `HASH_CHUNK_SIZE` | 哈希计算块大小 (64KB) |
-| `ASAR_MAGIC_NUMBER` | ASAR文件魔数 |
+| `ASAR_MAGIC_NUMBER` | Pickle 头部固定前缀字段（非完整文件签名） |
 | `MAX_CLEANUP_RETRIES` | 清理重试次数 (3次) |
 
 ### 使用示例
@@ -368,21 +368,29 @@ except ValidationError as e:
 ### 主要功能
 
 提供纯 Python 的 ASAR 格式解析能力，支持在不解包的情况下读取 ASAR 内部文件的 Hash 值。
+当前解析器兼容 `modern_pickle`、`legacy_8` 和 `legacy_16` 三种头部布局。
 
 | 函数 | 描述 |
 |------|------|
+| `parse_asar_header(asar_path)` | 解析 ASAR 头部并返回格式、JSON 大小和数据区偏移 |
+| `is_valid_asar(asar_path)` | 验证 ASAR 是否可被支持的解析器成功读取 |
 | `get_file_hash_in_asar(asar_path, file_path)` | 获取 ASAR 内部文件的 SHA256 Hash |
 
 ### 核心特性
 
 - **纯 Python 实现**：无需 Node.js，直接读取 ASAR 二进制格式
-- **内存映射**：使用 `mmap`/`seek` 进行高效文件读取
+- **多格式解析**：优先识别现代 Pickle 格式，再回退旧布局
+- **直接定位**：使用 `seek` 进行高效文件读取
 - **Hash 验证**：支持 Steam 更新检测，快速比对文件完整性
 
 ### 使用示例
 
 ```python
-from utils.asar_utils import get_file_hash_in_asar
+from utils.asar_utils import get_file_hash_in_asar, parse_asar_header
+
+# 解析头部
+header = parse_asar_header("app.asar")
+print(header.format_name, header.base_offset)
 
 # 获取 ASAR 内文件的 Hash（无需解包）
 file_hash = get_file_hash_in_asar("app.asar", "tyrano/lang.js")
@@ -394,10 +402,10 @@ if file_hash:
 
 ### 实现原理
 
-1. 读取 ASAR 头部（4 字节 uint32，小端序）获取 JSON 元数据大小
-2. 解析 JSON 获取文件偏移量和大小
-3. 使用  定位到指定偏移量
-4. 直接在内存中计算 SHA256
+1. 按支持的格式依次尝试解析 ASAR 头部
+2. 提取 JSON 元数据，获取文件偏移量和大小
+3. 使用 `seek` 定位到指定偏移量
+4. 直接在流上计算 SHA256
 
 ---
 

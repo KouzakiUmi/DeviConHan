@@ -45,44 +45,35 @@ def normalize_path(path: str) -> str:
         return ""
 
     try:
-        # 基本清理：去除首尾空白
         path = path.strip()
 
-        # 安全检查：展开 Windows 环境变量引用（%VAR%）为实际值
-        # 使用 os.path.expandvars 而非直接删除，避免破坏包含 % 字符的合法路径
         if "%" in path and sys.platform.startswith("win"):
-            logger.debug(f"Expanding environment variables in path: {path}")
+            original = path
             path = os.path.expandvars(path)
+            if path != original:
+                logger.debug(f"Expanded environment variables in path: {original} -> {path}")
 
-        # 直接规范化，让 OS 解析所有 ./ 和 ../ 序列
-        # 不在规范化前手动移除 ".."，避免产生格式错误的路径
         path = os.path.normpath(os.path.abspath(path))
 
         from utils.constants import MAX_PATH_LENGTH
 
-        # 检查路径长度
         if len(path) > MAX_PATH_LENGTH:
             logger.warning(f"Path too long: {len(path)} chars")
 
-        # Windows 长路径支持（>= MAX_PATH 时加 \\?\ 前缀）
-        # 注意：\\?\ 前缀要求路径使用反斜杠，且不支持正斜杠
         if sys.platform == "win32" and len(path) >= MAX_PATH_LENGTH:
             if not path.startswith("\\\\?\\"):
-                # 确保路径使用反斜杠（\\?\ 前缀不支持正斜杠）
                 path = path.replace("/", "\\")
                 if path.startswith("\\\\"):
-                    # 网络路径：\\server\share -> \\?\UNC\server\share
                     path = "\\\\?\\UNC\\" + path[2:]
                 else:
-                    # 本地路径
                     path = "\\\\?\\" + path
 
         return path
     except (TypeError, ValueError, AttributeError) as e:
-        logger.exception(f"Path normalization failed due to invalid input: {e}")
+        logger.error(f"Path normalization failed due to invalid input: {e}")
         return ""
     except Exception as e:
-        logger.exception(f"Unexpected error during path normalization: {e}")
+        logger.error(f"Unexpected error during path normalization: {e}")
         return ""
 
 
@@ -102,16 +93,11 @@ def safe_path_within(path: str, base_dir: str) -> Optional[str]:
 
     try:
         abs_base = os.path.normpath(os.path.abspath(base_dir))
-        # 先 join 再 normpath/abspath，让 OS 解析所有 ../ 遍历
         abs_path = os.path.normpath(os.path.abspath(os.path.join(abs_base, path)))
 
-        # 边界检查：确保结果严格位于 base_dir 内
-        # 统一使用小写比较（Windows不区分大小写，Unix下无影响）
-        # 统一使用正斜杠进行比较（处理混合分隔符的情况）
         base_lower = abs_base.lower().replace("\\", "/").rstrip("/") + "/"
         path_lower = abs_path.lower().replace("\\", "/")
 
-        # 处理完全相等的情况（允许访问 base_dir 本身）
         path_normalized = path_lower.rstrip("/") + "/"
         base_normalized = base_lower.rstrip("/") + "/"
 
@@ -123,8 +109,11 @@ def safe_path_within(path: str, base_dir: str) -> Optional[str]:
             return None
 
         return abs_path
+    except (TypeError, ValueError) as e:
+        logger.error(f"safe_path_within failed due to invalid input: {e}")
+        return None
     except Exception as e:
-        logger.exception(f"safe_path_within failed: {e}")
+        logger.error(f"safe_path_within failed: {e}")
         return None
 
 

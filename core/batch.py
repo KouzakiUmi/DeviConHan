@@ -12,9 +12,36 @@ from core.fuse import remove_fuse
 from core.patcher import CoreLogic
 from utils.cleanup import force_cleanup_dir
 from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
+from utils.paths import normalize_path
 from utils.performance import get_performance_monitor
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_fuse_path(fuse_arg: str) -> str:
+    """
+    验证 --fuse 参数路径的安全性
+
+    Args:
+        fuse_arg: 用户输入的 fuse 文件路径
+
+    Returns:
+        str: 规范化后的安全路径
+
+    Raises:
+        ValueError: 路径不合法
+    """
+    if not fuse_arg or not fuse_arg.strip():
+        raise ValueError("Fuse path cannot be empty")
+
+    norm_path = normalize_path(fuse_arg)
+    if not norm_path:
+        raise ValueError(f"Invalid fuse path: {fuse_arg}")
+
+    if not os.path.isfile(norm_path):
+        raise ValueError(f"Fuse path is not a file: {norm_path}")
+
+    return norm_path
 
 
 def batch_mode(args):
@@ -31,11 +58,14 @@ def batch_mode(args):
 
     # 处理 --fuse 参数：移除指定文件的 Fuse 完整性校验
     if hasattr(args, "fuse") and args.fuse:
-        logger.info(f"Removing Fuse from: {args.fuse}")
-        if not os.path.exists(args.fuse):
-            logger.error(f"File not found: {args.fuse}")
+        try:
+            fuse_path = _validate_fuse_path(args.fuse)
+        except ValueError as e:
+            logger.error(f"Invalid fuse argument: {e}")
             return 1
-        result = remove_fuse(args.fuse, callback=lambda msg: logger.info(msg))
+
+        logger.info(f"Removing Fuse from: {fuse_path}")
+        result = remove_fuse(fuse_path, callback=lambda msg: logger.info(msg))
         if result:
             logger.info("Fuse removed successfully")
             return 0

@@ -2,7 +2,7 @@
 
 **The でびるコネクション (Devil Connection) localization patch is the built-in example.**
 
-**Developer Note**: This is a general-purpose toolbox for TyranoV8/Electron-based games. It can be adapted to other games by modifying `config.ini` (e.g. `AUTO_TARGET_EXE`, `FUSE_SENTINEL`, `CHECK_FILES_FOR_UPDATE`, `TARGET_ASAR_NAME`) and providing a corresponding `patch.zip` containing the game's localization files with matching directory structure. See [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) for full plugin development guide.
+**Developer Note**: This is a general-purpose toolbox for TyranoV8/Electron-based games. It can be adapted to other games by modifying `config.ini` (e.g. `WINDOWS_EXE`, `MACOS_APP`, `LINUX_BINARY`, `FUSE_SENTINEL`, `CHECK_FILES_FOR_UPDATE`) and providing a corresponding `patch.zip` containing the game's localization files with matching directory structure. See [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) for full plugin development guide.
 
 <div align="center">
 
@@ -30,7 +30,7 @@ This project is a non-profit personal localization toolbox for TyranoV8-based ga
 
 - **🚀 One-Click Patching**: Graphical interface for automatic patch installation, backup, and Fuse integrity check removal.
 - **💾 Professional Save Manager**: Independent backup location (`~/.tyranopatcher/backups`), ZIP/Dir support, smooth migration with hash verification.
-- **🛠️ Developer Toolbox**: ASAR unpack/pack (using Python `asar` library), dynamic Fuse offset configuration, config validation.
+- **🛠️ Developer Toolbox**: ASAR unpack/pack (using pure Python ASAR implementation), dynamic Fuse offset configuration, config validation.
 - **⚙️ Isolated Config System**: User config in home dir with hot-reload, validation, and template fallback.
 - **🔒 Safety Protections**: Concurrency locks, confirmation dialogs, hash checks, atomic writes.
 - **🌐 Multilingual**: Chinese/English/Japanese, runtime switching via menu.
@@ -70,9 +70,9 @@ python -m PyInstaller -F -w --clean -i "icon.ico" \
   --name "Tyrano_Toolbox" main.py
 ```
 
-For patch version, prepare `Patch.zip` first using `python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"` then add `--add-data "Patch.zip:." --name "DevilConnection_Patch"`.
+For patch version, either provide an existing `Patch.zip` or keep a `Patch/` directory. The pack scripts will stage a temporary `Patch.zip` during the build without modifying your tracked patch assets.
 
-**Note**: Pack.cmd and Pack.sh automatically handle Patch/ -> Patch.zip compression for better startup performance and build the appropriate executables.
+**Note**: `Pack.cmd` and `Pack.sh` create staged build assets in a temporary directory and clean them afterwards, so the git worktree stays stable.
 
 ---
 
@@ -95,25 +95,25 @@ See [UTILS_GUIDE.md](UTILS_GUIDE.md) for implementation details.
 
 See [PROJECT_SPECS.md](PROJECT_SPECS.md) for full architecture, design principles, and technical specs.
 
-**Key Adaptation for Other Games** (as noted above): Modify config and patch.zip. The code uses modern pure-Python ASAR handling via the `asar` package with fallback validation in `utils/asar_utils.py` and `core/state_validator.py`. Packaging scripts updated to reflect current logic (no node.exe dependency in core operations).
+**Key Adaptation for Other Games** (as noted above): Modify config and patch.zip. The code uses modern pure-Python ASAR handling via pure Python implementation in `utils/asar_writer.py` with fallback validation in `utils/asar_utils.py` and `core/state_validator.py`. Packaging scripts updated to reflect current logic (no node.exe dependency in core operations).
 
 **Current Architecture Highlights** (updated from code analysis):
 - `main.py`: Argparse, bootstrap, GUI or batch mode.
-- `core/`: bootstrap.py, patcher.py (CoreLogic with delayed asar import), config.py (singleton with snapshot/TTL/hot-reload/user-dir priority), steam.py (state machine), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py.
+- `core/`: bootstrap.py, patcher.py (CoreLogic with delayed import of utils.asar_writer), config.py (singleton with snapshot/TTL/hot-reload/user-dir priority), steam.py (state machine), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py.
 - `gui/`: main_window.py, about_dialog.py, tabs/ (patch_tab.py, save_tab.py, tools_tab.py).
 - `controllers/`: patch_controller.py, save_manager_controller.py.
 - `utils/`: language.py (system lang detection + ini prefs), paths.py (MEIPASS support), async_ops.py, file_ops.py, etc.
 - Bootstrap performs comprehensive system checks before launching.
 
 **Packaging Scripts**:
-- `Pack.cmd` / `Pack.sh`: Check deps, build toolbox, detect/compress Patch to Patch.zip, build patcher if present, cleanup. Updated to current PyInstaller specs and pure Python ASAR.
+- `Pack.cmd` / `Pack.sh`: Check deps, build toolbox, stage `Patch/` as a temporary `Patch.zip` if needed, build patcher if present, cleanup. Updated to current PyInstaller specs and pure Python ASAR.
 
 **Config**:
 User config copied from template to `~/.tyranopatcher/config.ini` (or equivalent). Supports all keys with fallbacks. Use Tools tab to validate/reset.
 
 **Running Logic** (from code):
 1. Bootstrap: config load, paths, state validation (ASAR/bak/meta integrity via hashes).
-2. Patch flow: Steam update detection (using patch_meta hashes), backup, extract (asar.extract_archive), apply patch files, repack (asar.create_archive), save meta/info atomically, cleanup.
+2. Patch flow: Steam update detection (using patch_meta hashes), backup, extract (utils.asar_writer.asar_extract), apply patch files, repack (utils.asar_writer.asar_pack), save meta/info atomically, cleanup.
 3. Save ops: independent of game dir, ZIP support, migration with hash check.
 4. Fuse removal: configurable offset, binary patch on EXE.
 

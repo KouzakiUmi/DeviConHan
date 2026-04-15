@@ -7,11 +7,10 @@ Steam 更新检测和处理模块
 import json
 import logging
 import os
-import shutil
 from typing import Callable, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hash_in_asar
+from utils.asar_utils import get_file_hashes_in_asar, validate_asar_with_reason
 from utils.constants import MIN_ASAR_SIZE
 from utils.language import T
 from utils.performance import get_performance_monitor
@@ -75,17 +74,22 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
         logger.error("Cannot restore ASAR: target asar_path is None or empty")
         if on_error:
             on_error(
-                "ASAR Path Error",
+                T("title_asar_path_error", "ASAR Path Error"),
                 "Cannot restore ASAR: target path is not specified.",
             )
         return (False, True)
 
     logger.warning("ASAR file missing but backup exists - possible Steam update detected")
 
-    if not _validate_backup_integrity(bak_path, core):
-        logger.error("Backup file is corrupted")
+    backup_valid, backup_reason = validate_asar_with_reason(bak_path)
+    if not backup_valid:
+        logger.error(f"Backup file is corrupted: {backup_reason}")
         if on_error:
-            on_error(T("title_backup_corrupted"), T("msg_backup_corrupted"))
+            on_error(
+                T("title_backup_corrupted"),
+                T("msg_backup_corrupted")
+                + f"\n\n{T('lbl_reason', 'Reason')}: {backup_reason}",
+            )
         return (False, True)
 
     if on_ask_yes_no:
@@ -118,10 +122,15 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
 def _handle_backup_missing(core, asar_path, on_error, on_ask_yes_no):
     """处理 ASAR 存在，备份不存在的情况"""
     logger.info(T("msg_asar_exists_no_backup"))
-    if not _validate_asar_integrity(asar_path, core):
-        logger.error("ASAR file is corrupted")
+    asar_valid, asar_reason = validate_asar_with_reason(asar_path)
+    if not asar_valid:
+        logger.error(f"ASAR file is corrupted: {asar_reason}")
         if on_error:
-            on_error(T("title_asar_corrupted"), T("msg_asar_corrupted"))
+            on_error(
+                T("title_asar_corrupted"),
+                T("msg_asar_corrupted")
+                + f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}",
+            )
         return (False, True)
 
     if on_ask_yes_no:
@@ -203,14 +212,15 @@ def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_
         return (False, True)
 
     if not bak_valid and asar_valid:
-        logger.warning("Backup file is corrupted, but ASAR appears valid (header check passed)")
+        logger.warning("Backup file is corrupted, but ASAR appears valid")
 
         # 进一步用 stable_files 验证 ASAR 的合法性
         stable_files = get_config().stable_files_for_validation
         asar_legitimate = True
         if stable_files:
+            stable_hashes = get_file_hashes_in_asar(asar_path, stable_files)
             for file_path in stable_files:
-                asar_hash = get_file_hash_in_asar(asar_path, file_path)
+                asar_hash = stable_hashes.get(file_path)
                 # 简单检查：文件存在且能读取到hash
                 if not asar_hash:
                     logger.warning(f"ASAR missing stable file: {file_path}")
@@ -229,7 +239,8 @@ def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_
                     T(
                         "msg_asar_invalid",
                         "ASAR failed validation. Please verify game files in Steam.",
-                    ),
+                    )
+                    + f"\n\n{T('lbl_reason', 'Reason')}: missing or unreadable stable files",
                 )
             return (False, True)
 
@@ -246,13 +257,22 @@ def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_
         return (True, False)
 
     if bak_valid and not asar_valid:
-        logger.warning("ASAR is corrupted, but Backup is valid. Reverting ASAR to Backup.")
+        asar_valid_detail, asar_reason = validate_asar_with_reason(asar_path)
+        logger.warning(
+            "ASAR is corrupted, but Backup is valid. "
+            f"Reverting ASAR to Backup. Reason: {asar_reason if not asar_valid_detail else 'unknown'}"
+        )
         if on_ask_yes_no:
             result = on_ask_yes_no(
                 T("title_asar_corrupted"),
                 T(
                     "msg_asar_corrupted_valid_backup",
                     "ASAR is corrupted but a valid backup was found. Restore from backup and repatch?",
+                )
+                + (
+                    f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}"
+                    if not asar_valid_detail and asar_reason
+                    else ""
                 ),
             )
             if not result:
@@ -317,13 +337,14 @@ def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_
     # 1. 检查 ASAR 是否已打补丁（用 check_files 对比 patch meta）
     asar_match_patch = True
     mismatched_against_patch = []
+    expected_check_files = [
+        file_path for file_path in check_files if patch_files.get(file_path)
+    ]
+    asar_hashes = get_file_hashes_in_asar(asar_path, expected_check_files)
 
-    for file_path in check_files:
-        expected_hash = patch_files.get(file_path)
-        if not expected_hash:
-            continue
-
-        asar_hash = get_file_hash_in_asar(asar_path, file_path)
+    for file_path in expected_check_files:
+        expected_hash = patch_files[file_path]
+        asar_hash = asar_hashes.get(file_path)
         if asar_hash != expected_hash:
             asar_match_patch = False
             mismatched_against_patch.append((file_path, expected_hash, asar_hash))
@@ -332,13 +353,11 @@ def _handle_both_exist(core, base_dir, asar_path, bak_path, on_info, on_ask_yes_
     # check_files 是会被补丁修改的文件，如果它们在 ASAR 和 BAK 中相同，
     # 但 ASAR 整体 hash 不同，说明 Steam 更新了其他非核心文件
     check_files_match_bak = True
+    bak_hashes = get_file_hashes_in_asar(bak_path, expected_check_files)
 
-    for file_path in check_files:
-        expected_hash = patch_files.get(file_path)
-        if not expected_hash:
-            continue
-        asar_hash = get_file_hash_in_asar(asar_path, file_path)
-        bak_hash = get_file_hash_in_asar(bak_path, file_path)
+    for file_path in expected_check_files:
+        asar_hash = asar_hashes.get(file_path)
+        bak_hash = bak_hashes.get(file_path)
         if asar_hash != bak_hash:
             check_files_match_bak = False
             break
@@ -484,8 +503,6 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
     Returns:
         bool: 文件是否有效
     """
-    import struct
-
     monitor = get_performance_monitor()
     monitor.start(f"validate_{archive_type}")
 
@@ -495,48 +512,9 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
             logger.warning(f"{archive_type.capitalize()} file too small: {file_size} bytes")
             return False
 
-        try:
-            with open(archive_path, "rb") as f:
-                header_buf = f.read(16)
-                if len(header_buf) < 8:
-                    logger.warning(f"{archive_type.capitalize()} header truncated")
-                    return False
-
-                header_size_8byte = struct.unpack("<I", header_buf[0:4])[0]
-                padding = struct.unpack("<I", header_buf[4:8])[0]
-
-                MAX_HEADER_SIZE = 50 * 1024 * 1024
-
-                if header_size_8byte > 0 and header_size_8byte <= MAX_HEADER_SIZE and padding == 0:
-                    json_size = header_size_8byte
-                    json_start = 8
-                else:
-                    if len(header_buf) < 16:
-                        logger.warning(f"{archive_type.capitalize()} header too short for format")
-                        return False
-                    json_size = struct.unpack("<I", header_buf[12:16])[0]
-                    json_start = 16
-
-                if json_size == 0 or json_size > MAX_HEADER_SIZE:
-                    logger.warning(f"{archive_type.capitalize()} invalid JSON size: {json_size}")
-                    return False
-
-                header_bytes = header_buf[json_start : json_start + json_size]
-                if len(header_bytes) < json_size:
-                    f.seek(json_start)
-                    header_bytes = f.read(json_size)
-
-                header_dict = json.loads(header_bytes.decode("utf-8"))
-
-                if "files" not in header_dict:
-                    logger.warning(f"{archive_type.capitalize()} missing 'files' key")
-                    return False
-
-        except (json.JSONDecodeError, struct.error, UnicodeDecodeError) as e:
-            logger.warning(f"{archive_type.capitalize()} file is corrupted: {e}")
-            return False
-        except Exception as e:
-            logger.warning(f"Failed to validate {archive_type} integrity: {e}")
+        valid, reason = validate_asar_with_reason(archive_path)
+        if not valid:
+            logger.warning(f"{archive_type.capitalize()} file is corrupted or unsupported: {reason}")
             return False
 
         return True

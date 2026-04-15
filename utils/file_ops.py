@@ -16,6 +16,7 @@ import hashlib
 import logging
 import os
 import shutil
+import stat
 import struct
 import zipfile
 from typing import Callable, Optional
@@ -89,10 +90,16 @@ def compute_file_hash(file_path: str, chunk_size: int = HASH_CHUNK_SIZE) -> str:
         if not os.path.exists(file_path) or not os.path.isfile(file_path):
             return ""
 
-        # 仅在使用默认值时做动态调整，显式传入的 chunk_size 保持不变
         if chunk_size == HASH_CHUNK_SIZE:
             file_size = os.path.getsize(file_path)
-            actual_chunk = min(4 * 1024 * 1024, max(65536, file_size // 100))
+            if file_size < 10 * 1024 * 1024:
+                actual_chunk = 65536
+            elif file_size < 100 * 1024 * 1024:
+                actual_chunk = 512 * 1024
+            elif file_size < 1024 * 1024 * 1024:
+                actual_chunk = 4 * 1024 * 1024
+            else:
+                actual_chunk = 16 * 1024 * 1024
         else:
             actual_chunk = chunk_size
 
@@ -101,6 +108,12 @@ def compute_file_hash(file_path: str, chunk_size: int = HASH_CHUNK_SIZE) -> str:
             for byte_block in iter(lambda: f.read(actual_chunk), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
+    except PermissionError as e:
+        logger.error(f"Permission denied computing hash for {file_path}: {e}")
+        return ""
+    except OSError as e:
+        logger.error(f"OS error computing hash for {file_path}: {e}")
+        return ""
     except Exception as e:
         logger.error(f"Failed to compute hash for {file_path}: {e}")
         return ""
@@ -148,31 +161,26 @@ def safe_extract_zip(
                     )
 
             for member in zf.infolist():
-                # 检查取消标志
                 if check_cancelled:
                     check_cancelled()
 
-                # 额外检查：拒绝绝对路径（ZIP 规范本不允许，但需明确防御）
                 if os.path.isabs(member.filename):
                     raise ValueError(f"Absolute path not allowed in ZIP file: {member.filename}")
 
-                # 使用 safe_path_within 做路径遍历检测
-                # 该函数先 join 再 normpath/abspath，能防御 ....// 等所有变体
+                if _is_zip_symlink(member):
+                    raise ValueError(f"Symlink not allowed in ZIP file: {member.filename}")
+
                 abs_member_path = safe_path_within(member.filename, abs_dest_dir)
                 if abs_member_path is None:
                     raise ValueError(f"Path traversal detected in ZIP file: {member.filename}")
 
-                # 检查是否为目录
                 if member.filename.endswith("/"):
                     os.makedirs(abs_member_path, exist_ok=True)
                 else:
-                    # 确保父目录存在
                     parent_dir = os.path.dirname(abs_member_path)
                     os.makedirs(parent_dir, exist_ok=True)
 
-                    # 解压文件（使用分块读取避免大文件内存溢出）
                     with zf.open(member) as source, open(abs_member_path, "wb") as target:
-                        # 分块读取，每块 64KB，避免大文件一次性读入内存
                         while True:
                             chunk = source.read(65536)
                             if not chunk:
@@ -185,9 +193,24 @@ def safe_extract_zip(
     except ValueError as e:
         logger.error(f"Security violation in ZIP file: {e}")
         raise
+    except zipfile.BadZipFile as e:
+        logger.error(f"Corrupted ZIP file {zip_path}: {e}")
+        return False
+    except PermissionError as e:
+        logger.error(f"Permission denied extracting ZIP file {zip_path}: {e}")
+        return False
+    except OSError as e:
+        logger.error(f"OS error extracting ZIP file {zip_path}: {e}")
+        return False
     except Exception as e:
         logger.error(f"Failed to extract ZIP file {zip_path}: {e}")
         return False
+
+
+def _is_zip_symlink(member: zipfile.ZipInfo) -> bool:
+    """检查 ZIP 条目是否为符号链接"""
+    mode = (member.external_attr >> 16) & 0xFFFF
+    return stat.S_IFMT(mode) == stat.S_IFLNK
 
 
 def migrate_backup(src: str, dest_dir: str) -> bool:
@@ -217,10 +240,8 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
 
     try:
         if os.path.isfile(src):
-            # 复制单个文件
             shutil.copy2(src, dest_path)
 
-            # 校验哈希
             src_hash = compute_file_hash(src)
             dest_hash = compute_file_hash(dest_path)
 
@@ -230,16 +251,13 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                 return True
             else:
                 logger.error(f"Hash mismatch after migrating file: {src}")
-                # 清理损坏的副本
                 if os.path.exists(dest_path):
                     os.remove(dest_path)
                 return False
 
         elif os.path.isdir(src):
-            # 复制目录
             shutil.copytree(src, dest_path)
 
-            # 校验目录下所有文件哈希
             all_match = True
             for root, _, files in os.walk(src):
                 for name in files:
@@ -262,13 +280,11 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
                     break
 
             if all_match:
-                # 校验通过，删除源目录
                 force_cleanup_dir(src)
                 logger.info(f"Successfully migrated backup directory: {src} -> {dest_path}")
                 return True
             else:
                 logger.error(f"Hash mismatch after migrating directory: {src}")
-                # 清理损坏的副本目录
                 if os.path.exists(dest_path):
                     force_cleanup_dir(dest_path)
                 return False
@@ -277,18 +293,30 @@ def migrate_backup(src: str, dest_dir: str) -> bool:
             logger.error(f"Source path is not a valid file or directory: {src}")
             return False
 
-    except Exception as e:
-        logger.exception(f"Exception occurred during migration of {src}: {e}")
-        # 如果复制过程出错，尝试清理不完整的目标
-        if os.path.exists(dest_path):
-            try:
-                if os.path.isfile(dest_path):
-                    os.remove(dest_path)
-                else:
-                    force_cleanup_dir(dest_path)
-            except Exception:
-                pass
+    except PermissionError as e:
+        logger.error(f"Permission denied during migration of {src}: {e}")
+        _cleanup_dest(dest_path)
         return False
+    except OSError as e:
+        logger.error(f"OS error during migration of {src}: {e}")
+        _cleanup_dest(dest_path)
+        return False
+    except Exception as e:
+        logger.error(f"Exception occurred during migration of {src}: {e}")
+        _cleanup_dest(dest_path)
+        return False
+
+
+def _cleanup_dest(dest_path: str) -> None:
+    """清理不完整的目标路径"""
+    if os.path.exists(dest_path):
+        try:
+            if os.path.isfile(dest_path):
+                os.remove(dest_path)
+            else:
+                force_cleanup_dir(dest_path)
+        except Exception:
+            pass
 
 
 def verify_directory_safe(directory: str) -> bool:
@@ -300,9 +328,6 @@ def verify_directory_safe(directory: str) -> bool:
 
     Returns:
         bool: 目录是否安全（所有路径都在目录内）
-
-    Note:
-        此函数用于验证 ASAR 解压后的结果，确保没有路径遍历攻击
     """
     if not directory or not os.path.exists(directory):
         return True
@@ -324,6 +349,12 @@ def verify_directory_safe(directory: str) -> bool:
                     return False
 
         return True
+    except PermissionError as e:
+        logger.error(f"Permission denied verifying directory safety: {e}")
+        return False
+    except OSError as e:
+        logger.error(f"OS error verifying directory safety: {e}")
+        return False
     except Exception as e:
         logger.error(f"Failed to verify directory safety: {e}")
         return False

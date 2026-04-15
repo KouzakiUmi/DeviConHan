@@ -31,7 +31,6 @@
 ├── gui/                 # GUI 模块
 ├── utils/               # 工具模块
 ├── controllers/         # 控制器模块
-├── tools/               # 运行时工具
 └── Patch/               # 汉化补丁源文件（可选）
 ```
 
@@ -67,7 +66,7 @@ pip3 install pyinstaller
 ```
 
 Pack.cmd 会自动执行：
-2. 压缩 Patch/ 目录为 Patch.zip（如果存在）
+2. 如果存在 `Patch/` 目录，则在临时构建目录中生成一个 staged `Patch.zip`（不会修改工作区中的 `Patch/` 或已跟踪的 `Patch.zip`）
 3. 构建纯净工具箱 (Tyrano_Toolbox.exe)
 4. 构建汉化补丁版 (DevilConnection_Patch.exe)（如果 Patch/ 存在）
 5. 清理临时文件
@@ -120,13 +119,13 @@ python -m PyInstaller -F -w --clean ^
 
 ```bash
 # 安装依赖
-pip3 install pyinstaller
+python3 -m pip install pyinstaller pillow
 
 # 构建
 python3 -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
-    --add-data "tools/node:tools" \
+
     --add-data "config.ini:." \
     --name "Tyrano_Toolbox" \
     main.py
@@ -142,7 +141,7 @@ pip3 install pyinstaller
 python3 -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
-    --add-data "tools/node:tools" \
+
     --add-data "config.ini:." \
     --name "Tyrano_Toolbox" \
     main.py
@@ -235,7 +234,7 @@ jobs:
 ### Q: 打包后程序无法启动？
 
 A: 检查以下几点：
-1. `tools/` 目录是否正确打包
+1. 确保所有必需文件已正确打包
 2. `config.ini` 是否存在
 3. 是否以管理员权限运行
 
@@ -273,12 +272,25 @@ A: 确保图标文件格式正确（.ico for Windows, .icns for macOS）。
 ### 版本标记
 
 ```bash
+# 确保工作区只包含要提交的源码/文档改动
+git status
+
+# 提交后再打 tag
+git add .
+git commit -m "Update ASAR validation, security checks, and packaging docs"
+
 # 创建版本标签
 git tag -a v1.0.0 -m "Release version 1.0.0"
 
 # 推送标签
 git push origin v1.0.0
 ```
+
+### 推送前检查
+
+- 运行 `python -m unittest tests.test_asar_utils tests.test_file_ops_security -v`
+- 运行 `Pack.cmd` 或 `Pack.sh` 验证构建
+- 确认工作区中没有误删的 `Patch/`、误覆盖的 `Patch.zip`、或临时生成的 `.build_assets/`
 
 ---
 

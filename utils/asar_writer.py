@@ -32,7 +32,6 @@ import os
 import shutil
 import struct
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +79,20 @@ def _pickle_write_string(s: str) -> bytes:
 
 
 def _file_integrity(file_path: str) -> tuple:
+    """
+    计算文件的完整性哈希值和大小
+
+    Args:
+        file_path: 文件路径
+
+    Returns:
+        tuple: (完整性信息字典, 文件大小)
+        - 完整性信息字典包含:
+          - algorithm: 哈希算法
+          - hash: 文件的整体哈希值
+          - blockSize: 分块大小
+          - blocks: 各块的哈希值列表
+    """
     sha = hashlib.sha256()
     blocks: list = []
     size = 0
@@ -100,6 +113,16 @@ def _file_integrity(file_path: str) -> tuple:
 
 
 def _dir_has_native(directory: Path, unpack_extensions: frozenset[str]) -> bool:
+    """
+    检查目录是否包含需要解压的原生扩展文件
+
+    Args:
+        directory: 要检查的目录路径
+        unpack_extensions: 需要解压的文件扩展名集合
+
+    Returns:
+        bool: 如果目录包含原生扩展文件，返回 True，否则返回 False
+    """
     try:
         for entry in directory.rglob("*"):
             if entry.is_file() and entry.suffix.lower() in unpack_extensions:
@@ -115,7 +138,7 @@ def asar_pack(
     unpack_extensions=None,
     callback=None,
     check_cancelled=None,
-    unpacked_files: Optional[set] = None,
+    unpacked_files: set | None = None,
 ) -> None:
     """
     将目录打包为 ASAR 归档文件。
@@ -223,7 +246,7 @@ def _walk_for_pack(
     offset_ref: list,
     callback,
     check_cancelled,
-    unpacked_files: Optional[set] = None,
+    unpacked_files: set | None = None,
     parent_is_unpacked: bool = False,
 ) -> None:
     try:
@@ -247,7 +270,7 @@ def _walk_for_pack(
             try:
                 target = entry.resolve().relative_to(src_root)
             except ValueError:
-                raise ValueError(f"Symlink '{rel}' points outside the package")
+                raise ValueError(f"Symlink '{rel}' points outside the package") from None
             header_node[name] = {"link": str(target).replace("\\", "/")}
             if callback:
                 callback(f"Linked: {rel}")
@@ -341,15 +364,10 @@ def asar_extract(
     unpacked_dir = Path(f"{src}.unpacked")
 
     with open(src, "rb") as f:
-        # 严格对照 disk.ts: readArchiveHeaderSync
-        #   sizeBuf(8B)   = sizePickle → [4B payload_size=4][4B header_buf_len]
-        #   headerBuf(NB) = headerPickle → [4B payload_size][4B json_len][json bytes][padding]
-        #   base_offset   = 8 + header_buf_len  (= 8 + bytes[4:8])
         size_buf = f.read(8)
         if len(size_buf) < 8:
             raise ValueError(f"Failed to read ASAR size pickle from {src}")
 
-        # sizePickle.payload_size must be 4 (one uint32)
         size_payload_size = struct.unpack("<I", size_buf[0:4])[0]
         header_buf_len = struct.unpack("<I", size_buf[4:8])[0]
         if size_payload_size != 4 or header_buf_len == 0 or header_buf_len > 50 * 1024 * 1024:
@@ -357,16 +375,12 @@ def asar_extract(
                 f"Invalid ASAR size pickle: payload_size={size_payload_size}, header_buf_len={header_buf_len}"
             )
 
-        # base_offset = 8 + header_buf_len  (disk.ts: 8 + filesystem.getHeaderSize())
         base_offset = 8 + header_buf_len
 
-        # Read headerPickle: [4B payload_size][4B json_len][json bytes][padding]
         header_buf = f.read(header_buf_len)
         if len(header_buf) < header_buf_len:
             raise ValueError(f"Failed to read ASAR header pickle from {src}")
 
-        # headerPickle payload_size = align(4 + json_len, 4)
-        # json_len is at bytes[4:8] of headerPickle
         json_len = struct.unpack("<I", header_buf[4:8])[0]
         if json_len == 0 or json_len > 50 * 1024 * 1024:
             raise ValueError(f"Invalid ASAR JSON size: {json_len}")
@@ -374,21 +388,21 @@ def asar_extract(
         header_bytes = header_buf[8 : 8 + json_len]
         header = json.loads(header_bytes.decode("utf-8"))
 
-    if callback:
-        callback("Extracting ASAR...")
+        if callback:
+            callback("Extracting ASAR...")
 
-    unpacked_files = set()
-    _extract_node(
-        header,
-        dest,
-        dest,
-        src,
-        base_offset,
-        unpacked_dir,
-        callback,
-        check_cancelled,
-        unpacked_files,
-    )
+        unpacked_files = set()
+        _extract_node(
+            header,
+            dest,
+            dest,
+            f,
+            base_offset,
+            unpacked_dir,
+            callback,
+            check_cancelled,
+            unpacked_files,
+        )
 
     if callback:
         callback("ASAR extraction complete.")
@@ -414,7 +428,7 @@ def _extract_node(
     node: dict,
     current_dest: Path,
     root_dest: Path,
-    asar_path: Path,
+    asar_file,
     base_offset: int,
     unpacked_dir: Path,
     callback,
@@ -438,7 +452,7 @@ def _extract_node(
                 child,
                 child_dest,
                 root_dest,
-                asar_path,
+                asar_file,
                 base_offset,
                 unpacked_dir,
                 callback,
@@ -468,24 +482,21 @@ def _extract_node(
                 if unpacked_src.exists():
                     shutil.copy2(str(unpacked_src), str(child_dest))
                 else:
-                    # Unpacked 文件标记为 unpacked 但外部目录不存在
-                    # 原始 Node.js asar 中 unpacked 文件没有 offset，无法从 ASAR 内部读取
                     logger.warning(
                         f"Unpacked file missing from external dir (no offset in ASAR): {rel_path}"
                     )
             else:
                 offset = int(child["offset"])
                 size = child["size"]
-                with open(asar_path, "rb") as archive:
-                    archive.seek(base_offset + offset)
-                    remaining = size
-                    with open(child_dest, "wb") as out:
-                        while remaining > 0:
-                            chunk = archive.read(min(remaining, BLOCK_SIZE))
-                            if not chunk:
-                                break
-                            out.write(chunk)
-                            remaining -= len(chunk)
+                asar_file.seek(base_offset + offset)
+                remaining = size
+                with open(child_dest, "wb") as out:
+                    while remaining > 0:
+                        chunk = asar_file.read(min(remaining, BLOCK_SIZE))
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        remaining -= len(chunk)
 
             if child.get("executable") and os.name != "nt":
                 try:

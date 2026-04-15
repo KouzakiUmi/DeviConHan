@@ -2,8 +2,14 @@
 原始汉化文件/
 dist/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 .ruff_cache/
 .roo/
+.build_assets/
+build_toolbox/
+build_patcher/
 plans/
 RAG文档/
 .graphRAG/
@@ -35,6 +41,7 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+.trae/
 
 # OS files
 .DS_Store
@@ -51,6 +58,8 @@ Thumbs.db
 *.bak
 *.backup
 *.spec
+icon.icns
+icon.png
 build/
 develop-eggs/
 downloads/

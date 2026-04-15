@@ -8,6 +8,8 @@ set "ROOT=%~dp0"
 set PY_SCRIPT=main.py
 set OUT_TOOL=Tyrano_Toolbox
 set OUT_PATCH=DevilConnection_Patch
+set "BUILD_ASSETS=%ROOT%.build_assets"
+set "PATCH_ASSET=%ROOT%Patch.zip"
 
 echo ==========================================
 echo    Tyrano Builder (Windows Packager)
@@ -31,7 +33,7 @@ python --version
 python -m PyInstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [Error] PyInstaller not found. Installing dependencies...
-    pip install pyinstaller pillow
+    python -m pip install pyinstaller pillow
     if %errorlevel% neq 0 (
         echo [Error] Failed to install dependencies.
         pause
@@ -44,6 +46,8 @@ echo [1/2] Building Toolbox...
 echo ------------------------------------------
 
 if exist "dist" rd /s /q "dist"
+if exist "%BUILD_ASSETS%" rd /s /q "%BUILD_ASSETS%"
+mkdir "%BUILD_ASSETS%" >nul 2>&1
 
 python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_toolbox" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%config.ini;." --name "%OUT_TOOL%" "%ROOT%%PY_SCRIPT%"
 
@@ -59,6 +63,7 @@ echo.
 echo [2/2] Checking for Patch Data...
 
 set "BUILD_PATCHER=0"
+set "PATCH_ASSET=%ROOT%Patch.zip"
 
 if exist "%ROOT%Patch.zip" (
     echo - Patch.zip found.
@@ -72,13 +77,12 @@ if exist "%ROOT%Patch" (
     for %%F in ("%ROOT%Patch\*") do set "HAS_PATCH_FILES=1" & goto :check_files
     :check_files
     if defined HAS_PATCH_FILES (
-        echo - Patch folder found. Compressing to Patch.zip to boost startup performance...
-        if exist "%ROOT%Patch.zip" del /q "%ROOT%Patch.zip"
-        python -c "import shutil; shutil.make_archive('Patch', 'zip', 'Patch')"
-        
-        if exist "%ROOT%Patch.zip" (
-            echo - Cleaning up original Patch directory...
-            rd /s /q "%ROOT%Patch"
+        echo - Patch folder found. Creating staged Patch.zip for build...
+        set "PATCH_ASSET=%BUILD_ASSETS%\Patch"
+        if exist "!PATCH_ASSET!.zip" del /q "!PATCH_ASSET!.zip"
+        python -c "import shutil; shutil.make_archive(r'%BUILD_ASSETS%\\Patch', 'zip', r'%ROOT%Patch')"
+
+        if exist "!PATCH_ASSET!.zip" (
             set "HAS_PATCH_DATA=1"
         ) else (
             echo [Error] Failed to compress Patch directory.
@@ -87,7 +91,7 @@ if exist "%ROOT%Patch" (
         echo - Warning: Patch folder is empty.
     )
     if defined HAS_PATCH_DATA (
-        endlocal & set "BUILD_PATCHER=1"
+        endlocal & set "BUILD_PATCHER=1" & set "PATCH_ASSET=%BUILD_ASSETS%\Patch.zip"
     ) else (
         endlocal
     )
@@ -97,7 +101,7 @@ if "%BUILD_PATCHER%"=="1" (
     echo - Building Patcher...
     echo ------------------------------------------
 
-    python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%config.ini;." --add-data "%ROOT%Patch.zip;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
+    python -m PyInstaller -F -w --clean -i "%ROOT%icon.ico" --distpath "dist" --workpath "build_patcher" --add-data "%ROOT%icon.ico;." --add-data "%ROOT%config.ini;." --add-data "%PATCH_ASSET%;." --name "%OUT_PATCH%" "%ROOT%%PY_SCRIPT%"
 
     if %errorlevel% neq 0 (
         echo [Error] Patcher build failed
@@ -115,6 +119,7 @@ echo.
 echo [Cleanup] Cleaning up...
 if exist "build_toolbox" rd /s /q "build_toolbox"
 if exist "build_patcher" rd /s /q "build_patcher"
+if exist "%BUILD_ASSETS%" rd /s /q "%BUILD_ASSETS%"
 if exist "__pycache__" rd /s /q "__pycache__"
 for /d %%d in (__pycache__) do rd /s /q "%%d" 2>nul
 del /q *.spec >nul 2>&1

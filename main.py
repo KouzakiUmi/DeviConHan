@@ -86,27 +86,50 @@ def main() -> int:
         return 1
 
     # Windows 下动态分配控制台用于 Debug
-    _console_opened = False
-    _original_stdout = sys.stdout
-    _original_stderr = sys.stderr
-    _ctypes = None
-    if sys.platform.startswith("win") and not args.batch:
-        config = get_config()
-        if config.get_gui_config("show_console", False):
-            try:
-                import ctypes
+    class ConsoleManager:
+        def __init__(self):
+            self.console_opened = False
+            self.original_stdout = sys.stdout
+            self.original_stderr = sys.stderr
+            self.ctypes = None
+            self.stdout = None
+            self.stderr = None
 
-                _ctypes = ctypes
-                # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
-                if ctypes.windll.kernel32.AllocConsole():
-                    # 在重定向之前先备份原有的 stdout/stderr，并重置到已关闭状态
-                    new_stdout = open("CONOUT$", "w", encoding="utf-8")
-                    new_stderr = open("CONOUT$", "w", encoding="utf-8")
-                    sys.stdout = new_stdout
-                    sys.stderr = new_stderr
-                    _console_opened = True
-            except Exception as e:
-                logger.warning(f"Failed to allocate console: {e}")
+        def acquire(self):
+            if sys.platform.startswith("win") and not args.batch:
+                config = get_config()
+                if config.get_gui_config("show_console", False):
+                    try:
+                        import ctypes
+                        self.ctypes = ctypes
+                        # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
+                        if ctypes.windll.kernel32.AllocConsole():
+                            # 在重定向之前先备份原有的 stdout/stderr，并重置到已关闭状态
+                            self.stdout = open("CONOUT$", "w", encoding="utf-8")
+                            self.stderr = open("CONOUT$", "w", encoding="utf-8")
+                            sys.stdout = self.stdout
+                            sys.stderr = self.stderr
+                            self.console_opened = True
+                    except Exception as e:
+                        logger.warning(f"Failed to allocate console: {e}")
+
+        def release(self):
+            if self.console_opened and self.ctypes is not None:
+                try:
+                    # 必须先恢复原始句柄，确保后续代码不会尝试写入已关闭的流
+                    if self.stdout and sys.stdout == self.stdout:
+                        sys.stdout.close()
+                    if self.stderr and sys.stderr == self.stderr:
+                        sys.stderr.close()
+
+                    sys.stdout = self.original_stdout
+                    sys.stderr = self.original_stderr
+                    self.ctypes.windll.kernel32.FreeConsole()
+                except Exception as cleanup_err:
+                    logger.warning(f"Console cleanup error: {cleanup_err}")
+
+    console_manager = ConsoleManager()
+    console_manager.acquire()
 
     # 启动GUI模式
     try:
@@ -118,19 +141,7 @@ def main() -> int:
         return 1
     finally:
         # 清理控制台句柄
-        if _console_opened and _ctypes is not None:
-            try:
-                # 必须先恢复原始句柄，确保后续代码不会尝试写入已关闭的流
-                if sys.stdout and sys.stdout != _original_stdout:
-                    sys.stdout.close()
-                if sys.stderr and sys.stderr != _original_stderr:
-                    sys.stderr.close()
-                
-                sys.stdout = _original_stdout
-                sys.stderr = _original_stderr
-                _ctypes.windll.kernel32.FreeConsole()
-            except Exception as cleanup_err:
-                logger.warning(f"Console cleanup error: {cleanup_err}")
+        console_manager.release()
 
 
 if __name__ == "__main__":

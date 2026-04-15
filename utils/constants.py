@@ -5,7 +5,6 @@
 """
 
 import os
-from typing import List
 
 # ================= 文件限制常量 =================
 MAX_CONFIG_FILE_SIZE: int = 1024 * 1024  # 1MB
@@ -60,6 +59,7 @@ BACKUP_TIMESTAMP_FORMAT: str = "%Y%m%d%H%M%S"
 DEFAULT_BACKUP_DIR: str = os.path.join(os.path.expanduser("~"), ".tyranopatcher", "backups")
 
 # ================= ASAR 协议常量 =================
+# Pickle 格式 sizePickle 的固定 payload_size 字段，不应当被当作完整文件签名使用。
 ASAR_MAGIC_NUMBER: bytes = b"\x04\x00\x00\x00"
 ASAR_DATA_SIZE: int = 4
 ASAR_BLOCK_SIZE: int = 4 * 1024 * 1024

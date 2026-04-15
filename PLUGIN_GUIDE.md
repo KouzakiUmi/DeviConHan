@@ -95,8 +95,10 @@ Tyrano_Toolbox/
 
 ```ini
 [main]
-# 游戏可执行文件名（针对Fuse移除功能）
-AUTO_TARGET_EXE = YourGame.exe
+# 游戏可执行文件名（针对Fuse移除功能，根据平台设置）
+WINDOWS_EXE = YourGame.exe
+# MACOS_APP = YourGame.app
+# LINUX_BINARY = yourgame
 
 # Fuse哨兵字符串（游戏Electron版本特定的完整性校验标识）
 FUSE_SENTINEL = YourGameFuseSentinel

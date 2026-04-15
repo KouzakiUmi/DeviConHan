@@ -19,7 +19,7 @@
 
 </div>
 
-**开发者说明**：本工具箱为通用 **Tyrano补丁工具**，`でびるコネクション` 汉化补丁为自带示例。通过**修改 `config.ini`**（AUTO_TARGET_EXE、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATE 等）并替换 `patch.zip`（包含对应游戏的汉化文件ZIP），即可适配其他 Tyrano/Electron 游戏。详见 [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)。
+**开发者说明**：本工具箱为通用 **Tyrano补丁工具**，`でびるコネクション` 汉化补丁为自带示例。通过**修改 `config.ini`**（WINDOWS_EXE、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATE 等）并替换 `patch.zip`（包含对应游戏的汉化文件ZIP），即可适配其他 Tyrano/Electron 游戏。详见 [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)。
 
 ---
 
@@ -65,7 +65,7 @@ cd repo-path
 
 **前置要求**
 - Python 3.8+
-- Node.js 18+
+- 无外部依赖，纯 Python 实现
 
 **安装步骤**
 ```bash
@@ -73,8 +73,8 @@ cd repo-path
 git clone <repo-url>
 cd <repo-path>
 
-# 2. 安装依赖
-pip install pyinstaller
+# 2. 安装构建依赖（仅构建时需要）
+pip install pyinstaller pillow
 
 # 3. 运行程序
 python main.py
@@ -83,7 +83,7 @@ python main.py
 **跨平台构建**
 ```bash
 # macOS / Linux 上构建 Windows 可执行文件（需要 wine）
-pip install pyinstaller asar
+pip install pyinstaller pillow
 python -m PyInstaller -F -w --clean \
     -i "icon.ico" \
     --add-data "icon.ico:." \
@@ -134,16 +134,18 @@ TyranoV8/Electron版本迭代可能改变Fuse布局。开发者工具箱 -> 配�
 ### 📁 项目架构
 
 - **入口**：`main.py` — 参数解析、init_lang、bootstrap_system（配置/路径/状态检查）、GUI (`gui/main_window.py` + `tabs/*`) 或 batch模式。
-- **core/**：`bootstrap.py`（系统引导）、`patcher.py`（CoreLogic，延迟`import asar`进行extract/create_archive）、`config.py`（单例、用户`~/.tyranopatcher/config.ini`优先、snapshot+TTL热重载、fallback如`TARGET_ASAR_NAME=app.asar`、`PATCH_ZIP_NAME=Patch.zip`）、`steam.py`+`state_validator.py`（4种ASAR/备份/patch_meta状态机 + 纯Python哈希验证）、`save_service.py`、`fuse.py`（可配置偏移）、`patch_info.py`（原子`_atomic_write_json`）、`batch.py`。
+- **core/**：`bootstrap.py`（系统引导）、`patcher.py`（CoreLogic，延迟导入`utils.asar_writer`进行extract/create_archive）、`config.py`（单例、用户`~/.tyranopatcher/config.ini`优先、snapshot+TTL热重载、fallback如`TARGET_ASAR_NAME=app.asar`、`PATCH_ZIP_NAME=Patch.zip`）、`steam.py`+`state_validator.py`（4种ASAR/备份/patch_meta状态机 + 纯Python哈希验证）、`save_service.py`、`fuse.py`（可配置偏移）、`patch_info.py`（原子`_atomic_write_json`）、`batch.py`。
 - **gui/**：`main_window.py`（tab管理、log/progress）、`tabs/patch_tab.py`、`save_tab.py`、`tools_tab.py`（ASAR/Fuse/配置UI）。
 - **controllers/**：业务逻辑分离（`patch_controller.py`封装Steam处理+patch流程、`save_manager_controller.py`）。
 - **utils/**：`language.py`（系统语言优先级+菜单切换+INI持久化）、`paths.py`（PyInstaller _MEIPASS兼容）、`async_ops.py`（ThreadPool+取消）、`file_ops.py`（hash/migrate）、`cleanup.py`、`logging.py`（RotatingFile）、`asar_utils.py`（纯Python校验）、`validators.py`、`constants.py`、`performance.py`。
-- **打包脚本**：`Pack.cmd`/`Pack.sh` — 检查Python/PyInstaller、构建`Tyrano_Toolbox`、`if Patch.zip or Patch/`则压缩为Patch.zip（提升启动性能并清理原目录）、构建带补丁的`DevilConnection_Patch`、清理build/和.spec。**当前无node.exe/bundled_asar依赖**，依赖`asar`包（build时pip install）。
+- **打包脚本**：`Pack.cmd`/`Pack.sh` — 检查Python/PyInstaller、构建`Tyrano_Toolbox`、在临时构建目录中为`Patch/`生成 staged `Patch.zip`（不改动工作区原文件）、构建带补丁的`DevilConnection_Patch`、清理build/和.spec。**当前无外部依赖**，仅需Python标准库与PyInstaller构建工具。
 
 **config.ini模板关键项**（用户副本优先，可热重载验证）：
 ```ini
 [main]
-AUTO_TARGET_EXE = DevilConnection.exe
+WINDOWS_EXE = DevilConnection.exe
+MACOS_APP = Devil Connection.app
+LINUX_BINARY = DevilConnection
 FUSE_SENTINEL = dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX
 FUSE_ASAR_INTEGRITY_OFFSET = 4
 TARGET_ASAR_NAME = app.asar

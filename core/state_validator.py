@@ -15,14 +15,13 @@ __all__ = [
 import json
 import logging
 import os
-import struct
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hash_in_asar
-from utils.constants import ASAR_MAGIC_NUMBER, MIN_ASAR_SIZE
+from utils.asar_utils import get_file_hash_in_asar, validate_asar_with_reason
+from utils.constants import MIN_ASAR_SIZE
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
 
 logger = logging.getLogger(__name__)
@@ -156,7 +155,7 @@ class StateValidator:
             )
 
     def _validate_asar(self) -> FileState:
-        """验证ASAR文件（支持 8 字节和 16 字节两种格式）"""
+        """验证ASAR文件"""
         state = FileState(path=self.asar_path, exists=os.path.exists(self.asar_path))
 
         if not state.exists:
@@ -171,114 +170,33 @@ class StateValidator:
             return state
 
         try:
-            with open(self.asar_path, "rb") as f:
-                f.seek(0, os.SEEK_END)
-                state.size = f.tell()
-                f.seek(0)
-
-                if state.size < MIN_ASAR_SIZE:
-                    self.errors.append(
-                        StateValidationError(
-                            severity="critical",
-                            message=f"ASAR file too small ({state.size} bytes)",
-                            file_path=self.asar_path,
-                            suggestion="File is likely corrupted, restore from backup",
-                        )
+            state.size = os.path.getsize(self.asar_path)
+            if state.size < MIN_ASAR_SIZE:
+                self.errors.append(
+                    StateValidationError(
+                        severity="critical",
+                        message=f"ASAR file too small ({state.size} bytes)",
+                        file_path=self.asar_path,
+                        suggestion="File is likely corrupted, restore from backup",
                     )
-                    state.is_valid = False
-                    return state
+                )
+                state.is_valid = False
+                return state
 
-                header_buf = f.read(16)
-                if len(header_buf) < 8:
-                    self.errors.append(
-                        StateValidationError(
-                            severity="critical",
-                            message="ASAR header truncated",
-                            file_path=self.asar_path,
-                            suggestion="File is corrupted, restore from backup",
-                        )
+            asar_valid, asar_reason = validate_asar_with_reason(self.asar_path)
+            if not asar_valid:
+                self.errors.append(
+                    StateValidationError(
+                        severity="critical",
+                        message=f"ASAR validation failed: {asar_reason}",
+                        file_path=self.asar_path,
+                        suggestion="File is corrupted, restore from backup",
                     )
-                    state.is_valid = False
-                    return state
+                )
+                state.is_valid = False
+                return state
 
-                header_size_8byte = struct.unpack("<I", header_buf[0:4])[0]
-                padding = struct.unpack("<I", header_buf[4:8])[0]
-
-                MAX_HEADER_SIZE = 50 * 1024 * 1024
-
-                if header_size_8byte > 0 and header_size_8byte <= MAX_HEADER_SIZE and padding == 0:
-                    json_size = header_size_8byte
-                    json_start = 8
-                else:
-                    if len(header_buf) < 16:
-                        self.errors.append(
-                            StateValidationError(
-                                severity="critical",
-                                message="ASAR file too small for header format",
-                                file_path=self.asar_path,
-                                suggestion="File may be corrupted, restore from backup",
-                            )
-                        )
-                        state.is_valid = False
-                        return state
-                    json_size = struct.unpack("<I", header_buf[12:16])[0]
-                    json_start = 16
-
-                if json_size == 0 or json_size > MAX_HEADER_SIZE:
-                    self.errors.append(
-                        StateValidationError(
-                            severity="critical",
-                            message=f"ASAR JSON size invalid ({json_size} bytes)",
-                            file_path=self.asar_path,
-                            suggestion="File may be corrupted, restore from backup",
-                        )
-                    )
-                    state.is_valid = False
-                    return state
-
-                header_bytes = header_buf[json_start : json_start + json_size]
-                if len(header_bytes) < json_size:
-                    f.seek(json_start)
-                    header_bytes = f.read(json_size)
-
-                try:
-                    header_dict = json.loads(header_bytes.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                    self.errors.append(
-                        StateValidationError(
-                            severity="critical",
-                            message=f"ASAR header JSON corrupted: {e}",
-                            file_path=self.asar_path,
-                            suggestion="File is corrupted, restore from backup",
-                        )
-                    )
-                    state.is_valid = False
-                    return state
-
-                if "files" not in header_dict:
-                    self.errors.append(
-                        StateValidationError(
-                            severity="critical",
-                            message="ASAR header missing 'files' key",
-                            file_path=self.asar_path,
-                            suggestion="Invalid ASAR format, restore from backup",
-                        )
-                    )
-                    state.is_valid = False
-                    return state
-
-                files = header_dict.get("files", {})
-                if "package.json" not in files:
-                    self.warnings.append(
-                        StateValidationError(
-                            severity="warning",
-                            message="ASAR missing package.json",
-                            file_path=self.asar_path,
-                            suggestion="ASAR may be incomplete or corrupted",
-                        )
-                    )
-
-                state.is_valid = True
+            state.is_valid = True
 
         except OSError as e:
             self.errors.append(
@@ -317,21 +235,16 @@ class StateValidator:
 
         try:
             state.size = os.path.getsize(self.bak_path)
-
-            # 验证备份完整性
-            with open(self.bak_path, "rb") as f:
-                magic = f.read(4)
-                if magic != ASAR_MAGIC_NUMBER:
-                    self.warnings.append(
-                        StateValidationError(
-                            severity="warning",
-                            message="Backup file is corrupted",
-                            file_path=self.bak_path,
-                            suggestion="Backup will be recreated when you apply patch",
-                        )
+            state.is_valid, backup_reason = validate_asar_with_reason(self.bak_path)
+            if not state.is_valid:
+                self.warnings.append(
+                    StateValidationError(
+                        severity="warning",
+                        message=f"Backup file is corrupted: {backup_reason}",
+                        file_path=self.bak_path,
+                        suggestion="Backup will be recreated when you apply patch",
                     )
-                else:
-                    state.is_valid = True
+                )
 
         except Exception as e:
             self.warnings.append(
@@ -534,10 +447,9 @@ class StateValidator:
             return False, "Backup file not found"
 
         try:
-            with open(self.bak_path, "rb") as f:
-                magic = f.read(4)
-                if magic != b"\x04\x00\x00\x00":
-                    return False, "Backup file is corrupted"
+            valid, reason = validate_asar_with_reason(self.bak_path)
+            if not valid:
+                return False, f"Backup file is corrupted: {reason}"
         except Exception as e:
             return False, f"Cannot read backup: {e}"
 

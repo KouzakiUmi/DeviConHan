@@ -32,7 +32,7 @@ from utils.language import T
 from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
-
+from utils.asar_utils import validate_asar_with_reason
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +49,13 @@ class PatchController:
 
     负责处理补丁安装的完整流程，包括：
     - 系统状态验证
-    - 磁盘空间预检
-    - Steam更新检测
-    - 事务性ASAR操作
-    - 自动回滚机制
+    - 磁盘空间检查
+    - 补丁提取和应用
+    - ASAR文件操作
+    - 状态一致性验证
+    - 错误处理和回滚
+
+    提供了完整的事务性操作，确保补丁安装过程的可靠性和安全性。
     """
 
     def __init__(self, core_logic, log_callback: Optional[Callable] = None):
@@ -101,20 +104,15 @@ class PatchController:
         if not os.path.exists(res):
             return False, T("err_res_missing", "❌ 错误: 缺少 resources 文件夹。")
 
-        from utils.constants import ASAR_MAGIC_NUMBER
-
         asar_corrupted = False
+        asar_reason = ""
         if os.path.exists(asar):
-            if os.path.getsize(asar) < 4:
+            try:
+                asar_valid, asar_reason = validate_asar_with_reason(asar)
+                asar_corrupted = not asar_valid
+            except Exception:
                 asar_corrupted = True
-            else:
-                try:
-                    with open(asar, "rb") as f:
-                        magic = f.read(4)
-                        if magic != ASAR_MAGIC_NUMBER:
-                            asar_corrupted = True
-                except Exception:
-                    asar_corrupted = True
+                asar_reason = "Unexpected validation error"
 
         if not os.path.exists(asar) or asar_corrupted:
             if os.path.exists(bak):
@@ -134,7 +132,12 @@ class PatchController:
             elif asar_corrupted:
                 return (
                     False,
-                    "❌ 错误: app.asar 文件已损坏且无备份，请在 Steam 中验证游戏文件完整性。",
+                    "❌ 错误: app.asar 文件已损坏且无备份，请在 Steam 中验证游戏文件完整性。"
+                    + (
+                        f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}"
+                        if asar_reason
+                        else ""
+                    ),
                 )
 
         # ASAR 和 BAK 都不存在才算失败（BAK 存在时 run_auto_patch 可直接用 BAK 为源）
@@ -271,8 +274,11 @@ class PatchController:
         if not space_ok:
             if on_error:
                 on_error(
-                    "Disk Space Error",
-                    "Insufficient disk space. Please free up some space and try again.",
+                    T("title_disk_space_error", "Disk Space Error"),
+                    T(
+                        "msg_insufficient_disk_space",
+                        "Insufficient disk space. Please free up some space and try again.",
+                    ),
                 )
             return False, None, "Insufficient disk space"
 
@@ -421,14 +427,10 @@ class PatchController:
             return
 
         try:
-            from utils.constants import ASAR_MAGIC_NUMBER
-
-            # 验证备份完整性
-            with open(bak_path, "rb") as f:
-                magic = f.read(4)
-                if magic != ASAR_MAGIC_NUMBER:
-                    logger.error("Backup is corrupted, cannot restore")
-                    return
+            valid, reason = validate_asar_with_reason(bak_path)
+            if not valid:
+                logger.error(f"Backup is corrupted, cannot restore: {reason}")
+                return
         except Exception as e:
             logger.error(f"Cannot verify backup: {e}")
             return

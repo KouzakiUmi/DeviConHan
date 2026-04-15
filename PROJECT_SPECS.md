@@ -3,7 +3,6 @@
 **でびるコネクション汉化补丁是自带示例作品。可通过config和patch.zip适配其他游戏。**
 
 这份文档详细描述了本工具的设计哲学、架构细节、核心工作流以及避免常见误解的关键设定。
-**任何后续的维护者（包括人类与 AI Agent）在修改核心代码前，请务必阅读本文档，避免破坏原有的设计闭环。**
 
 ---
 
@@ -87,11 +86,13 @@
 * 程序现在将 `34` 和 `4` 作为**可配置项**暴露在 `config.ini` 中 (`FUSE_WIRE_HEADER_LENGTH`, `FUSE_ASAR_INTEGRITY_OFFSET`)。UI 界面提供直接修改偏移量的入口，保障引擎换代后的向下兼容能力。修改的值将从 `0x31 (1)` 变为 `0x30 (0)`。
 
 ### 3.5 纯 Python 的 ASAR Hash 读取 (In-Memory ASAR Parsing)
-* 程序使用 Python 直接读取二进制 ASAR 的 Header Size（小端 uint32），截取 JSON 字典字符串，找到目标文件的 Offset 和 Size，然后 `mmap`/`seek` 直接在内存中计算 SHA256。此操作使得更新检测极为迅速，不会产生磁盘 I/O 碎片。
+* 程序使用 Python 直接解析 ASAR 头部，兼容 `modern_pickle`、`legacy_8` 和 `legacy_16` 三种布局。
+* 对现代 Pickle 格式，头部结构为 `[sizePickle 8B][headerPickle NB][file data...]`，数据区起点是 `8 + headerPickle.length`。
+* 解析出 JSON 字典、目标文件的 Offset 和 Size 后，再通过 `seek` 直接计算 SHA256。此操作使得更新检测极为迅速，不会产生额外的解包开销。
 
 ### 3.6 ASAR 完整性校验 (Archive Integrity Validation)
 * 在 `core/steam.py -> _validate_archive_integrity()` 中，**同样使用纯 Python 解析 ASAR header**来验证归档文件完整性，不再启动 `node.exe` 子进程。
-* 校验流程：读取 ASAR magic number → 解析 header 大小 → 提取 JSON header → 检查 `package.json` 是否存在于 files 列表中。整个过程零子进程开销，耗时从原先的 0.5-1s 降至约 10ms。
+* 校验流程：按支持的格式依次尝试解析头部 → 提取 JSON header → 校验 `files` 字段存在。不会再把前 4 字节 `0x04 00 00 00` 当作完整文件签名使用。整个过程零子进程开销，耗时从原先的 0.5-1s 降至约 10ms。
 
 ### 3.7 补丁信息原子写入 (Atomic Patch Info Writes)
 * `core/patch_info.py` 中的 `save_patch_info()` 和 `save_patch_meta()` 使用原子写入模式（先写 `.tmp` 临时文件，再 `os.replace` 原子替换）。
