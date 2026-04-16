@@ -107,7 +107,7 @@ class SaveTab(ttk.Frame):
 
                 def _migrate_worker(cancel_event=None, _check_cancelled=None):
                     try:
-                        self.app.save_controller.set_log_callback(self.app.log)
+                        self.app.save_controller.set_log_callback(self.app.ui_log)
                         migrated_count, failed_count = self.app.save_controller.migrate_backups(
                             old_dir, new_dir, _check_cancelled=_check_cancelled
                         )
@@ -187,7 +187,7 @@ class SaveTab(ttk.Frame):
 
         def _worker(cancel_event=None, _check_cancelled=None):
             try:
-                self.app.save_controller.set_log_callback(self.app.log)
+                self.app.save_controller.set_log_callback(self.app.ui_log)
                 success = self.app.save_controller.execute_backup(
                     save_dir, parent, use_zip, _check_cancelled=_check_cancelled
                 )
@@ -250,7 +250,7 @@ class SaveTab(ttk.Frame):
 
             def _w(cancel_event=None, _check_cancelled=None):
                 try:
-                    self.app.save_controller.set_log_callback(self.app.log)
+                    self.app.save_controller.set_log_callback(self.app.ui_log)
                     success, error_msg = self.app.save_controller.execute_restore(
                         save_dir, src, _check_cancelled=_check_cancelled
                     )
@@ -301,7 +301,7 @@ class SaveTab(ttk.Frame):
 
         def _w(cancel_event=None, _check_cancelled=None):
             try:
-                self.app.save_controller.set_log_callback(self.app.log)
+                self.app.save_controller.set_log_callback(self.app.ui_log)
                 success = self.app.save_controller.execute_delete(src)
                 if success:
                     self.after(0, self.scan_saves)

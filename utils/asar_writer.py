@@ -463,14 +463,24 @@ def _extract_node(
 
         elif "link" in child:
             child_dest.parent.mkdir(parents=True, exist_ok=True)
-            link_target = current_dest / child["link"]
+            link_target = root_dest / child["link"]
             try:
                 child_dest.symlink_to(link_target)
             except FileExistsError:
                 child_dest.unlink()
                 child_dest.symlink_to(link_target)
-            except OSError:
-                pass
+            except OSError as e:
+                if os.name == "nt":
+                    logger.warning(
+                        "Skipping symlink recreation for '%s' -> '%s': %s",
+                        rel_path,
+                        child["link"],
+                        e,
+                    )
+                else:
+                    raise OSError(
+                        f"Failed to recreate symlink '{rel_path}' -> '{child['link']}': {e}"
+                    ) from e
 
         else:
             child_dest.parent.mkdir(parents=True, exist_ok=True)

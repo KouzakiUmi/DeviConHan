@@ -22,6 +22,7 @@ from core.config import get_config
 from core.patch_info import save_patch_info, save_patch_meta
 from core.state_validator import StateValidator, SystemState
 from core.steam import handle_steam_update
+from utils.asar_utils import validate_asar_with_reason
 from utils.cleanup import force_cleanup_dir
 from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 from utils.disk_utils import (
@@ -32,7 +33,6 @@ from utils.language import T
 from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path, is_app_bundle
-from utils.asar_utils import validate_asar_with_reason
 
 logger = logging.getLogger(__name__)
 

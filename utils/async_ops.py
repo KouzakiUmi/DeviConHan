@@ -33,6 +33,7 @@ class OperationState(Enum):
 
     PENDING = "pending"
     RUNNING = "running"
+    CANCELLING = "cancelling"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     FAILED = "failed"
@@ -117,9 +118,12 @@ class AsyncOperationManager:
 
         with self._lock:
             existing = self._operations.get(operation_id)
-            if existing is not None and existing.state == OperationState.RUNNING:
+            if existing is not None and existing.state in {
+                OperationState.RUNNING,
+                OperationState.CANCELLING,
+            }:
                 logger.warning(
-                    f"Operation '{operation_id}' is already running. Ignoring duplicate submit."
+                    f"Operation '{operation_id}' is already active. Ignoring duplicate submit."
                 )
                 return existing.future  # type: ignore[return-value]
 

@@ -2,12 +2,13 @@
 """恶魔链接补丁工具 - 主程序入口"""
 
 import argparse
+import logging
 import sys
 
 from core.config import get_config
 from gui.main_window import App
 from utils.language import init_lang
-from utils.logging import setup_logging
+from utils.logging import retarget_console_streams, setup_logging
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -88,7 +89,8 @@ def main() -> int:
     # Windows 下动态分配控制台用于 Debug
     class ConsoleManager:
         def __init__(self):
-            self.console_opened = False
+            self.console_allocated = False
+            self.console_connected = False
             self.original_stdout = sys.stdout
             self.original_stderr = sys.stderr
             self.ctypes = None
@@ -101,30 +103,54 @@ def main() -> int:
                 if config.get_gui_config("show_console", False):
                     try:
                         import ctypes
+
                         self.ctypes = ctypes
-                        # 如果 AllocConsole 返回非0，说明成功分配了新的控制台
-                        if ctypes.windll.kernel32.AllocConsole():
-                            # 在重定向之前先备份原有的 stdout/stderr，并重置到已关闭状态
-                            self.stdout = open("CONOUT$", "w", encoding="utf-8")
-                            self.stderr = open("CONOUT$", "w", encoding="utf-8")
+                        # 尝试附加到现有控制台或创建新控制台
+                        # 先尝试 AttachConsole(-1) 附加到父进程的控制台
+                        if ctypes.windll.kernel32.AttachConsole(-1):
+                            self.console_connected = True
+                        elif ctypes.windll.kernel32.AllocConsole():
+                            # 如果附加失败，尝试创建新控制台
+                            self.console_allocated = True
+                            self.console_connected = True
+
+                        if self.console_connected:
+                            self.stdout = open("CONOUT$", "w", encoding="utf-8", buffering=1)
+                            self.stderr = open("CONOUT$", "w", encoding="utf-8", buffering=1)
                             sys.stdout = self.stdout
                             sys.stderr = self.stderr
-                            self.console_opened = True
+                            retarget_console_streams(
+                                self.stdout,
+                                self.stderr,
+                                old_stdout=self.original_stdout,
+                                old_stderr=self.original_stderr,
+                            )
+                            logger.debug("Console attached/allocated for debugging")
                     except Exception as e:
-                        logger.warning(f"Failed to allocate console: {e}")
+                        logger.warning(f"Failed to attach/allocate console: {e}")
 
         def release(self):
-            if self.console_opened and self.ctypes is not None:
+            if self.console_connected:
                 try:
-                    # 必须先恢复原始句柄，确保后续代码不会尝试写入已关闭的流
-                    if self.stdout and sys.stdout == self.stdout:
-                        sys.stdout.close()
-                    if self.stderr and sys.stderr == self.stderr:
-                        sys.stderr.close()
-
+                    retarget_console_streams(
+                        self.original_stdout,
+                        self.original_stderr,
+                        old_stdout=self.stdout,
+                        old_stderr=self.stderr,
+                    )
                     sys.stdout = self.original_stdout
                     sys.stderr = self.original_stderr
-                    self.ctypes.windll.kernel32.FreeConsole()
+
+                    if self.stdout is not None:
+                        self.stdout.close()
+                    if self.stderr is not None and self.stderr is not self.stdout:
+                        self.stderr.close()
+
+                    if self.ctypes is not None:
+                        self.ctypes.windll.kernel32.FreeConsole()
+                    self.console_allocated = False
+                    self.console_connected = False
+                    logging.getLogger(__name__).debug("Console freed")
                 except Exception as cleanup_err:
                     logger.warning(f"Console cleanup error: {cleanup_err}")
 

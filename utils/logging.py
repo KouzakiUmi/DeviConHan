@@ -17,6 +17,31 @@ class NewlineSanitizingFormatter(logging.Formatter):
         return super().format(record)
 
 
+def retarget_console_streams(
+    stdout,
+    stderr=None,
+    *,
+    old_stdout=None,
+    old_stderr=None,
+) -> int:
+    """Rebind existing non-file logging stream handlers to new console streams."""
+    if stderr is None:
+        stderr = stdout
+
+    rebound = 0
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            continue
+        if isinstance(handler, logging.StreamHandler):
+            if old_stderr is not None and handler.stream is old_stderr:
+                handler.setStream(stderr)
+            else:
+                handler.setStream(stdout)
+            rebound += 1
+    return rebound
+
+
 def setup_logging(
     log_dir: Optional[str] = None,
     log_file: str = "tyrano_patcher.log",

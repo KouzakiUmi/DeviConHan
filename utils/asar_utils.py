@@ -11,6 +11,7 @@ import logging
 import os
 import struct
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class AsarReader:
     file_size: int
 
 
-def _parse_pickle_header(f) -> AsarHeaderInfo | None:
+def _parse_pickle_header(f: Any) -> Optional[AsarHeaderInfo]:
     """解析 @electron/asar 当前 Pickle 头部格式"""
     f.seek(0)
     size_buf = f.read(8)
@@ -53,7 +54,12 @@ def _parse_pickle_header(f) -> AsarHeaderInfo | None:
         return None
 
     payload_size, json_size = struct.unpack("<II", header_buf[:8])
-    if payload_size < 4 or payload_size > header_buf_len or json_size <= 0 or json_size > MAX_HEADER_SIZE:
+    if (
+        payload_size < 4
+        or payload_size > header_buf_len
+        or json_size <= 0
+        or json_size > MAX_HEADER_SIZE
+    ):
         return None
 
     json_end = 8 + json_size
@@ -72,7 +78,7 @@ def _parse_pickle_header(f) -> AsarHeaderInfo | None:
     )
 
 
-def _parse_legacy_8_header(f) -> AsarHeaderInfo | None:
+def _parse_legacy_8_header(f: Any) -> Optional[AsarHeaderInfo]:
     """解析旧 8 字节头部格式 [json_size][padding]"""
     f.seek(0)
     header_buf = f.read(8)
@@ -99,7 +105,7 @@ def _parse_legacy_8_header(f) -> AsarHeaderInfo | None:
     )
 
 
-def _parse_legacy_16_header(f) -> AsarHeaderInfo | None:
+def _parse_legacy_16_header(f: Any) -> Optional[AsarHeaderInfo]:
     """解析旧 16 字节头部格式"""
     f.seek(0)
     header_buf = f.read(16)
@@ -134,7 +140,7 @@ def _parse_legacy_16_header(f) -> AsarHeaderInfo | None:
     )
 
 
-def parse_asar_header(asar_path: str) -> AsarHeaderInfo | None:
+def parse_asar_header(asar_path: str) -> Optional[AsarHeaderInfo]:
     """
     解析 ASAR 头部，按已知格式依次尝试。
 
@@ -284,7 +290,7 @@ def validate_asar_with_reason(asar_path: str) -> tuple[bool, str]:
     return True, ""
 
 
-def open_asar_reader(asar_path: str) -> AsarReader | None:
+def open_asar_reader(asar_path: str) -> Optional[AsarReader]:
     """打开一个可复用的 ASAR 读取器"""
     ok, reason = validate_asar_with_reason(asar_path)
     if not ok:
@@ -352,7 +358,7 @@ def check_asar_path_traversal(asar_path: str) -> bool:
     if header_dict is None:
         return False
 
-    def check_node(node):
+    def check_node(node: Dict[str, Any]) -> bool:
         if "files" in node:
             for name, child in node["files"].items():
                 if ".." in name or name.startswith("/") or name.startswith("\\") or ":" in name:
@@ -362,10 +368,10 @@ def check_asar_path_traversal(asar_path: str) -> bool:
                     return False
         return True
 
-    return check_node(header_dict)
+    return check_node(header_dict) if header_dict else False
 
 
-def _resolve_node(header_dict: dict, file_path: str) -> dict | None:
+def _resolve_node(header_dict: Dict[str, Any], file_path: str) -> Optional[Dict[str, Any]]:
     """在 header 树中定位目标文件节点"""
     path_parts = [p for p in file_path.replace("\\", "/").split("/") if p]
 
@@ -379,7 +385,7 @@ def _resolve_node(header_dict: dict, file_path: str) -> dict | None:
     return node
 
 
-def _compute_node_hash(asar_file, base_offset: int, node: dict):
+def _compute_node_hash(asar_file: Any, base_offset: int, node: Dict[str, Any]) -> Optional[str]:
     """对单个 ASAR 文件节点计算哈希"""
     if "offset" not in node or "size" not in node:
         return None
@@ -408,15 +414,15 @@ def _compute_node_hash(asar_file, base_offset: int, node: dict):
     return sha256_hash.hexdigest()
 
 
-def get_file_hashes_in_asar(asar_path: str, file_paths: list[str]) -> dict[str, str | None]:
+def get_file_hashes_in_asar(asar_path: str, file_paths: list[str]) -> Dict[str, Optional[str]]:
     """
     一次性读取多个 ASAR 内文件的 SHA256 哈希值，避免重复解析 header 和重复打开文件。
     """
     reader = open_asar_reader(asar_path)
     if reader is None:
-        return {file_path: None for file_path in file_paths}
+        return dict.fromkeys(file_paths, None)
 
-    results: dict[str, str | None] = {}
+    results: Dict[str, Optional[str]] = {}
     try:
         with open(asar_path, "rb") as f:
             for file_path in file_paths:
@@ -427,15 +433,15 @@ def get_file_hashes_in_asar(asar_path: str, file_paths: list[str]) -> dict[str, 
                 results[file_path] = _compute_node_hash(f, reader.header_info.base_offset, node)
     except OSError as e:
         logger.debug(f"OS error reading ASAR file {asar_path}: {e}")
-        return {file_path: None for file_path in file_paths}
+        return dict.fromkeys(file_paths, None)
     except Exception as e:
         logger.debug(f"Error parsing ASAR file {asar_path}: {e}")
-        return {file_path: None for file_path in file_paths}
+        return dict.fromkeys(file_paths, None)
 
     return results
 
 
-def get_file_hash_in_asar(asar_path, file_path):
+def get_file_hash_in_asar(asar_path: str, file_path: str) -> Optional[str]:
     """
     计算 ASAR 包内特定文件的 SHA256 哈希值
     纯 Python 内存实现，不依赖外部命令行调用，速度快且不产生临时文件。

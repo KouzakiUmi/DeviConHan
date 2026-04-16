@@ -59,7 +59,8 @@ class SaveManagerController:
         """
         from core.bootstrap import get_runtime_game_path
 
-        base_dir = get_runtime_game_path() or os.path.abspath(".")
+        runtime_game_path = get_runtime_game_path()
+        base_dir = runtime_game_path or os.path.abspath(".")
 
         for candidate in self.SAVE_DIR_CANDIDATES:
             path = os.path.join(base_dir, candidate)
@@ -67,8 +68,8 @@ class SaveManagerController:
                 self._log(f"Found save directory: {path}")
                 return path
 
-        # 兼容旧版本：如果基于检测到的目录找不到，尝试在当前工作目录下查找
-        if base_dir != os.path.abspath("."):
+        # 仅在没有运行时游戏目录时，回退到当前工作目录查找旧版存档结构
+        if runtime_game_path is None and base_dir != os.path.abspath("."):
             for candidate in self.SAVE_DIR_CANDIDATES:
                 path = os.path.abspath(candidate)
                 if os.path.exists(path) and os.path.isdir(path):

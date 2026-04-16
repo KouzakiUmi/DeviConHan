@@ -38,6 +38,7 @@ dependencies = []
 
 [project.optional-dependencies]
 build = ["pyinstaller"]
+test = ["pytest"]
 
 [project.urls]
 Homepage = "https://github.com/KouzakiUmi/DeviConHan"

@@ -162,7 +162,7 @@ def verify_fuse_backup(exe_path: str, use_full_hash: bool = False) -> Tuple[bool
                 if verify_byte != FUSE_ENABLED_BYTE:
                     return (
                         False,
-                        f"Backup does not contain original fuse byte, found {verify_byte}",
+                        f"Backup does not contain original fuse byte, found {verify_byte!r}",
                     )
 
         return True, backup_path
@@ -203,9 +203,26 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
                 callback(f"Backup verification failed: {reason}")
             return False
 
-        # 恢复备份
+        # 恢复备份（先写临时文件，再原子替换）
         logger.info(f"Restoring from {backup_path}")
-        shutil.copy2(backup_path, exe_path)
+        temp_restore_path = exe_path + ".restore_tmp"
+        if os.path.exists(temp_restore_path):
+            os.remove(temp_restore_path)
+        try:
+            shutil.copy2(backup_path, temp_restore_path)
+            if not _verify_backup_with_full_hash(temp_restore_path, backup_path):
+                logger.error("Restore temp file verification failed")
+                if callback:
+                    callback("Restore verification failed!")
+                return False
+
+            os.replace(temp_restore_path, exe_path)
+        finally:
+            if os.path.exists(temp_restore_path):
+                try:
+                    os.remove(temp_restore_path)
+                except OSError:
+                    pass
 
         # 验证恢复结果
         if _verify_backup_with_full_hash(exe_path, backup_path):
@@ -226,7 +243,7 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         return False
 
 
-def remove_fuse(exe_path, callback=None):
+def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
     """
     移除游戏可执行文件的Fuse完整性校验（改进版）
 
@@ -369,7 +386,7 @@ def remove_fuse(exe_path, callback=None):
                     verify_byte = mm.read(1)
                     if verify_byte != FUSE_DISABLED_BYTE:
                         logger.error(
-                            f"Verification failed after modification: expected {FUSE_DISABLED_BYTE}, got {verify_byte}"
+                            f"Verification failed after modification: expected {FUSE_DISABLED_BYTE!r}, got {verify_byte!r}"
                         )
                         raise FuseError("Modification verification failed")
 
@@ -383,7 +400,7 @@ def remove_fuse(exe_path, callback=None):
                         callback("Fuse already disabled.")
                     return True
                 else:
-                    logger.warning(f"Unexpected byte at target position: {current_byte}")
+                    logger.warning(f"Unexpected byte at target position: {current_byte!r}")
                     return False
 
         # 最终验证：重新打开文件检查
@@ -397,7 +414,7 @@ def remove_fuse(exe_path, callback=None):
                         logger.info("Final verification passed")
                         return True
                     else:
-                        logger.error(f"Final verification failed: {final_byte}")
+                        logger.error(f"Final verification failed: {final_byte!r}")
                         raise FuseError("Final verification failed")
                 else:
                     logger.warning("Sentinel not found in final verification")

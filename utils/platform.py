@@ -13,6 +13,7 @@ import re
 import string
 import sys
 import threading
+from functools import lru_cache
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -71,6 +72,7 @@ def get_platform_info() -> PlatformInfo:
     )
 
 
+@lru_cache(maxsize=1)
 def _find_steam_path_windows() -> str:
     """
     在 Windows 上查找 Steam 安装路径

@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from typing import Optional, Tuple
 
 from core.bootstrap import get_runtime_game_path
 from core.config import get_config
@@ -122,8 +123,8 @@ class ToolsTab(ttk.Frame):
         raw_value: str,
         *,
         must_exist: bool = True,
-        path_type: str | None = None,
-        allowed_exts: tuple[str, ...] | None = None,
+        path_type: Optional[str] = None,
+        allowed_exts: Optional[Tuple[str, ...]] = None,
     ) -> str:
         path = sanitize_user_path(raw_value, allow_empty=False)
 

@@ -63,8 +63,8 @@ class App(tk.Tk):
             # 初始化核心逻辑（可能抛出异常）
             self.core = CoreLogic()
             self.save_service = SaveService(self.core)
-            self.save_controller = SaveManagerController(self.save_service, log_callback=self.log)
-            self.patch_controller = PatchController(self.core, log_callback=self.log)
+            self.save_controller = SaveManagerController(self.save_service, log_callback=self.ui_log)
+            self.patch_controller = PatchController(self.core, log_callback=self.ui_log)
         except Exception as e:
             logger.error(T("err_failed_init_corelogic").format(error=str(e)))
             messagebox.showerror(T("title_error"), str(e))
@@ -320,24 +320,8 @@ class App(tk.Tk):
         set_language(code)
         self.init_ui()
 
-    def log(self, msg: str, level: str = "info") -> None:
-        """
-        在GUI中显示日志消息
-
-        Args:
-            msg: 要显示的消息
-            level: 日志级别 ("info", "warning", "error", "debug")
-        """
-        # 记录到标准日志系统
-        if level == "warning":
-            logger.warning(msg)
-        elif level == "error":
-            logger.error(msg)
-        elif level == "debug":
-            logger.debug(msg)
-        else:
-            logger.info(msg)
-
+    def _queue_log_update(self, msg: str, level: str = "info") -> None:
+        """将日志消息排入 GUI 日志区域更新队列。"""
         def _update():
             if not hasattr(self, "log_area") or not self.log_area.winfo_exists():
                 return
@@ -363,6 +347,35 @@ class App(tk.Tk):
                 self.after(0, _update)
         except tk.TclError:
             pass
+
+    def ui_log(self, msg: str, level: str = "info") -> None:
+        """
+        仅在 GUI 中显示日志消息，不重复写入标准日志系统。
+
+        Args:
+            msg: 要显示的消息
+            level: 日志级别 ("info", "warning", "error", "debug")
+        """
+        self._queue_log_update(msg, level)
+
+    def log(self, msg: str, level: str = "info") -> None:
+        """
+        记录到标准日志系统，并在 GUI 中显示日志消息。
+
+        Args:
+            msg: 要显示的消息
+            level: 日志级别 ("info", "warning", "error", "debug")
+        """
+        if level == "warning":
+            logger.warning(msg)
+        elif level == "error":
+            logger.error(msg)
+        elif level == "debug":
+            logger.debug(msg)
+        else:
+            logger.info(msg)
+
+        self._queue_log_update(msg, level)
 
     def toggle_progress(self, running):
         """

@@ -77,7 +77,7 @@ class AppConfig:
             logger.debug(f"Config loaded from: {self.config_file}")
 
     @contextmanager
-    def _acquire_lock(self):
+    def _acquire_lock(self) -> Any:
         """线程安全锁上下文管理器（RLock 可重入，读写均通过同一锁保护）"""
         with self._lock:
             yield
@@ -96,35 +96,38 @@ class AppConfig:
         """
         self._invalidate_snapshot()
 
+    def _build_config_snapshot(self) -> Dict[str, Any]:
+        """构建配置快照字典（调用方必须已持有锁）"""
+        return {
+            "resource_dir": self.config.get("main", "RESOURCE_DIR", fallback="resources"),
+            "app_name": self.config.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
+            "time_threshold": self._get_int_unsafe("main", "TIME_DIFF_THRESHOLD_DAYS", 3),
+            "backup_prefix": self.config.get("main", "BACKUP_PREFIX", fallback="Backup_"),
+            "patch_info_file": self.config.get("main", "PATCH_INFO_FILE", fallback=".patch_info"),
+            "patch_meta_file": self.config.get("main", "PATCH_META_FILE", fallback=".patch_meta"),
+            "target_asar_name": self.config.get("main", "TARGET_ASAR_NAME", fallback="app.asar"),
+            "temp_patch_dir": self.config.get("main", "TEMP_PATCH_DIR", fallback="temp_patch"),
+            "patch_zip_name": self.config.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip"),
+            "patch_dir_name": self.config.get("main", "PATCH_DIR_NAME", fallback="Patch"),
+            "fuse_sentinel": self.config.get(
+                "main",
+                "FUSE_SENTINEL",
+                fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
+            ),
+            "fuse_header_length": self._get_int_unsafe("main", "FUSE_WIRE_HEADER_LENGTH", 34),
+            "fuse_asar_offset": self._get_int_unsafe("main", "FUSE_ASAR_INTEGRITY_OFFSET", 4),
+            "check_files": self._get_list_unsafe("files", "CHECK_FILES_FOR_UPDATE"),
+            "stable_files": self._get_list_unsafe("files", "STABLE_FILES_FOR_VALIDATION"),
+        }
+
     def _get_config_snapshot(self) -> Dict[str, Any]:
         """获取配置快照（线程安全，带TTL刷新）"""
         with self._acquire_lock():
             current_time = time.time()
-            # 在锁内做 TTL 检查，确保检查和更新的原子性
             if self._config_snapshot is not None and (current_time - self._snapshot_time <= 2.0):
                 return self._config_snapshot
 
-            self._config_snapshot = {
-                "resource_dir": self.get("main", "RESOURCE_DIR", fallback="resources"),
-                "app_name": self.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
-                "time_threshold": self.get_int("main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3),
-                "backup_prefix": self.get("main", "BACKUP_PREFIX", fallback="Backup_"),
-                "patch_info_file": self.get("main", "PATCH_INFO_FILE", fallback=".patch_info"),
-                "patch_meta_file": self.get("main", "PATCH_META_FILE", fallback=".patch_meta"),
-                "target_asar_name": self.get("main", "TARGET_ASAR_NAME", fallback="app.asar"),
-                "temp_patch_dir": self.get("main", "TEMP_PATCH_DIR", fallback="temp_patch"),
-                "patch_zip_name": self.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip"),
-                "patch_dir_name": self.get("main", "PATCH_DIR_NAME", fallback="Patch"),
-                "fuse_sentinel": self.get(
-                    "main",
-                    "FUSE_SENTINEL",
-                    fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
-                ),
-                "fuse_header_length": self.get_int("main", "FUSE_WIRE_HEADER_LENGTH", fallback=34),
-                "fuse_asar_offset": self.get_int("main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4),
-                "check_files": self.get_list("files", "CHECK_FILES_FOR_UPDATE"),
-                "stable_files": self.get_list("files", "STABLE_FILES_FOR_VALIDATION"),
-            }
+            self._config_snapshot = self._build_config_snapshot()
             self._snapshot_time = current_time
             return self._config_snapshot
 
@@ -166,7 +169,9 @@ class AppConfig:
         except Exception:
             return fallback
 
-    def _get_list_unsafe(self, section: str, key: str, fallback: Optional[List[str]] = None) -> List[str]:
+    def _get_list_unsafe(
+        self, section: str, key: str, fallback: Optional[List[str]] = None
+    ) -> List[str]:
         """无锁版本 get_list，调用方必须已持有锁"""
         raw_value = self.config.get(section, key, fallback="")
         if raw_value:
@@ -366,37 +371,37 @@ class AppConfig:
     # ========== 便捷访问属性 ==========
 
     @property
-    def game_id(self):
+    def game_id(self) -> str:
         """游戏标识 — Steam App ID（纯数字）或游戏名称（用于模糊匹配）"""
         return self.get("main", "GAME_ID", fallback="3054820")
 
     @property
-    def auto_detect_game(self):
+    def auto_detect_game(self) -> bool:
         """是否自动检测游戏目录"""
         return self.get_bool("main", "AUTO_DETECT_GAME", fallback=True)
 
     @property
-    def game_path(self):
+    def game_path(self) -> str:
         """手动指定的游戏目录"""
         return self.get("main", "GAME_PATH", fallback="")
 
     @property
-    def auto_target_exe(self):
+    def auto_target_exe(self) -> str:
         """游戏可执行文件名（Windows）"""
         return self.get("main", "WINDOWS_EXE", fallback="DevilConnection.exe")
 
     @property
-    def macos_app(self):
+    def macos_app(self) -> str:
         """macOS App Bundle 名称"""
         return self.get("main", "MACOS_APP", fallback="Devil Connection.app")
 
     @property
-    def linux_binary(self):
+    def linux_binary(self) -> str:
         """Linux 可执行文件名"""
         return self.get("main", "LINUX_BINARY", fallback="DevilConnection")
 
     @property
-    def fuse_sentinel(self):
+    def fuse_sentinel(self) -> bytes:
         """Fuse 校验特征码"""
         sentinel = self.get("main", "FUSE_SENTINEL", fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX")
         if isinstance(sentinel, bytes):
@@ -406,77 +411,77 @@ class AppConfig:
         )
 
     @property
-    def fuse_wire_header_length(self):
+    def fuse_wire_header_length(self) -> int:
         """Fuse 线缆头部长度 (默认 34 = sentinel 32 + length 1 + version 1)"""
         return self.get_int("main", "FUSE_WIRE_HEADER_LENGTH", fallback=34)
 
     @property
-    def fuse_asar_integrity_offset(self):
+    def fuse_asar_integrity_offset(self) -> int:
         """Asar Integrity 验证所在的 Fuse 索引偏移量"""
         return self.get_int("main", "FUSE_ASAR_INTEGRITY_OFFSET", fallback=4)
 
     @property
-    def backup_prefix(self):
+    def backup_prefix(self) -> str:
         """备份文件名前缀"""
         return self.get("main", "BACKUP_PREFIX", fallback="Backup_")
 
     @property
-    def patch_info_file(self):
+    def patch_info_file(self) -> str:
         """补丁信息文件名"""
         return self.get("main", "PATCH_INFO_FILE", fallback=".patch_info")
 
     @property
-    def patch_meta_file(self):
+    def patch_meta_file(self) -> str:
         """补丁元数据文件名"""
         return self.get("main", "PATCH_META_FILE", fallback=".patch_meta")
 
     @property
-    def time_diff_threshold_days(self):
+    def time_diff_threshold_days(self) -> int:
         """旧补丁时间阈值（天）"""
         return self.get_int("main", "TIME_DIFF_THRESHOLD_DAYS", fallback=3)
 
     @property
-    def check_files_for_update(self):
+    def check_files_for_update(self) -> List[str]:
         """Steam 更新检测文件列表"""
         return self.get_list("files", "CHECK_FILES_FOR_UPDATE")
 
     @property
-    def stable_files_for_validation(self):
+    def stable_files_for_validation(self) -> List[str]:
         """稳定文件列表（用于验证备份完整性）"""
         return self.get_list("files", "STABLE_FILES_FOR_VALIDATION")
 
     @property
-    def resource_dir(self):
+    def resource_dir(self) -> str:
         """资源目录名"""
         return self.get("main", "RESOURCE_DIR", fallback="resources")
 
     @property
-    def target_asar_name(self):
+    def target_asar_name(self) -> str:
         """目标 asar 文件名"""
         return self.get("main", "TARGET_ASAR_NAME", fallback="app.asar")
 
     @property
-    def temp_patch_dir(self):
+    def temp_patch_dir(self) -> str:
         """临时补丁解压目录名"""
         return self.get("main", "TEMP_PATCH_DIR", fallback="temp_patch")
 
     @property
-    def patch_zip_name(self):
+    def patch_zip_name(self) -> str:
         """补丁压缩包文件名"""
         return self.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip")
 
     @property
-    def patch_dir_name(self):
+    def patch_dir_name(self) -> str:
         """补丁目录名"""
         return self.get("main", "PATCH_DIR_NAME", fallback="Patch")
 
     @property
-    def app_name(self):
+    def app_name(self) -> str:
         """程序名称"""
         return self.get("main", "APP_NAME", fallback="TyranoV8_Patcher")
 
     @property
-    def game_name_variations(self):
+    def game_name_variations(self) -> List[str]:
         """
         游戏名称变体列表（用于Steam目录搜索）
 
@@ -528,27 +533,7 @@ class AppConfig:
             if self._config_snapshot is not None and (time.time() - self._snapshot_time <= 2.0):
                 snapshot = self._config_snapshot
             else:
-                snapshot = {
-                    "resource_dir": self.config.get("main", "RESOURCE_DIR", fallback="resources"),
-                    "app_name": self.config.get("main", "APP_NAME", fallback="TyranoV8_Patcher"),
-                    "time_threshold": self._get_int_unsafe("main", "TIME_DIFF_THRESHOLD_DAYS", 3),
-                    "backup_prefix": self.config.get("main", "BACKUP_PREFIX", fallback="Backup_"),
-                    "patch_info_file": self.config.get("main", "PATCH_INFO_FILE", fallback=".patch_info"),
-                    "patch_meta_file": self.config.get("main", "PATCH_META_FILE", fallback=".patch_meta"),
-                    "target_asar_name": self.config.get("main", "TARGET_ASAR_NAME", fallback="app.asar"),
-                    "temp_patch_dir": self.config.get("main", "TEMP_PATCH_DIR", fallback="temp_patch"),
-                    "patch_zip_name": self.config.get("main", "PATCH_ZIP_NAME", fallback="Patch.zip"),
-                    "patch_dir_name": self.config.get("main", "PATCH_DIR_NAME", fallback="Patch"),
-                    "fuse_sentinel": self.config.get(
-                        "main",
-                        "FUSE_SENTINEL",
-                        fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX",
-                    ),
-                    "fuse_header_length": self._get_int_unsafe("main", "FUSE_WIRE_HEADER_LENGTH", 34),
-                    "fuse_asar_offset": self._get_int_unsafe("main", "FUSE_ASAR_INTEGRITY_OFFSET", 4),
-                    "check_files": self._get_list_unsafe("files", "CHECK_FILES_FOR_UPDATE"),
-                    "stable_files": self._get_list_unsafe("files", "STABLE_FILES_FOR_VALIDATION"),
-                }
+                snapshot = self._build_config_snapshot()
             config_file_path = self.config_file
 
         # 第二步：使用快照进行验证（无锁）

@@ -200,27 +200,30 @@ def bootstrap_system(
     config = get_config()
 
     # 2. 确定游戏目录
-    # 优先级：明确指定 > 当前目录（如果是游戏目录）> 自动检测 > 当前目录
+    # 优先级：明确指定 > 自动检测 > 当前目录（如果是游戏目录）> 当前目录
     current_dir = os.path.abspath(".")
 
     if base_dir:
         # 明确指定
         logger.info(f"Using specified directory: {base_dir}")
-    elif is_game_directory(current_dir, config):
-        # 当前目录是有效的游戏目录
-        base_dir = current_dir
-        logger.info(f"Current directory is valid game directory: {base_dir}")
     elif config.auto_detect_game:
         # 自动检测模式
-        logger.info("Current directory is not a game directory. Attempting auto-detection...")
+        logger.info("Attempting Steam auto-detection...")
         detected = find_game_directory(auto_detect=True)
         if detected:
             base_dir = detected
             messages.append(f"Auto-detected game directory: {base_dir}")
             logger.info(f"Using auto-detected game directory: {base_dir}")
+        elif is_game_directory(current_dir, config):
+            base_dir = current_dir
+            logger.info(f"Steam auto-detection failed; using current game directory: {base_dir}")
         else:
             base_dir = current_dir
             logger.info(f"Auto-detection failed, using current directory: {base_dir}")
+    elif is_game_directory(current_dir, config):
+        # 当前目录是有效的游戏目录
+        base_dir = current_dir
+        logger.info(f"Current directory is valid game directory: {base_dir}")
     else:
         # 使用当前目录
         base_dir = current_dir

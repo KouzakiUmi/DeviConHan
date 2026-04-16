@@ -15,7 +15,7 @@ __all__ = [
 import logging
 import os
 import shutil
-from typing import Tuple
+from typing import Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def get_disk_free_space(path: str) -> int:
                 )
                 return free_bytes.value
             else:  # Unix
-                stat = os.statvfs(abs_path)
+                stat = os.statvfs(abs_path)  # type: ignore[attr-defined]
                 return stat.f_frsize * stat.f_bavail
 
     except Exception as e:
@@ -201,7 +201,7 @@ def validate_write_permission(path: str) -> bool:
         return False
 
 
-def format_bytes(bytes_value: int) -> str:
+def format_bytes(bytes_value: Union[int, float]) -> str:
     """
     格式化字节数为人类可读字符串
 
@@ -211,11 +211,12 @@ def format_bytes(bytes_value: int) -> str:
     Returns:
         str: 格式化后的字符串（如 "1.5 GB"）
     """
+    value = float(bytes_value)
     for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if bytes_value < 1024.0:
-            return f"{bytes_value:.1f} {unit}"
-        bytes_value /= 1024.0
-    return f"{bytes_value:.1f} PB"
+        if value < 1024.0:
+            return f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{value:.1f} PB"
 
 
 def check_operation_space(operations: list, base_path: str = ".") -> Tuple[bool, str]:
