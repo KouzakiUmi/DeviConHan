@@ -262,169 +262,36 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
     """
     logger.info(f"Attempting to remove Fuse from: {exe_path}")
 
-    # 验证输入参数
-    try:
-        if not exe_path or not isinstance(exe_path, str):
-            logger.warning("Invalid executable path")
-            return False
-
-        exe_path = normalize_path(exe_path)
-
-        if not os.path.exists(exe_path):
-            logger.error(f"Executable file does not exist: {exe_path}")
-            return False
-
-        if not os.path.isfile(exe_path):
-            logger.error(f"Not a file: {exe_path}")
-            return False
-
-        # 检查文件大小
-        file_size = os.path.getsize(exe_path)
-        if file_size < FUSE_VALIDATION_MIN_SIZE:
-            logger.warning(f"File too small to contain Fuse data: {file_size} bytes")
-            return False
-
-    except Exception as e:
-        logger.error(f"Failed to validate executable path: {e}")
+    exe_path = _validate_fuse_input(exe_path)
+    if exe_path is None:
         return False
 
-    # 修改前创建临时备份（用于回滚）
     temp_backup = exe_path + ".fuse_temp"
 
     try:
-        # 确保文件可写
         os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IRUSR | stat.S_IWUSR)
-
-        # 创建临时备份
         shutil.copy2(exe_path, temp_backup)
 
-        backup_path = exe_path + ".fuse_backup"
+        if not _ensure_fuse_backup(exe_path, callback):
+            _cleanup_temp_backup(temp_backup)
+            return False
 
-        def _create_backup() -> bool:
-            """创建备份并验证写入完整性，成功返回 True。"""
-            temp_bak = backup_path + ".tmp"
-            try:
-                shutil.copy2(exe_path, temp_bak)
+        modify_result = _modify_fuse_byte(exe_path, callback)
+        if modify_result is None:
+            return False
+        if modify_result is True and callback:
+            return True
 
-                # 使用完整哈希验证
-                if not _verify_backup_with_full_hash(exe_path, temp_bak):
-                    logger.error("Backup verification failed")
-                    try:
-                        os.remove(temp_bak)
-                    except OSError:
-                        pass
-                    return False
+        if not _verify_fuse_final(exe_path):
+            raise FuseError("Final verification failed")
 
-                os.replace(temp_bak, backup_path)
-                logger.info(f"Created verified Fuse backup at: {backup_path}")
-                return True
-            except Exception as backup_e:
-                logger.error(f"Failed to create Fuse backup: {backup_e}")
-                try:
-                    if os.path.exists(temp_bak):
-                        os.remove(temp_bak)
-                except OSError:
-                    pass
-                return False
-
-        need_backup = True
-        if os.path.exists(backup_path):
-            ok, reason = verify_fuse_backup(exe_path, use_full_hash=False)
-            if ok:
-                need_backup = False
-                logger.debug(f"Existing Fuse backup verified: {backup_path}")
-            else:
-                logger.warning(f"Existing backup corrupted, recreating: {reason}")
-
-        if need_backup:
-            if not _create_backup():
-                if callback:
-                    callback("Failed to create Fuse backup. Aborting.")
-                # 清理临时备份
-                if os.path.exists(temp_backup):
-                    os.remove(temp_backup)
-                return False
-            if callback:
-                callback(f"Backup created: {os.path.basename(backup_path)}")
-
-        # 获取Fuse配置
-        fuse_sentinel = get_config().fuse_sentinel
-        header_len = get_config().fuse_wire_header_length
-        integrity_offset = get_config().fuse_asar_integrity_offset
-
-        # 使用mmap修改文件
-        with open(exe_path, "r+b") as f:
-            # 获取文件大小用于mmap
-            file_size = os.path.getsize(exe_path)
-
-            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE) as mm:
-                offset = mm.find(fuse_sentinel)
-
-                if offset == -1:
-                    logger.info("Fuse sentinel not found - already removed or never present")
-                    return False
-
-                # 计算目标偏移量
-                target = offset + header_len + integrity_offset
-
-                # 边界检查
-                if target + 1 > mm.size():
-                    logger.error(f"Target position {target} exceeds file size {mm.size()}")
-                    return False
-
-                current_byte = mm[target : target + 1]
-
-                if current_byte == FUSE_ENABLED_BYTE:
-                    # 执行修改
-                    mm[target : target + 1] = FUSE_DISABLED_BYTE
-
-                    # 关键：强制flush到磁盘
-                    mm.flush()
-
-                    # 验证修改
-                    mm.seek(target)
-                    verify_byte = mm.read(1)
-                    if verify_byte != FUSE_DISABLED_BYTE:
-                        logger.error(
-                            f"Verification failed after modification: expected {FUSE_DISABLED_BYTE!r}, got {verify_byte!r}"
-                        )
-                        raise FuseError("Modification verification failed")
-
-                    logger.info("Fuse checksum byte modified (0x31 -> 0x30) and verified")
-                    if callback:
-                        callback("Fuse removed and verified.")
-
-                elif current_byte == FUSE_DISABLED_BYTE:
-                    logger.info("Fuse already disabled")
-                    if callback:
-                        callback("Fuse already disabled.")
-                    return True
-                else:
-                    logger.warning(f"Unexpected byte at target position: {current_byte!r}")
-                    return False
-
-        # 最终验证：重新打开文件检查
-        with open(exe_path, "rb") as f:
-            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
-                offset = mm.find(fuse_sentinel)
-                if offset != -1:
-                    target = offset + header_len + integrity_offset
-                    final_byte = mm[target : target + 1]
-                    if final_byte == FUSE_DISABLED_BYTE:
-                        logger.info("Final verification passed")
-                        return True
-                    else:
-                        logger.error(f"Final verification failed: {final_byte!r}")
-                        raise FuseError("Final verification failed")
-                else:
-                    logger.warning("Sentinel not found in final verification")
-                    return False
+        logger.info("Final verification passed")
+        return True
 
     except FuseError as e:
         logger.error(f"Fuse operation failed: {e}")
         if callback:
             callback(f"Fuse Error: {e}")
-        # 尝试回滚
         _rollback_fuse(exe_path, temp_backup)
         return False
     except OSError as e:
@@ -440,12 +307,166 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         _rollback_fuse(exe_path, temp_backup)
         return False
     finally:
-        # 清理临时备份
-        if os.path.exists(temp_backup):
+        _cleanup_temp_backup(temp_backup)
+
+
+def _validate_fuse_input(exe_path: str) -> Optional[str]:
+    """验证 Fuse 操作的输入参数，返回规范化路径或 None"""
+    try:
+        if not exe_path or not isinstance(exe_path, str):
+            logger.warning("Invalid executable path")
+            return None
+
+        exe_path = normalize_path(exe_path)
+
+        if not os.path.exists(exe_path):
+            logger.error(f"Executable file does not exist: {exe_path}")
+            return None
+
+        if not os.path.isfile(exe_path):
+            logger.error(f"Not a file: {exe_path}")
+            return None
+
+        file_size = os.path.getsize(exe_path)
+        if file_size < FUSE_VALIDATION_MIN_SIZE:
+            logger.warning(f"File too small to contain Fuse data: {file_size} bytes")
+            return None
+
+        return exe_path
+    except Exception as e:
+        logger.error(f"Failed to validate executable path: {e}")
+        return None
+
+
+def _ensure_fuse_backup(exe_path: str, callback: Optional[Callable]) -> bool:
+    """确保 Fuse 备份存在且有效，不存在则创建。返回是否成功"""
+    backup_path = exe_path + ".fuse_backup"
+
+    need_backup = True
+    if os.path.exists(backup_path):
+        ok, reason = verify_fuse_backup(exe_path, use_full_hash=False)
+        if ok:
+            need_backup = False
+            logger.debug(f"Existing Fuse backup verified: {backup_path}")
+        else:
+            logger.warning(f"Existing backup corrupted, recreating: {reason}")
+
+    if not need_backup:
+        return True
+
+    temp_bak = backup_path + ".tmp"
+    try:
+        shutil.copy2(exe_path, temp_bak)
+
+        if not _verify_backup_with_full_hash(exe_path, temp_bak):
+            logger.error("Backup verification failed")
             try:
-                os.remove(temp_backup)
+                os.remove(temp_bak)
             except OSError:
                 pass
+            return False
+
+        os.replace(temp_bak, backup_path)
+        logger.info(f"Created verified Fuse backup at: {backup_path}")
+    except Exception as backup_e:
+        logger.error(f"Failed to create Fuse backup: {backup_e}")
+        try:
+            if os.path.exists(temp_bak):
+                os.remove(temp_bak)
+        except OSError:
+            pass
+        return False
+
+    if callback:
+        callback(f"Backup created: {os.path.basename(backup_path)}")
+    return True
+
+
+def _modify_fuse_byte(exe_path: str, callback: Optional[Callable]) -> Optional[bool]:
+    """
+    使用 mmap 修改 Fuse 校验字节。
+
+    Returns:
+        None: 失败（sentinel 未找到或意外字节）
+        True: Fuse 已禁用（无需修改）
+        False: 已修改成功，需要后续验证
+    """
+    fuse_sentinel = get_config().fuse_sentinel
+    header_len = get_config().fuse_wire_header_length
+    integrity_offset = get_config().fuse_asar_integrity_offset
+
+    with open(exe_path, "r+b") as f:
+        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_WRITE) as mm:
+            offset = mm.find(fuse_sentinel)
+
+            if offset == -1:
+                logger.info("Fuse sentinel not found - already removed or never present")
+                return None
+
+            target = offset + header_len + integrity_offset
+
+            if target + 1 > mm.size():
+                logger.error(f"Target position {target} exceeds file size {mm.size()}")
+                return None
+
+            current_byte = mm[target : target + 1]
+
+            if current_byte == FUSE_ENABLED_BYTE:
+                mm[target : target + 1] = FUSE_DISABLED_BYTE
+                mm.flush()
+
+                mm.seek(target)
+                verify_byte = mm.read(1)
+                if verify_byte != FUSE_DISABLED_BYTE:
+                    logger.error(
+                        f"Verification failed after modification: expected {FUSE_DISABLED_BYTE!r}, got {verify_byte!r}"
+                    )
+                    raise FuseError("Modification verification failed")
+
+                logger.info("Fuse checksum byte modified (0x31 -> 0x30) and verified")
+                if callback:
+                    callback("Fuse removed and verified.")
+                return False
+
+            elif current_byte == FUSE_DISABLED_BYTE:
+                logger.info("Fuse already disabled")
+                if callback:
+                    callback("Fuse already disabled.")
+                return True
+            else:
+                logger.warning(f"Unexpected byte at target position: {current_byte!r}")
+                return None
+
+
+def _verify_fuse_final(exe_path: str) -> bool:
+    """最终验证：重新打开文件确认修改持久化"""
+    fuse_sentinel = get_config().fuse_sentinel
+    header_len = get_config().fuse_wire_header_length
+    integrity_offset = get_config().fuse_asar_integrity_offset
+
+    with open(exe_path, "rb") as f:
+        with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            offset = mm.find(fuse_sentinel)
+            if offset != -1:
+                target = offset + header_len + integrity_offset
+                final_byte = mm[target : target + 1]
+                if final_byte == FUSE_DISABLED_BYTE:
+                    return True
+                else:
+                    logger.error(f"Final verification failed: {final_byte!r}")
+                    return False
+            else:
+                logger.warning("Sentinel not found in final verification")
+                return False
+
+
+def _cleanup_temp_backup(temp_backup: str) -> None:
+    """清理临时备份文件"""
+    if os.path.exists(temp_backup):
+        try:
+            os.remove(temp_backup)
+        except OSError:
+            pass
 
 
 def _rollback_fuse(exe_path: str, temp_backup: str) -> None:

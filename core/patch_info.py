@@ -69,7 +69,7 @@ def save_patch_info(base_dir, asar_path, bak_path):
     info = {
         "asar_path": asar_path,
         "bak_path": bak_path,
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
     _atomic_write_json(info_file, info)
@@ -88,7 +88,7 @@ def save_patch_meta(base_dir, temp_dir):
     patch_meta_file = get_config().patch_meta_file
     meta_file = os.path.join(base_dir, patch_meta_file)
 
-    meta_info = {"timestamp": datetime.datetime.now().isoformat(), "patch_files": {}}
+    meta_info = {"timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(), "patch_files": {}}
 
     check_files = get_config().check_files_for_update
     for file_path in check_files:

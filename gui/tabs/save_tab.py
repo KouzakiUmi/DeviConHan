@@ -12,6 +12,7 @@ class SaveTab(ttk.Frame):
     def __init__(self, parent, app):
         super().__init__(parent, padding=10)
         self.app = app
+        self._additional_backup_dirs = set()
         self._init_ui()
 
     def _init_ui(self):
@@ -98,44 +99,76 @@ class SaveTab(ttk.Frame):
             if os.path.abspath(new_dir) == os.path.abspath(old_dir):
                 return
 
-            self.app.var_backup_dir.set(new_dir)
-            self.app.save_config()
+            if not messagebox.askyesno(T("title_confirm"), T("msg_migrate_confirm")):
+                previous_dir = self.app.var_backup_dir.get()
+                self.app.var_backup_dir.set(new_dir)
+                if self.app.save_config():
+                    self._additional_backup_dirs = {old_dir}
+                    self.app.log(
+                        "Backup directory updated without migration; existing backups remain in the old location.",
+                        "warning",
+                    )
+                else:
+                    self.app.var_backup_dir.set(previous_dir)
+                    self._additional_backup_dirs.clear()
+                    self.app.log("Failed to persist the new backup directory setting.", "error")
+                self.scan_saves()
+                return
 
-            if messagebox.askyesno(T("title_confirm"), T("msg_migrate_confirm")):
-                self.app.is_operating = True
-                self.app.toggle_progress(True)
+            self.app.is_operating = True
+            self.app.toggle_progress(True)
 
-                def _migrate_worker(cancel_event=None, _check_cancelled=None):
-                    try:
-                        self.app.save_controller.set_log_callback(self.app.ui_log)
-                        migrated_count, failed_count = self.app.save_controller.migrate_backups(
-                            old_dir, new_dir, _check_cancelled=_check_cancelled
-                        )
+            def _migrate_worker(cancel_event=None, _check_cancelled=None):
+                try:
+                    self.app.save_controller.set_log_callback(self.app.ui_log)
+                    migrated_count, failed_count = self.app.save_controller.migrate_backups(
+                        old_dir, new_dir, _check_cancelled=_check_cancelled
+                    )
+
+                    def _apply_migration_result():
                         msg = T("msg_migrate_success").format(migrated=migrated_count)
                         if failed_count > 0:
                             msg += T("msg_migrate_failed").format(failed=failed_count)
-                        self.after(
-                            0,
-                            lambda success_msg=msg: messagebox.showinfo(
-                                T("title_success"), success_msg
-                            ),
-                        )
-                        self.after(0, self.scan_saves)
-                    except Exception as e:
-                        logger.error(f"Migration error: {e}")
-                        self.after(
-                            0,
-                            lambda e_str=str(e): messagebox.showerror(
-                                T("title_error"),
-                                T("msg_migrate_error").format(error=e_str),
-                            ),
-                        )
-                    finally:
-                        self.app._finish_operation()
+                            self._additional_backup_dirs = {new_dir}
+                            self.app.log(
+                                "Backup migration incomplete; keeping the current backup directory active.",
+                                "warning",
+                            )
+                        else:
+                            previous_dir = self.app.var_backup_dir.get()
+                            self.app.var_backup_dir.set(new_dir)
+                            if self.app.save_config():
+                                self._additional_backup_dirs.clear()
+                                self.app.log(f"Backup directory updated: {new_dir}")
+                            else:
+                                self.app.var_backup_dir.set(previous_dir)
+                                self._additional_backup_dirs = {new_dir}
+                                msg += (
+                                    "\n\nFailed to save the new backup directory setting. "
+                                    "Showing both locations for now."
+                                )
+                                self.app.log(
+                                    "Failed to persist the new backup directory setting.",
+                                    "error",
+                                )
 
-                self.app.async_manager.submit("migrate_backup_op", _migrate_worker)
-            else:
-                self.scan_saves()
+                        messagebox.showinfo(T("title_success"), msg)
+                        self.scan_saves()
+
+                    self.after(0, _apply_migration_result)
+                except Exception as e:
+                    logger.error(f"Migration error: {e}")
+                    self.after(
+                        0,
+                        lambda e_str=str(e): messagebox.showerror(
+                            T("title_error"),
+                            T("msg_migrate_error").format(error=e_str),
+                        ),
+                    )
+                finally:
+                    self.app._finish_operation()
+
+            self.app.async_manager.submit("migrate_backup_op", _migrate_worker)
 
     def scan_saves(self):
         found = self.app.save_controller.scan_save_directory()
@@ -149,9 +182,14 @@ class SaveTab(ttk.Frame):
             self.app.current_save_dir = found
 
             root = os.path.dirname(found)
-            backup_dir = self.get_backup_dir()
+            backup_dirs = [self.get_backup_dir()]
+            backup_dirs.extend(
+                path
+                for path in sorted(self._additional_backup_dirs)
+                if os.path.abspath(path) != os.path.abspath(backup_dirs[0])
+            )
 
-            backups = self.app.save_controller.scan_backups(root, backup_dir)
+            backups = self.app.save_controller.scan_backups(root, backup_dirs)
 
             for dn, fp, is_zip in backups:
                 iid = f"bk_{len(self.backup_paths)}"

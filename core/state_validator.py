@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 from core.config import get_config
 from utils.asar_utils import get_file_hashes_in_asar, validate_asar_with_reason
 from utils.constants import MIN_ASAR_SIZE
-from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
 
@@ -86,12 +86,7 @@ class StateValidator:
         self.platform_info = get_platform_info()
 
         # 跨平台资源路径处理
-        if is_app_bundle(self.base_dir):
-            # macOS .app bundle 情况
-            self.res_dir = os.path.join(self.base_dir, "Contents", "Resources")
-        else:
-            # Windows/Linux: 使用平台检测
-            self.res_dir = get_resources_path(self.base_dir, self.platform_info.system)
+        self.res_dir = get_resources_path(self.base_dir, self.platform_info.system)
 
         self.asar_path = os.path.join(self.res_dir, self.config.target_asar_name)
         self.bak_path = self.asar_path + ".bak"

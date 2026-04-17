@@ -211,7 +211,15 @@ class SaveService:
         prepared_restore_path = os.path.join(temp_dir, "to_restore")
         if is_zip:
             os.makedirs(prepared_restore_path, exist_ok=True)
-            safe_extract_zip(backup_src, prepared_restore_path, check_cancelled=check_cancelled)
+            extracted = safe_extract_zip(
+                backup_src, prepared_restore_path, check_cancelled=check_cancelled
+            )
+            if not extracted:
+                raise PatcherError(
+                    f"Failed to extract backup archive: {backup_src}",
+                    category=ErrorCategory.CORRUPTED_DATA,
+                    severity=ErrorSeverity.ERROR,
+                )
             logger.info(f"Extracted backup to temp for restore: {prepared_restore_path}")
         else:
             shutil.copytree(

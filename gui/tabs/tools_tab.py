@@ -18,7 +18,7 @@ from utils.constants import (
     UNPACKED_DIR_NAME,
 )
 from utils.language import T
-from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+from utils.platform import get_platform_info, get_resources_path
 from utils.validators import ValidationError, sanitize_user_path
 
 logger = logging.getLogger(__name__)
@@ -267,10 +267,7 @@ class ToolsTab(ttk.Frame):
     def _auto_scan_asar(self):
         base = get_runtime_game_path() or os.path.abspath(".")
         # 跨平台资源路径处理
-        if is_app_bundle(base):
-            res_path = os.path.join(base, "Contents", "Resources")
-        else:
-            res_path = get_resources_path(base, get_platform_info().system)
+        res_path = get_resources_path(base, get_platform_info().system)
         cands = [os.path.join(res_path, "app.asar"), "app.asar"]
         for c in cands:
             p = os.path.abspath(c)

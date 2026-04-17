@@ -32,7 +32,7 @@ from utils.file_ops import safe_extract_zip
 from utils.language import T
 from utils.operation_lock import OperationType
 from utils.paths import get_resource_path, safe_path_within
-from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +93,7 @@ class PatchController:
         cfg = get_config()
 
         # 跨平台资源路径处理
-        if is_app_bundle(base):
-            res = os.path.join(base, "Contents", "Resources")
-        else:
-            res = get_resources_path(base, get_platform_info().system)
+        res = get_resources_path(base, get_platform_info().system)
 
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
@@ -210,10 +207,7 @@ class PatchController:
         cfg = get_config()
 
         # 跨平台资源路径处理
-        if is_app_bundle(base):
-            res = os.path.join(base, "Contents", "Resources")
-        else:
-            res = get_resources_path(base, get_platform_info().system)
+        res = get_resources_path(base, get_platform_info().system)
 
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
@@ -302,6 +296,7 @@ class PatchController:
 
         # ========== 阶段 3: 补丁操作 ==========
         # 最小化写入流程: 解包 -> 打补丁 -> 重命名 -> 打包
+        need_backup = False
         try:
             need_backup = os.path.exists(asar) and not os.path.exists(bak)
 
@@ -329,7 +324,9 @@ class PatchController:
             if os.path.exists(patch_zip):
                 self._log("Extracting Patch.zip...")
                 try:
-                    safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
+                    extracted = safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
+                    if not extracted:
+                        raise PatchError(f"Failed to extract patch data from: {patch_zip}")
                     self._log("Patch.zip extracted successfully.")
                 except ValueError as e:
                     raise PatchError(f"Security violation in patch ZIP: {e}") from e
@@ -388,9 +385,11 @@ class PatchController:
 
         except PatchError as e:
             logger.error(f"Patch error: {e}")
+            self._rollback_asar_on_failure(asar, bak, need_backup)
             return False, temp, str(e)
         except Exception as e:
             logger.exception("Unexpected error during patching")
+            self._rollback_asar_on_failure(asar, bak, need_backup)
             return False, temp, f"Unexpected error: {e}"
         finally:
             # 清理临时目录
@@ -399,6 +398,28 @@ class PatchController:
                     force_cleanup_dir(temp)
                 except Exception as e:
                     logger.warning(f"Failed to cleanup temp directory: {e}")
+
+    @staticmethod
+    def _rollback_asar_on_failure(asar: str, bak: str, need_backup: bool) -> None:
+        if not need_backup or not os.path.exists(bak):
+            return
+        if os.path.exists(asar):
+            try:
+                from utils.asar_utils import is_valid_asar
+                if is_valid_asar(asar):
+                    return
+            except Exception:
+                pass
+            try:
+                os.remove(asar)
+                logger.info("Removed corrupted ASAR before rollback")
+            except Exception as e:
+                logger.warning(f"Failed to remove corrupted ASAR: {e}")
+        try:
+            os.replace(bak, asar)
+            logger.info(f"Rolled back ASAR from backup: {bak} -> {asar}")
+        except Exception as e:
+            logger.error(f"Failed to rollback ASAR from backup: {e}")
 
     def _cleanup_temp_files(self, base_dir: str) -> None:
         """清理临时备份文件"""

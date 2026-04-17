@@ -33,15 +33,13 @@ import shutil
 import struct
 from pathlib import Path
 
+from utils.constants import NATIVE_EXTENSIONS
+
 logger = logging.getLogger(__name__)
 
 DATA_SIZE = 4
 BLOCK_SIZE = 4 * 1024 * 1024
 ALGORITHM = "SHA256"
-
-NATIVE_EXTENSIONS: frozenset[str] = frozenset(
-    {".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"}
-)
 
 
 def _align(size: int, alignment: int = DATA_SIZE) -> int:
@@ -354,6 +352,8 @@ def asar_extract(
     Returns:
         tuple: (unpacked_files: set, base_offset: int) 记录哪些文件是 unpacked 的
     """
+    from utils.asar_utils import parse_asar_header
+
     src = Path(src)
     dest = Path(dest)
 
@@ -363,34 +363,17 @@ def asar_extract(
     dest.mkdir(parents=True, exist_ok=True)
     unpacked_dir = Path(f"{src}.unpacked")
 
+    header_info = parse_asar_header(str(src))
+    if header_info is None:
+        raise ValueError(f"Failed to parse ASAR header from {src}")
+
+    base_offset = header_info.base_offset
+    header = header_info.header_dict
+
+    if callback:
+        callback("Extracting ASAR...")
+
     with open(src, "rb") as f:
-        size_buf = f.read(8)
-        if len(size_buf) < 8:
-            raise ValueError(f"Failed to read ASAR size pickle from {src}")
-
-        size_payload_size = struct.unpack("<I", size_buf[0:4])[0]
-        header_buf_len = struct.unpack("<I", size_buf[4:8])[0]
-        if size_payload_size != 4 or header_buf_len == 0 or header_buf_len > 50 * 1024 * 1024:
-            raise ValueError(
-                f"Invalid ASAR size pickle: payload_size={size_payload_size}, header_buf_len={header_buf_len}"
-            )
-
-        base_offset = 8 + header_buf_len
-
-        header_buf = f.read(header_buf_len)
-        if len(header_buf) < header_buf_len:
-            raise ValueError(f"Failed to read ASAR header pickle from {src}")
-
-        json_len = struct.unpack("<I", header_buf[4:8])[0]
-        if json_len == 0 or json_len > 50 * 1024 * 1024:
-            raise ValueError(f"Invalid ASAR JSON size: {json_len}")
-
-        header_bytes = header_buf[8 : 8 + json_len]
-        header = json.loads(header_bytes.decode("utf-8"))
-
-        if callback:
-            callback("Extracting ASAR...")
-
         unpacked_files = set()
         _extract_node(
             header,

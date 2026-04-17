@@ -12,6 +12,8 @@ import os
 import sys
 from typing import Optional, Tuple
 
+from utils.constants import MAX_PATH_LENGTH
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,8 +56,6 @@ def normalize_path(path: str) -> str:
                 logger.debug(f"Expanded environment variables in path: {original} -> {path}")
 
         path = os.path.normpath(os.path.abspath(path))
-
-        from utils.constants import MAX_PATH_LENGTH
 
         if len(path) > MAX_PATH_LENGTH:
             logger.warning(f"Path too long: {len(path)} chars")

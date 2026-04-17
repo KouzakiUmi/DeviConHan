@@ -12,9 +12,10 @@ import platform
 import re
 import string
 import sys
-import threading
-from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -419,8 +420,6 @@ def _find_game_by_directory_scan(
     Returns:
         str: 游戏目录路径，未找到返回 None
     """
-    result: list = [None]
-
     def search():
         for base in search_paths:
             common_dir = os.path.join(base, "common")
@@ -434,19 +433,27 @@ def _find_game_by_directory_scan(
                         if entry_normalized == var:
                             game_path = os.path.join(common_dir, entry)
                             logger.info(f"Found game by directory scan: '{entry}' at {game_path}")
-                            result[0] = game_path
-                            return
+                            return game_path
             except (PermissionError, OSError) as e:
                 logger.warning(f"Cannot access {common_dir}: {e}")
 
-    search_thread = threading.Thread(target=search, daemon=True)
-    search_thread.start()
-    search_thread.join(timeout=timeout)
+        return None
 
-    if result[0] is None:
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(search)
+            result = future.result(timeout=timeout)
+    except FuturesTimeoutError:
+        logger.warning("Directory scan timed out")
+        result = None
+    except Exception as e:
+        logger.warning(f"Directory scan failed: {e}")
+        result = None
+
+    if result is None:
         logger.warning("Game not found by any method")
 
-    return result[0]
+    return result
 
 
 
@@ -490,7 +497,12 @@ def get_game_executable_name(game_name: str, system: Optional[str] = None) -> st
 def get_resources_path(game_path: str, system: Optional[str] = None) -> str:
     """
     获取游戏的 resources 目录路径
+
+    自动处理 macOS app bundle（路径以 .app 结尾的目录）。
     """
+    if is_app_bundle(game_path):
+        return os.path.join(game_path, "Contents", "Resources")
+
     if system is None:
         info = get_platform_info()
         system = info.system

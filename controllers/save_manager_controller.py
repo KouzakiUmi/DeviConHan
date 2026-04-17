@@ -6,7 +6,7 @@
 
 import logging
 import os
-from typing import Callable, Optional, Tuple
+from typing import Callable, Iterable, Optional, Tuple, Union
 
 from core.save_service import SaveService
 
@@ -78,19 +78,24 @@ class SaveManagerController:
 
         return None
 
-    def scan_backups(self, save_root: str, backup_dir: str) -> list:
+    def scan_backups(self, save_root: str, backup_dirs: Union[str, Iterable[str]]) -> list:
         """
         扫描备份目录
 
         Args:
             save_root: 游戏存档根目录
-            backup_dir: 备份存储目录
+            backup_dirs: 一个或多个备份存储目录
 
         Returns:
             备份列表 [(display_name, fullpath, is_zip), ...]
         """
         backups = []
-        dirs_to_scan = {save_root, backup_dir}
+        if isinstance(backup_dirs, (str, os.PathLike)):
+            configured_dirs = {os.fspath(backup_dirs)}
+        else:
+            configured_dirs = {os.fspath(path) for path in backup_dirs if path}
+
+        dirs_to_scan = {save_root, *configured_dirs}
 
         from core.config import get_config
 

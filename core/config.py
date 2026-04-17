@@ -36,6 +36,8 @@ class AppConfig:
     - 所有公共方法自动加锁
     """
 
+    _SNAPSHOT_TTL_SECONDS: float = 2.0
+
     def __init__(self, config_file: Optional[str] = None):
         """
         初始化配置管理器
@@ -124,7 +126,7 @@ class AppConfig:
         """获取配置快照（线程安全，带TTL刷新）"""
         with self._acquire_lock():
             current_time = time.time()
-            if self._config_snapshot is not None and (current_time - self._snapshot_time <= 2.0):
+            if self._config_snapshot is not None and (current_time - self._snapshot_time <= self._SNAPSHOT_TTL_SECONDS):
                 return self._config_snapshot
 
             self._config_snapshot = self._build_config_snapshot()
@@ -530,7 +532,7 @@ class AppConfig:
                         errors.append(f"Missing required option [{section}] {item}")
 
             # 在锁内读取快照，避免 _get_config_snapshot 内部再次获取锁
-            if self._config_snapshot is not None and (time.time() - self._snapshot_time <= 2.0):
+            if self._config_snapshot is not None and (time.time() - self._snapshot_time <= AppConfig._SNAPSHOT_TTL_SECONDS):
                 snapshot = self._config_snapshot
             else:
                 snapshot = self._build_config_snapshot()

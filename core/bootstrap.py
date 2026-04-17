@@ -90,15 +90,12 @@ def is_game_directory(path: str, config=None) -> bool:
     if config is None:
         config = get_config()
 
-    from utils.platform import get_platform_info, get_resources_path, is_app_bundle
+    from utils.platform import get_platform_info, get_resources_path
 
     info = get_platform_info()
 
     # 确定 resources 目录
-    if is_app_bundle(path):
-        res_path = os.path.join(path, "Contents", "Resources")
-    else:
-        res_path = get_resources_path(path, info.system)
+    res_path = get_resources_path(path, info.system)
 
     # 检查是否存在 resources 目录
     if not os.path.isdir(res_path):

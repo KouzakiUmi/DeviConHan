@@ -33,6 +33,72 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class ConsoleManager:
+    """Windows 下动态分配控制台用于 Debug"""
+
+    def __init__(self, show_console: bool = False):
+        self.console_allocated = False
+        self.console_connected = False
+        self.original_stdout = sys.stdout
+        self.original_stderr = sys.stderr
+        self.ctypes = None
+        self.stdout = None
+        self.stderr = None
+        self.show_console = show_console
+
+    def acquire(self):
+        if sys.platform.startswith("win") and self.show_console:
+            try:
+                import ctypes
+
+                self.ctypes = ctypes
+                if ctypes.windll.kernel32.AttachConsole(-1):
+                    self.console_connected = True
+                elif ctypes.windll.kernel32.AllocConsole():
+                    self.console_allocated = True
+                    self.console_connected = True
+
+                if self.console_connected:
+                    self.stdout = open("CONOUT$", "w", encoding="utf-8", buffering=1)
+                    self.stderr = open("CONOUT$", "w", encoding="utf-8", buffering=1)
+                    sys.stdout = self.stdout
+                    sys.stderr = self.stderr
+                    retarget_console_streams(
+                        self.stdout,
+                        self.stderr,
+                        old_stdout=self.original_stdout,
+                        old_stderr=self.original_stderr,
+                    )
+                    logging.getLogger(__name__).debug("Console attached/allocated for debugging")
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Failed to attach/allocate console: {e}")
+
+    def release(self):
+        if self.console_connected:
+            try:
+                retarget_console_streams(
+                    self.original_stdout,
+                    self.original_stderr,
+                    old_stdout=self.stdout,
+                    old_stderr=self.stderr,
+                )
+                sys.stdout = self.original_stdout
+                sys.stderr = self.original_stderr
+
+                if self.stdout is not None:
+                    self.stdout.close()
+                if self.stderr is not None and self.stderr is not self.stdout:
+                    self.stderr.close()
+
+                if self.ctypes is not None:
+                    self.ctypes.windll.kernel32.FreeConsole()
+                self.console_allocated = False
+                self.console_connected = False
+                logging.getLogger(__name__).debug("Console freed")
+            except Exception as cleanup_err:
+                logging.getLogger(__name__).warning(f"Console cleanup error: {cleanup_err}")
+
+
 def main() -> int:
     """
     主函数，处理命令行参数和启动GUI/批处理模式
@@ -42,26 +108,22 @@ def main() -> int:
     """
     args = parse_arguments()
 
-    # --verbose 和 --quiet 不能同时使用
     if args.verbose and args.quiet:
         print("Error: --verbose and --quiet are mutually exclusive.", file=sys.stderr)
         return 1
 
-    # 1. 初始化日志系统（最先初始化，确保后续操作都能记录日志）
     log_kwargs = {"verbose": args.verbose, "quiet": args.quiet}
     if args.log_file:
         log_kwargs["log_file"] = args.log_file
     logger = setup_logging(**log_kwargs)
 
-    # 2. 初始化语言设置（依赖日志系统）
     init_lang()
 
-    # 3. 系统引导检查（包含配置验证、状态检查、磁盘检查）
     try:
         from core.bootstrap import bootstrap_system
 
         bootstrap_ok, bootstrap_messages = bootstrap_system(
-            skip_state_check=args.batch  # 批处理模式下跳过状态检查
+            skip_state_check=args.batch
         )
 
         for msg in bootstrap_messages:
@@ -86,78 +148,10 @@ def main() -> int:
         )
         return 1
 
-    # Windows 下动态分配控制台用于 Debug
-    class ConsoleManager:
-        def __init__(self):
-            self.console_allocated = False
-            self.console_connected = False
-            self.original_stdout = sys.stdout
-            self.original_stderr = sys.stderr
-            self.ctypes = None
-            self.stdout = None
-            self.stderr = None
-
-        def acquire(self):
-            if sys.platform.startswith("win") and not args.batch:
-                config = get_config()
-                if config.get_gui_config("show_console", False):
-                    try:
-                        import ctypes
-
-                        self.ctypes = ctypes
-                        # 尝试附加到现有控制台或创建新控制台
-                        # 先尝试 AttachConsole(-1) 附加到父进程的控制台
-                        if ctypes.windll.kernel32.AttachConsole(-1):
-                            self.console_connected = True
-                        elif ctypes.windll.kernel32.AllocConsole():
-                            # 如果附加失败，尝试创建新控制台
-                            self.console_allocated = True
-                            self.console_connected = True
-
-                        if self.console_connected:
-                            self.stdout = open("CONOUT$", "w", encoding="utf-8", buffering=1)
-                            self.stderr = open("CONOUT$", "w", encoding="utf-8", buffering=1)
-                            sys.stdout = self.stdout
-                            sys.stderr = self.stderr
-                            retarget_console_streams(
-                                self.stdout,
-                                self.stderr,
-                                old_stdout=self.original_stdout,
-                                old_stderr=self.original_stderr,
-                            )
-                            logger.debug("Console attached/allocated for debugging")
-                    except Exception as e:
-                        logger.warning(f"Failed to attach/allocate console: {e}")
-
-        def release(self):
-            if self.console_connected:
-                try:
-                    retarget_console_streams(
-                        self.original_stdout,
-                        self.original_stderr,
-                        old_stdout=self.stdout,
-                        old_stderr=self.stderr,
-                    )
-                    sys.stdout = self.original_stdout
-                    sys.stderr = self.original_stderr
-
-                    if self.stdout is not None:
-                        self.stdout.close()
-                    if self.stderr is not None and self.stderr is not self.stdout:
-                        self.stderr.close()
-
-                    if self.ctypes is not None:
-                        self.ctypes.windll.kernel32.FreeConsole()
-                    self.console_allocated = False
-                    self.console_connected = False
-                    logging.getLogger(__name__).debug("Console freed")
-                except Exception as cleanup_err:
-                    logger.warning(f"Console cleanup error: {cleanup_err}")
-
-    console_manager = ConsoleManager()
+    show_console = get_config().get_gui_config("show_console", False)
+    console_manager = ConsoleManager(show_console=show_console)
     console_manager.acquire()
 
-    # 启动GUI模式
     try:
         app = App()
         app.mainloop()
@@ -166,7 +160,6 @@ def main() -> int:
         logger.exception("Fatal error in main")
         return 1
     finally:
-        # 清理控制台句柄
         console_manager.release()
 
 
