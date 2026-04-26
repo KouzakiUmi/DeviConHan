@@ -21,6 +21,9 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+# 最大计时器数量上限，防止动态计时器名称导致内存泄漏
+MAX_TIMERS = 1024
+
 
 class PerformanceMonitor:
     """
@@ -56,6 +59,9 @@ class PerformanceMonitor:
 
         with self._lock:
             if name not in self._timings:
+                if len(self._timings) >= MAX_TIMERS:
+                    logger.warning(f"Performance timer count exceeded {MAX_TIMERS}, ignoring '{name}'")
+                    return
                 self._timings[name] = {
                     "total_time": 0.0,
                     "count": 0,

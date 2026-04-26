@@ -60,7 +60,7 @@ def retry_operation(
         try:
             result = operation()
             # 如果操作返回 False，认为是失败
-            if result is False:
+            if not result:
                 logger.warning(f"{operation_name} returned False, attempt {attempt}/{max_retries}")
                 if attempt < max_retries:
                     time.sleep(delay)

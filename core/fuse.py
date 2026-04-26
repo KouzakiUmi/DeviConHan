@@ -279,7 +279,7 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         modify_result = _modify_fuse_byte(exe_path, callback)
         if modify_result is None:
             return False
-        if modify_result is True and callback:
+        if modify_result:
             return True
 
         if not _verify_fuse_final(exe_path):
@@ -292,19 +292,31 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         logger.error(f"Fuse operation failed: {e}")
         if callback:
             callback(f"Fuse Error: {e}")
-        _rollback_fuse(exe_path, temp_backup)
+        if not _rollback_fuse(exe_path, temp_backup):
+            rollback_msg = "Rollback failed! The executable may be corrupted."
+            logger.error(rollback_msg)
+            if callback:
+                callback(rollback_msg)
         return False
     except OSError as e:
         logger.error(f"MMap/IO error: {e}")
         if callback:
             callback(f"IO Error: {e}")
-        _rollback_fuse(exe_path, temp_backup)
+        if not _rollback_fuse(exe_path, temp_backup):
+            rollback_msg = "Rollback failed! The executable may be corrupted."
+            logger.error(rollback_msg)
+            if callback:
+                callback(rollback_msg)
         return False
     except Exception as e:
         logger.exception(f"Failed to remove Fuse: {e}")
         if callback:
             callback(f"Fuse Error: {e}")
-        _rollback_fuse(exe_path, temp_backup)
+        if not _rollback_fuse(exe_path, temp_backup):
+            rollback_msg = "Rollback failed! The executable may be corrupted."
+            logger.error(rollback_msg)
+            if callback:
+                callback(rollback_msg)
         return False
     finally:
         _cleanup_temp_backup(temp_backup)
@@ -384,12 +396,14 @@ def _ensure_fuse_backup(exe_path: str, callback: Optional[Callable]) -> bool:
 
 def _modify_fuse_byte(exe_path: str, callback: Optional[Callable]) -> Optional[bool]:
     """
-    使用 mmap 修改 Fuse 校验字节。
+    使用 mmap 修改 Fuse 校验字节。三种返回值对应三种不同结果：
 
     Returns:
-        None: 失败（sentinel 未找到或意外字节）
-        True: Fuse 已禁用（无需修改）
-        False: 已修改成功，需要后续验证
+        None:   Fuse 标记未找到或目标位置的字节既不是 ENABLED 也不是 DISABLED
+                （调用方应视为失败，终止操作）
+        True:   Fuse 已被禁用，无需修改（调用方应直接返回成功）
+        False:  已成功将 Fuse 标记从 ENABLED 修改为 DISABLED，
+                调用方仍需执行后续最终验证确认修改已持久化到磁盘
     """
     fuse_sentinel = get_config().fuse_sentinel
     header_len = get_config().fuse_wire_header_length
@@ -469,13 +483,16 @@ def _cleanup_temp_backup(temp_backup: str) -> None:
             pass
 
 
-def _rollback_fuse(exe_path: str, temp_backup: str) -> None:
+def _rollback_fuse(exe_path: str, temp_backup: str) -> bool:
     """
     回滚Fuse修改
 
     Args:
         exe_path: 可执行文件路径
         temp_backup: 临时备份路径
+
+    Returns:
+        bool: 回滚是否成功
     """
     logger.warning("Attempting to rollback Fuse modification...")
 
@@ -483,7 +500,10 @@ def _rollback_fuse(exe_path: str, temp_backup: str) -> None:
         if os.path.exists(temp_backup):
             shutil.copy2(temp_backup, exe_path)
             logger.info("Rollback successful")
+            return True
         else:
             logger.error("Cannot rollback: temp backup not found")
+            return False
     except Exception as e:
         logger.error(f"Rollback failed: {e}")
+        return False

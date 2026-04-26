@@ -26,8 +26,13 @@ class PatchTab(ttk.Frame):
         ttk.Button(
             self,
             text=T("btn_to_tools"),
-            command=lambda: self.app.notebook.select(self.app.tab_tools),
+            command=self._switch_to_tools,
         ).pack(pady=10)
+
+    def _switch_to_tools(self):
+        """切换到开发者工具箱标签页"""
+        if hasattr(self.app, "tab_tools") and hasattr(self.app, "notebook"):
+            self.app.notebook.select(self.app.tab_tools)
 
     def _run_auto_patch_worker(self, cancel_event=None, _check_cancelled=None):
         self.app.performance_monitor.start("auto_patch")

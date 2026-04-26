@@ -6,6 +6,7 @@
 - ruff: 代码格式和 lint
 """
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -13,10 +14,10 @@ from pathlib import Path
 
 def run_command(cmd, description):
     """运行命令并返回是否成功"""
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Running: {description}")
     print(f"Command: {' '.join(cmd)}")
-    print('='*60)
+    print("=" * 60)
 
     result = subprocess.run(cmd, capture_output=False)
     return result.returncode == 0
@@ -28,8 +29,24 @@ def main():
     sys.path.insert(0, str(project_root))
 
     checks = [
-        (["python", "-m", "ruff", "check", "core/", "utils/", "controllers/", "gui/"], "Lint (ruff)"),
-        (["python", "-m", "ruff", "format", "--check", "core/", "utils/", "controllers/", "gui/"], "Format Check (ruff)"),
+        (
+            ["python", "-m", "ruff", "check", "core/", "utils/", "controllers/", "gui/"],
+            "Lint (ruff)",
+        ),
+        (
+            [
+                "python",
+                "-m",
+                "ruff",
+                "format",
+                "--check",
+                "core/",
+                "utils/",
+                "controllers/",
+                "gui/",
+            ],
+            "Format Check (ruff)",
+        ),
     ]
 
     results = []
@@ -40,17 +57,16 @@ def main():
     # 可选检查 - 如果安装了对应模块则运行
     optional_checks = [
         (["python", "-m", "pytest", "tests/", "-v", "--tb=short"], "Unit Tests"),
-        (["python", "-m", "mypy", "core/", "utils/", "--ignore-missing-imports"], "Type Check (mypy)"),
+        (
+            ["python", "-m", "mypy", "core/", "utils/", "--ignore-missing-imports"],
+            "Type Check (mypy)",
+        ),
     ]
 
     for cmd, desc in optional_checks:
+        module_name = cmd[2]
         try:
-            result = subprocess.run(
-                [cmd[0], "-c", f"import {cmd[2].split('.')[1]}"],
-                capture_output=True,
-                timeout=5
-            )
-            if result.returncode == 0:
+            if importlib.util.find_spec(module_name) is not None:
                 success = run_command(cmd, desc)
                 results.append((desc, success))
             else:
@@ -58,9 +74,9 @@ def main():
         except Exception:
             print(f"\n[SKIP] {desc} (module not available)")
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Summary")
-    print("="*60)
+    print("=" * 60)
 
     all_passed = True
     for desc, success in results:

@@ -54,6 +54,7 @@ class App(tk.Tk):
         self.current_save_dir: Optional[str] = None
         self.last_extracted_path: Optional[str] = None
         self.is_operating: bool = False
+        self._terminal_state_seen: bool = False
         self.var_plat: Optional[tk.StringVar] = None
         self.var_zip: Optional[tk.BooleanVar] = None
         self.var_console: Optional[tk.BooleanVar] = None
@@ -63,7 +64,9 @@ class App(tk.Tk):
             # 初始化核心逻辑（可能抛出异常）
             self.core = CoreLogic()
             self.save_service = SaveService(self.core)
-            self.save_controller = SaveManagerController(self.save_service, log_callback=self.ui_log)
+            self.save_controller = SaveManagerController(
+                self.save_service, log_callback=self.ui_log
+            )
             self.patch_controller = PatchController(self.core, log_callback=self.ui_log)
         except Exception as e:
             logger.error(T("err_failed_init_corelogic").format(error=str(e)))
@@ -322,6 +325,7 @@ class App(tk.Tk):
 
     def _queue_log_update(self, msg: str, level: str = "info") -> None:
         """将日志消息排入 GUI 日志区域更新队列。"""
+
         def _update():
             if not hasattr(self, "log_area") or not self.log_area.winfo_exists():
                 return
@@ -392,21 +396,27 @@ class App(tk.Tk):
         except tk.TclError:
             pass
 
-    def _finish_operation(self, monitor_name: str = "") -> None:
+    def _finish_operation(
+        self, monitor_name: str = "", op_type: Optional[OperationType] = None
+    ) -> None:
         """
         统一的异步操作完成处理
 
         在异步操作的 finally 块中调用，停止进度条、重置操作状态、
-        记录性能计时。
+        记录性能计时。如果提供了操作类型，会释放对应的操作锁。
 
         Args:
             monitor_name: 性能监控计时器名称，为空则不记录耗时
+            op_type: 操作类型，提供时会释放操作锁（必须已通过 _acquire_operation_lock 获取）
         """
         if monitor_name:
             elapsed = self.performance_monitor.stop(monitor_name)
             logger.info(f"{monitor_name} took {elapsed:.3f}s")
-        self.after(0, lambda: setattr(self, "is_operating", False))
-        self.after(0, lambda: self.toggle_progress(False))
+        if op_type:
+            self.after(0, lambda: self._release_operation_lock(op_type))
+        else:
+            self.after(0, lambda: setattr(self, "is_operating", False))
+            self.after(0, lambda: self.toggle_progress(False))
 
     def _window_alive(self) -> bool:
         """检查 Tkinter 窗口是否仍然存在且可用"""
@@ -475,41 +485,6 @@ class App(tk.Tk):
             messagebox.showinfo, title, message, timeout, None, "thread_safe_showinfo"
         )
 
-    def _check_operation_lock(self, op_type: OperationType, show_warning: bool = True) -> bool:
-        """
-        检查是否可以开始指定操作
-
-        Args:
-            op_type: 操作类型
-            show_warning: 如果冲突，是否显示警告对话框
-
-        Returns:
-            bool: 是否可以开始操作
-        """
-        if self._op_lock.is_operation_running(op_type):
-            if show_warning:
-                messagebox.showwarning(
-                    T("title_warning", "Operation in Progress"),
-                    T(
-                        "warn_operation_in_progress",
-                        "An operation is already in progress. Please wait.",
-                    ),
-                )
-            return False
-
-        # 检查是否有互斥操作在进行
-        running = self._op_lock.get_running_operations()
-        if running:
-            if show_warning:
-                op_names = ", ".join([op.value for op in running])
-                messagebox.showwarning(
-                    T("title_warning", "Conflicting Operation"),
-                    T("err_operation_conflict").format(operations=op_names),
-                )
-            return False
-
-        return True
-
     def _acquire_operation_lock(self, op_type: OperationType) -> bool:
         """
         获取操作锁
@@ -556,6 +531,9 @@ class App(tk.Tk):
                 self.log(progress_info.message, "debug")
 
         if progress_info.state.value in ["completed", "cancelled", "failed"]:
+            if self._terminal_state_seen:
+                return
+            self._terminal_state_seen = True
 
             def update_state():
                 self.toggle_progress(False)

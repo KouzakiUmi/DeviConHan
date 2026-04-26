@@ -75,7 +75,7 @@ class ToolsTab(ttk.Frame):
                                 display_name,
                                 ext_tuple[1]
                                 if len(ext_tuple) > 1
-                                else (ext_tuple[0] if len(ext_tuple) > 0 else "*.*"),
+                                else (ext_tuple[0] if ext_tuple else "*.*"),
                             ),
                         )
 
@@ -370,7 +370,7 @@ class ToolsTab(ttk.Frame):
                 self.app.log(f"Extract ASAR error: {e}\n{traceback_str}", "error")
                 self.after(
                     0,
-                    lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
+                    lambda e_str=f"{e}\n\n{traceback_str}": messagebox.showerror(
                         T("title_error"), e_str
                     ),
                 )
@@ -451,7 +451,10 @@ class ToolsTab(ttk.Frame):
             base_name = base_name[:-4]
         out_name = f"{base_name}{ASAR_EXTENSION}"
         out_path = os.path.join(os.getcwd(), PACKED_DIR_NAME, out_name)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        try:
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        except OSError:
+            logger.warning(f"Could not create output directory for {out_path}")
         return out_path
 
     def _tool_pack(self):
@@ -504,7 +507,7 @@ class ToolsTab(ttk.Frame):
                 self.app.log(f"Pack ASAR error: {e}\n{traceback_str}", "error")
                 self.after(
                     0,
-                    lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
+                    lambda e_str=f"{e}\n\n{traceback_str}": messagebox.showerror(
                         T("title_error"), e_str
                     ),
                 )

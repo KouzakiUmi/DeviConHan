@@ -95,11 +95,11 @@ def safe_path_within(path: str, base_dir: str) -> Optional[str]:
         abs_base = os.path.normpath(os.path.abspath(base_dir))
         abs_path = os.path.normpath(os.path.abspath(os.path.join(abs_base, path)))
 
-        base_lower = abs_base.lower().replace("\\", "/").rstrip("/") + "/"
-        path_lower = abs_path.lower().replace("\\", "/")
+        base_normalized = os.path.normcase(abs_base).replace("\\", "/").rstrip("/") + "/"
+        path_normalized = os.path.normcase(abs_path).replace("\\", "/")
 
-        path_normalized = path_lower.rstrip("/") + "/"
-        base_normalized = base_lower.rstrip("/") + "/"
+        path_normalized = path_normalized.rstrip("/") + "/"
+        base_normalized = base_normalized.rstrip("/") + "/"
 
         if path_normalized != base_normalized and not path_normalized.startswith(base_normalized):
             logger.warning(

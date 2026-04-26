@@ -127,15 +127,10 @@ class PatchController:
                 except Exception as e:
                     return False, f"Failed to restore from backup: {e}"
             elif asar_corrupted:
-                return (
-                    False,
-                    "❌ 错误: app.asar 文件已损坏且无备份，请在 Steam 中验证游戏文件完整性。"
-                    + (
-                        f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}"
-                        if asar_reason
-                        else ""
-                    ),
-                )
+                msg = T("err_asar_corrupted_no_backup")
+                if asar_reason:
+                    msg += f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}"
+                return False, msg
 
         # ASAR 和 BAK 都不存在才算失败（BAK 存在时 run_auto_patch 可直接用 BAK 为源）
         if not os.path.exists(asar) and not os.path.exists(bak):

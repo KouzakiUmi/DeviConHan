@@ -78,6 +78,10 @@ FUSE_PARTIAL_HASH_TAIL_SIZE: int = 1024 * 1024  # 1 MB
 # ================= ASAR 原生模块扩展名 =================
 NATIVE_EXTENSIONS = frozenset({".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"})
 
+# ================= ASAR 必需文件 =================
+# 用于验证 ASAR 解包目录是否是有效的 asar 源码目录
+REQUIRED_ASAR_FILES = ["package.json", "index.html"]
+
 # ================= 配置验证常量 =================
 # 与 config.ini 中的 TIME_DIFF_THRESHOLD_DAYS 保持一致（默认 730 天，约 2 年）
 TIME_DIFF_THRESHOLD_MAX_DAYS: int = 730

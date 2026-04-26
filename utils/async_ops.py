@@ -190,8 +190,8 @@ class AsyncOperationManager:
                 logger.exception(f"Operation {operation_id} failed: {e}")
                 with self._lock:
                     progress_info.state = OperationState.FAILED
-                    progress_info.message = f"Failed: {str(e)}"
-                    progress_info.error = e  # type: ignore
+                    progress_info.message = f"Failed: {e}"
+                    progress_info.error = e
                 self._notify_progress(progress_info)
                 raise
 

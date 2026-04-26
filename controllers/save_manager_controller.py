@@ -223,10 +223,14 @@ class SaveManagerController:
             **kwargs: 其他参数，如 _check_cancelled
 
         Returns:
-            (是否成功, 错误消息)
+            (是否成功, 消息)
         """
         try:
-            self.save_service.restore_save(save_dir, backup_src, **kwargs)
+            result = self.save_service.restore_save(save_dir, backup_src, **kwargs)
+            if result is not None:
+                # 回滚成功但还原失败，返回警告
+                self._log(f"Restore failed but rollback succeeded: {result}", "warning")
+                return True, result
             self._log("Restore completed")
             return True, ""
         except Exception as e:

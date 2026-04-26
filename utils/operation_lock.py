@@ -32,6 +32,9 @@ class OperationType(Enum):
     PACK = "pack"  # 打包ASAR
     SAVE_IMPORT = "save_import"  # 导入存档
     SAVE_EXPORT = "save_export"  # 导出存档
+    SAVE_BACKUP = "save_backup"  # 备份存档
+    SAVE_RESTORE = "save_restore"  # 还原存档
+    SAVE_DELETE = "save_delete"  # 删除备份
 
 
 # 互斥的操作组
@@ -50,6 +53,14 @@ MUTEX_GROUPS = {
         {
             OperationType.FUSE_REMOVE,
             OperationType.FUSE_RESTORE,
+        }
+    ),
+    # 存档操作组：不能同时进行
+    frozenset(
+        {
+            OperationType.SAVE_BACKUP,
+            OperationType.SAVE_RESTORE,
+            OperationType.SAVE_DELETE,
         }
     ),
 }
@@ -74,7 +85,7 @@ class OperationLock:
     def is_any_operation_running(self) -> bool:
         """检查是否有任何操作正在进行"""
         with self._lock:
-            return len(self._current_operations) > 0
+            return bool(self._current_operations)
 
     def get_running_operations(self) -> Set[OperationType]:
         """获取正在进行的操作集合"""

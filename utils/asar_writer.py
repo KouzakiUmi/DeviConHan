@@ -32,6 +32,7 @@ import os
 import shutil
 import struct
 from pathlib import Path
+from typing import Optional
 
 from utils.constants import NATIVE_EXTENSIONS
 
@@ -136,7 +137,7 @@ def asar_pack(
     unpack_extensions=None,
     callback=None,
     check_cancelled=None,
-    unpacked_files: set | None = None,
+    unpacked_files: Optional[set] = None,
 ) -> None:
     """
     将目录打包为 ASAR 归档文件。
@@ -244,7 +245,7 @@ def _walk_for_pack(
     offset_ref: list,
     callback,
     check_cancelled,
-    unpacked_files: set | None = None,
+    unpacked_files: Optional[set] = None,
     parent_is_unpacked: bool = False,
 ) -> None:
     try:

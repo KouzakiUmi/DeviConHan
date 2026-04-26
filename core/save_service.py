@@ -28,6 +28,19 @@ class SaveService:
     def __init__(self, core_logic: Any) -> None:
         self.core = core_logic
 
+    @staticmethod
+    def _is_within_or_equal(child: str, parent: str) -> bool:
+        """检查child路径是否在parent内部或与parent相等（大小写不敏感）"""
+        child_norm = os.path.normpath(os.path.abspath(child))
+        parent_norm = os.path.normpath(os.path.abspath(parent))
+        if os.name == "nt":
+            child_norm = child_norm.lower()
+            parent_norm = parent_norm.lower()
+        if child_norm == parent_norm:
+            return True
+        parent_with_sep = parent_norm + os.sep
+        return child_norm.startswith(parent_with_sep)
+
     def _cleanup_temp(self, temp_path: str, is_dir: bool = False) -> None:
         """安全清理临时资源（文件或目录）"""
         if not os.path.exists(temp_path):
@@ -93,7 +106,7 @@ class SaveService:
         backup_dir = normalize_path(backup_dir)
 
         # 确保备份目录存在，不存在则自动创建
-        if backup_dir.startswith(save_dir + os.sep) or backup_dir == save_dir:
+        if self._is_within_or_equal(backup_dir, save_dir):
             raise PatcherError("Backup directory cannot be inside the save directory.")
 
         try:
@@ -293,14 +306,6 @@ class SaveService:
                 severity=ErrorSeverity.CRITICAL,
             ) from restore_err
 
-        # 回滚成功：仍抛出异常以通知调用方"还原操作失败"，但附带回滚成功信息
-        raise PatcherError(
-            f"[{type(original_error).__name__}] {original_error}\n\n"
-            f"Current save has been restored from backup.",
-            category=ErrorCategory.UNKNOWN_ERROR,
-            severity=ErrorSeverity.WARNING,
-        )
-
     @validate_not_empty("save_dir", "backup_src")
     @validate_path("backup_src", should_exist=True)
     def restore_save(
@@ -309,9 +314,18 @@ class SaveService:
         backup_src: str,
         log_callback: Optional[Callable] = None,
         **kwargs: Any,
-    ) -> None:
+    ) -> Optional[str]:
         """
         还原存档（原子事务操作）
+
+        此方法实现三态返回值，调用方应根据不同返回值采取相应动作：
+
+        Returns:
+            None:   还原完全成功。目标存档目录已成功替换为备份内容。
+            str:    还原过程中发生错误，但已成功回滚到原始状态。
+                    返回的 str 包含警告消息供用户知晓（即"降级成功，操作失败"）。
+            Raises PatcherError: 还原失败且回滚也失败（CRITICAL 级别）。
+                    调用方应向上传播此异常，因为当前存档目录可能已丢失。
         """
         _check_cancelled = kwargs.get("_check_cancelled")
         save_dir = normalize_path(save_dir)
@@ -363,15 +377,20 @@ class SaveService:
         except Exception as e:
             logger.error(f"Restore error: {e}")
             if temp_dir and current_save_backup_path and os.path.exists(current_save_backup_path):
-                self._rollback_restore(save_dir, current_save_backup_path, shutil.copy2, e)
-            else:
-                raise PatcherError(f"{type(e).__name__}: {e}") from e
+                self._rollback_restore(save_dir, current_save_backup_path, copy_with_cancel, e)
+                warning_msg = (
+                    f"[{type(e).__name__}] {e}\n\nCurrent save has been restored from backup."
+                )
+                return warning_msg
+            raise PatcherError(f"{type(e).__name__}: {e}") from e
         finally:
             if temp_dir and os.path.exists(temp_dir):
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as cleanup_err:
                     logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
+
+        return None
 
     def delete_backup(self, backup_src: str, **kwargs: Any) -> None:
         """

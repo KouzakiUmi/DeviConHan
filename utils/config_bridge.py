@@ -76,7 +76,8 @@ def save_language_to_config(code: str) -> bool:
         bool: 是否成功保存
     """
     success = False
-    for callback in _language_save_callbacks:
+    callbacks = _get_callbacks_snapshot("save")
+    for callback in callbacks:
         try:
             callback(code)
             success = True
@@ -92,7 +93,8 @@ def load_language_from_config() -> str | None:
     Returns:
         Optional[str]: 语言代码，如果没有则返回 None
     """
-    for callback in _language_load_callbacks:
+    callbacks = _get_callbacks_snapshot("load")
+    for callback in callbacks:
         try:
             lang = callback()
             if lang:
@@ -109,11 +111,24 @@ def sync_error_language(code: str) -> None:
     Args:
         code: 语言代码
     """
-    for callback in _error_language_callbacks:
+    callbacks = _get_callbacks_snapshot("error")
+    for callback in callbacks:
         try:
             callback(code)
         except Exception as e:
             logger.debug(f"Error language callback failed: {e}")
+
+
+def _get_callbacks_snapshot(which: str) -> list:
+    """在线程安全锁保护下获取回调列表的快照"""
+    with _lock:
+        if which == "save":
+            return list(_language_save_callbacks)
+        elif which == "load":
+            return list(_language_load_callbacks)
+        elif which == "error":
+            return list(_error_language_callbacks)
+    return []
 
 
 def unregister_all_callbacks() -> None:

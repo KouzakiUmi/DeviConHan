@@ -200,12 +200,29 @@ class SaveTab(ttk.Frame):
             self.app.var_save_path.set(T("err_no_save"))
             self.app.current_save_dir = None
 
-    def do_backup_save(self):
-        if self.app.is_operating:
+    def _submit_async_operation(self, op_type, op_name, worker_func):
+        from utils.operation_lock import get_operation_lock
+
+        lock = get_operation_lock()
+        if not lock.acquire(op_type):
             return messagebox.showwarning(
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
+
+        self.app.performance_monitor.start(op_name)
+        self.app.is_operating = True
+        self.app.toggle_progress(True)
+
+        def wrapped_worker(cancel_event=None, _check_cancelled=None):
+            try:
+                return worker_func(cancel_event, _check_cancelled)
+            finally:
+                self.app._finish_operation(op_name, op_type)
+
+        self.app.async_manager.submit(f"{op_name}_op", wrapped_worker)
+
+    def do_backup_save(self):
         if not self.app.current_save_dir:
             return messagebox.showerror(T("title_error"), T("err_no_save"))
 
@@ -219,9 +236,7 @@ class SaveTab(ttk.Frame):
         use_zip = self.app.var_zip.get() if self.app.var_zip else True
         save_dir = self.app.current_save_dir
 
-        self.app.performance_monitor.start("backup_save")
-        self.app.is_operating = True
-        self.app.toggle_progress(True)
+        from utils.operation_lock import OperationType
 
         def _worker(cancel_event=None, _check_cancelled=None):
             try:
@@ -249,21 +264,15 @@ class SaveTab(ttk.Frame):
                 self.app.log(f"Backup error: {e}\n{traceback_str}", "error")
                 self.after(
                     0,
-                    lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
+                    lambda e_str=f"{e}\n\n{traceback_str}": messagebox.showerror(
                         T("title_error"), e_str
                     ),
                 )
-            finally:
-                self.app._finish_operation("backup_save")
 
-        self.app.async_manager.submit("backup_save_op", _worker)
+        self._submit_async_operation(OperationType.SAVE_BACKUP, "backup_save", _worker)
 
     def do_restore_save(self):
-        if self.app.is_operating:
-            return messagebox.showwarning(
-                T("title_warning"),
-                T("warn_operation_in_progress", "Operation in progress..."),
-            )
+        from utils.operation_lock import OperationType
 
         if not self.app.current_save_dir:
             return messagebox.showerror(T("title_error"), T("err_no_save"))
@@ -281,50 +290,49 @@ class SaveTab(ttk.Frame):
                 T("err_backup_not_exist", "Backup file/folder does not exist"),
             )
 
-        if messagebox.askyesno(T("title_confirm"), T("msg_restore_confirm")):
-            self.app.performance_monitor.start("restore_save")
-            self.app.is_operating = True
-            self.app.toggle_progress(True)
+        if not messagebox.askyesno(T("title_confirm"), T("msg_restore_confirm")):
+            return
 
-            def _w(cancel_event=None, _check_cancelled=None):
-                try:
-                    self.app.save_controller.set_log_callback(self.app.ui_log)
-                    success, error_msg = self.app.save_controller.execute_restore(
-                        save_dir, src, _check_cancelled=_check_cancelled
-                    )
-                    if success:
-                        self.after(
-                            0,
-                            lambda: messagebox.showinfo(T("title_success"), T("msg_restored")),
-                        )
-                        self.after(0, self.scan_saves)
-                    else:
-                        self.after(
-                            0,
-                            lambda e_str=error_msg: messagebox.showerror(T("title_error"), e_str),
-                        )
-                except Exception as e:
-                    from utils.error_handler import ErrorHandler
-
-                    traceback_str = ErrorHandler.format_traceback(e)
-                    logger.error(f"Restore error: {e}\n{traceback_str}")
+        def _w(cancel_event=None, _check_cancelled=None):
+            try:
+                self.app.save_controller.set_log_callback(self.app.ui_log)
+                success, msg = self.app.save_controller.execute_restore(
+                    save_dir, src, _check_cancelled=_check_cancelled
+                )
+                if success and not msg:
                     self.after(
                         0,
-                        lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
-                            T("title_error"), e_str
-                        ),
+                        lambda: messagebox.showinfo(T("title_success"), T("msg_restored")),
                     )
-                finally:
-                    self.app._finish_operation("restore_save")
+                    self.after(0, self.scan_saves)
+                elif success and msg:
+                    self.after(
+                        0,
+                        lambda w_msg=msg: messagebox.showwarning(T("title_warning"), w_msg),
+                    )
+                    self.after(0, self.scan_saves)
+                else:
+                    self.after(
+                        0,
+                        lambda e_str=msg: messagebox.showerror(T("title_error"), e_str),
+                    )
+            except Exception as e:
+                from utils.error_handler import ErrorHandler
 
-            self.app.async_manager.submit("restore_save_op", _w)
+                traceback_str = ErrorHandler.format_traceback(e)
+                logger.error(f"Restore error: {e}\n{traceback_str}")
+                self.after(
+                    0,
+                    lambda e_str=f"{e}\n\n{traceback_str}": messagebox.showerror(
+                        T("title_error"), e_str
+                    ),
+                )
+
+        self._submit_async_operation(OperationType.SAVE_RESTORE, "restore_save", _w)
 
     def do_delete_backup(self):
-        if self.app.is_operating:
-            return messagebox.showwarning(
-                T("title_warning"),
-                T("warn_operation_in_progress", "Operation in progress..."),
-            )
+        from utils.operation_lock import OperationType
+
         sel = self.tree.selection()
         if not sel:
             return messagebox.showwarning(T("title_warning"), T("no_backup_selected"))
@@ -332,10 +340,6 @@ class SaveTab(ttk.Frame):
 
         if not messagebox.askyesno(T("title_confirm"), T("msg_delete_confirm")):
             return
-
-        self.app.performance_monitor.start("delete_backup")
-        self.app.is_operating = True
-        self.app.toggle_progress(True)
 
         def _w(cancel_event=None, _check_cancelled=None):
             try:
@@ -358,11 +362,9 @@ class SaveTab(ttk.Frame):
                 self.app.log(f"Delete backup error: {e}\n{traceback_str}", "error")
                 self.after(
                     0,
-                    lambda e_str=f"{str(e)}\n\n{traceback_str}": messagebox.showerror(
+                    lambda e_str=f"{e}\n\n{traceback_str}": messagebox.showerror(
                         T("title_error"), e_str
                     ),
                 )
-            finally:
-                self.app._finish_operation("delete_backup")
 
-        self.app.async_manager.submit("delete_backup_op", _w)
+        self._submit_async_operation(OperationType.SAVE_DELETE, "delete_backup", _w)

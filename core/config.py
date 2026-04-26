@@ -259,8 +259,8 @@ class AppConfig:
                 "platform": str(default) if default else "win",
                 "language": str(default) if default else "en",
             }
-            fallback = fallback_map.get(key, str(default) if default else "")
-            return self.get("preferences", key, fallback=fallback)
+            fallback_str = fallback_map.get(key, str(default) if default else "")
+            return self.get("preferences", key, fallback=fallback_str)
 
         except Exception:
             return default
@@ -406,11 +406,7 @@ class AppConfig:
     def fuse_sentinel(self) -> bytes:
         """Fuse 校验特征码"""
         sentinel = self.get("main", "FUSE_SENTINEL", fallback="dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX")
-        if isinstance(sentinel, bytes):
-            return sentinel
-        return (
-            sentinel.encode("utf-8") if isinstance(sentinel, str) else str(sentinel).encode("utf-8")
-        )
+        return sentinel.encode("utf-8")
 
     @property
     def fuse_wire_header_length(self) -> int:
@@ -607,7 +603,7 @@ class AppConfig:
         if not errors and not warnings:
             logger.info("Configuration validation passed")
 
-        return (len(errors) == 0, errors, warnings)
+        return (not errors, errors, warnings)
 
     def validate_required_directory(self, dir_path: str, dir_type: str = "directory") -> bool:
         """

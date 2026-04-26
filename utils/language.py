@@ -101,6 +101,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_exit_after_patch": "补丁已成功安装！\n\n是否现在退出工具？\n（需要时您可以再次运行）",
         "err_res_missing": "❌ 错误: 缺少 resources 文件夹。",
         "err_asar_missing": "❌ 错误: 未找到 app.asar 文件。",
+        "err_asar_corrupted_no_backup": "❌ 错误: app.asar 文件已损坏且无备份，请在 Steam 中验证游戏文件完整性。",
         "err_node_missing": "Error: Node.js 未找到，请安装 Node.js。",
         # Common
         "log_frame": "运行日志 (Log)",
@@ -261,6 +262,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_exit_after_patch": "The patch has been installed successfully.\n\nDo you want to exit the tool now?\n(You can always run it again when needed)",
         "err_res_missing": "❌ Error: 'resources' folder missing.",
         "err_asar_missing": "❌ Error: app.asar not found.",
+        "err_asar_corrupted_no_backup": "❌ Error: app.asar is corrupted and no backup exists. Please verify game files in Steam.",
         "err_node_missing": "Error: Node.js not found! Please install Node.js.",
         "log_frame": "Log",
         "title_warning": "Warning",
@@ -419,6 +421,7 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "msg_exit_after_patch": "パッチが正常にインストールされました！\n\n今ツールを終了しますか？\n（必要に応じていつでも再実行できます）",
         "err_res_missing": "❌ エラー: resources フォルダ無し。",
         "err_asar_missing": "❌ エラー: app.asar が見つかりません。",
+        "err_asar_corrupted_no_backup": "❌ エラー: app.asar が破損しており、バックアップもありません。Steam でゲームファイルの整合性を確認してください。",
         "err_node_missing": "エラー: Node.js が見つかりません。インストールしてください。",
         "log_frame": "ログ (Log)",
         "title_warning": "警告",
