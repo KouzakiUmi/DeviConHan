@@ -11,9 +11,22 @@ import logging
 import os
 import struct
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+from utils.constants import MAX_ASAR_SIZE, MIN_ASAR_SIZE
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "parse_asar_header",
+    "validate_asar_with_reason",
+    "validate_asar_comprehensive",
+    "open_asar_reader",
+    "is_valid_asar",
+    "check_asar_path_traversal",
+    "get_file_hashes_in_asar",
+    "get_file_hash_in_asar",
+]
 
 HEADER_SIZE_BYTES = 8
 MAX_HEADER_SIZE = 50 * 1024 * 1024
@@ -212,7 +225,7 @@ def _is_safe_link_target(link: str, current_prefix: str) -> bool:
 
 def _validate_file_ranges(
     node: dict, base_offset: int, file_size: int, prefix: str = ""
-) -> tuple[bool, str]:
+) -> Tuple[bool, str]:
     """验证 header 中所有条目的路径、link 和 offset/size 是否安全"""
     if "files" not in node:
         return True, ""
@@ -262,8 +275,8 @@ def _validate_file_ranges(
     return True, ""
 
 
-def validate_asar_with_reason(asar_path: str) -> tuple[bool, str]:
-    """验证 ASAR 并返回可用于日志或 UI 的失败原因"""
+def validate_asar_with_reason(asar_path: str) -> Tuple[bool, str]:
+    """验证 ASAR 并返回可用于日志或 UI 的失败原因（向后兼容）"""
     if not os.path.exists(asar_path):
         return False, f"ASAR file not found: {asar_path}"
 
@@ -309,9 +322,80 @@ def open_asar_reader(asar_path: str) -> Optional[AsarReader]:
     return AsarReader(asar_path=asar_path, header_info=header_info, file_size=file_size)
 
 
+def validate_asar_comprehensive(
+    asar_path: str,
+    check_min_size: bool = True,
+    check_max_size: bool = True,
+    min_size: int = MIN_ASAR_SIZE,
+    max_size: int = MAX_ASAR_SIZE,
+    enable_performance_monitor: bool = False,
+) -> tuple[bool, str, dict]:
+    """
+    统一的 ASAR 文件验证函数
+
+    整合文件存在性检查、大小范围检查和 ASAR 结构验证，
+    提供可选的性能监控能力。
+
+    Args:
+        asar_path: ASAR 文件路径
+        check_min_size: 是否检查最小文件大小
+        check_max_size: 是否检查最大文件大小
+        min_size: 最小文件大小阈值
+        max_size: 最大文件大小阈值
+        enable_performance_monitor: 是否启用性能监控
+
+    Returns:
+        tuple[bool, str, dict]:
+            - 是否验证通过
+            - 失败原因（成功时为空字符串）
+            - 额外信息字典（包含 file_size、validation_time 等）
+    """
+    extra_info = {}
+
+    if enable_performance_monitor:
+        from utils.performance import get_performance_monitor
+        monitor = get_performance_monitor()
+        monitor.start("validate_asar_comprehensive")
+
+    try:
+        if not os.path.exists(asar_path):
+            return False, f"ASAR file not found: {asar_path}", extra_info
+
+        file_size = os.path.getsize(asar_path)
+        extra_info["file_size"] = file_size
+
+        if check_min_size and file_size < min_size:
+            return False, f"ASAR file too small: {file_size} bytes (min: {min_size})", extra_info
+
+        if check_max_size and file_size > max_size:
+            return False, f"ASAR file too large: {file_size} bytes (max: {max_size})", extra_info
+
+        valid, reason = validate_asar_with_reason(asar_path)
+        if not valid:
+            return False, reason, extra_info
+
+        return True, "", extra_info
+
+    except OSError as e:
+        return False, f"Failed to read ASAR file: {e}", extra_info
+    except Exception as e:
+        return False, f"ASAR validation failed: {e}", extra_info
+    finally:
+        if enable_performance_monitor:
+            elapsed = monitor.stop("validate_asar_comprehensive")
+            extra_info["validation_time"] = elapsed
+            logger.debug(f"ASAR validation took {elapsed:.3f}s")
+
+
 def is_valid_asar(asar_path: str) -> bool:
     """检查 ASAR 结构是否可解析，且所有已打包文件范围都在归档内"""
-    return open_asar_reader(asar_path) is not None
+    valid, _, _ = validate_asar_comprehensive(
+        asar_path,
+        check_min_size=False,
+        check_max_size=False,
+        enable_performance_monitor=False,
+    )
+    return valid
 
 
 def _read_header_from_asar(asar_path: str) -> tuple:
@@ -402,8 +486,14 @@ def _compute_node_hash(asar_file: Any, base_offset: int, node: Dict[str, Any]) -
 
     sha256_hash = hashlib.sha256()
     bytes_read = 0
+    max_iterations = max(size // 1024, 1_000_000)
+    iteration_count = 0
 
     while bytes_read < size:
+        iteration_count += 1
+        if iteration_count > max_iterations:
+            logger.error(f"Hash computation exceeded max iterations ({max_iterations})")
+            return None
         chunk_size = min(dynamic_chunk, size - bytes_read)
         chunk = asar_file.read(chunk_size)
         if not chunk:
@@ -414,7 +504,7 @@ def _compute_node_hash(asar_file: Any, base_offset: int, node: Dict[str, Any]) -
     return sha256_hash.hexdigest()
 
 
-def get_file_hashes_in_asar(asar_path: str, file_paths: list[str]) -> Dict[str, Optional[str]]:
+def get_file_hashes_in_asar(asar_path: str, file_paths: List[str]) -> Dict[str, Optional[str]]:
     """
     一次性读取多个 ASAR 内文件的 SHA256 哈希值，避免重复解析 header 和重复打开文件。
     """

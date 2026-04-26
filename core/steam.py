@@ -10,10 +10,8 @@ import os
 from typing import Callable, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hashes_in_asar, validate_asar_with_reason
-from utils.constants import MIN_ASAR_SIZE
+from utils.asar_utils import get_file_hashes_in_asar, validate_asar_comprehensive, validate_asar_with_reason
 from utils.language import T
-from utils.performance import get_performance_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -551,27 +549,21 @@ def _validate_archive_integrity(archive_path, core, archive_type="archive"):
     Returns:
         bool: 文件是否有效
     """
-    monitor = get_performance_monitor()
-    monitor.start(f"validate_{archive_type}")
-
-    try:
-        file_size = os.path.getsize(archive_path)
-        if file_size < MIN_ASAR_SIZE:
-            logger.warning(f"{archive_type.capitalize()} file too small: {file_size} bytes")
-            return False
-
-        valid, reason = validate_asar_with_reason(archive_path)
-        if not valid:
-            logger.warning(f"{archive_type.capitalize()} file is corrupted or unsupported: {reason}")
-            return False
-
-        return True
-    except Exception as e:
-        logger.error(f"Error validating {archive_type} integrity: {e}")
+    valid, reason, extra_info = validate_asar_comprehensive(
+        archive_path,
+        check_min_size=True,
+        check_max_size=True,
+        enable_performance_monitor=True,
+    )
+    if not valid:
+        logger.warning(f"{archive_type.capitalize()} validation failed: {reason}")
         return False
-    finally:
-        elapsed = monitor.stop(f"validate_{archive_type}")
-        logger.debug(f"Validate {archive_type} integrity took {elapsed:.3f}s")
+
+    logger.debug(
+        f"{archive_type.capitalize()} validation passed "
+        f"(size: {extra_info.get('file_size', 'unknown')} bytes)"
+    )
+    return True
 
 
 def _validate_asar_integrity(asar_path, core):

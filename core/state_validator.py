@@ -20,8 +20,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hashes_in_asar, validate_asar_with_reason
-from utils.constants import MIN_ASAR_SIZE
+from utils.asar_utils import get_file_hashes_in_asar, validate_asar_comprehensive, validate_asar_with_reason
 from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
@@ -164,53 +163,36 @@ class StateValidator:
             )
             return state
 
-        try:
-            state.size = os.path.getsize(self.asar_path)
-            if state.size < MIN_ASAR_SIZE:
-                self.errors.append(
-                    StateValidationError(
-                        severity="critical",
-                        message=f"ASAR file too small ({state.size} bytes)",
-                        file_path=self.asar_path,
-                        suggestion="File is likely corrupted, restore from backup",
-                    )
-                )
-                state.is_valid = False
-                return state
+        valid, reason, extra_info = validate_asar_comprehensive(
+            self.asar_path,
+            check_min_size=True,
+            check_max_size=True,
+            enable_performance_monitor=False,
+        )
 
-            asar_valid, asar_reason = validate_asar_with_reason(self.asar_path)
-            if not asar_valid:
-                self.errors.append(
-                    StateValidationError(
-                        severity="critical",
-                        message=f"ASAR validation failed: {asar_reason}",
-                        file_path=self.asar_path,
-                        suggestion="File is corrupted, restore from backup",
-                    )
-                )
-                state.is_valid = False
-                return state
+        state.size = extra_info.get("file_size", 0)
 
+        if not valid:
+            if "too small" in reason or "too large" in reason or "corrupted" in reason:
+                severity = "critical"
+            else:
+                severity = "warning"
+
+            self.errors.append(
+                StateValidationError(
+                    severity=severity,
+                    message=f"ASAR validation failed: {reason}",
+                    file_path=self.asar_path,
+                    suggestion=(
+                        "File is corrupted, restore from backup"
+                        if severity == "critical"
+                        else ""
+                    ),
+                )
+            )
+            state.is_valid = False
+        else:
             state.is_valid = True
-
-        except OSError as e:
-            self.errors.append(
-                StateValidationError(
-                    severity="critical",
-                    message=f"Failed to read ASAR file: {e}",
-                    file_path=self.asar_path,
-                )
-            )
-            state.is_valid = False
-        except Exception as e:
-            self.errors.append(
-                StateValidationError(
-                    severity="critical",
-                    message=f"Failed to validate ASAR: {e}",
-                    file_path=self.asar_path,
-                )
-            )
-            state.is_valid = False
 
         return state
 

@@ -10,9 +10,8 @@ import os
 import stat
 from typing import Any, Callable, Optional, Tuple
 
-from utils.asar_utils import check_asar_path_traversal, is_valid_asar
+from utils.asar_utils import check_asar_path_traversal, validate_asar_comprehensive
 from utils.asar_writer import NATIVE_EXTENSIONS, asar_extract, asar_pack
-from utils.constants import MAX_ASAR_SIZE, MIN_ASAR_SIZE
 from utils.error_handler import PatcherError
 from utils.file_ops import verify_directory_safe
 from utils.paths import normalize_path
@@ -43,22 +42,15 @@ class CoreLogic:
         Returns:
             bool: 验证是否通过
         """
-        try:
-            file_size = os.path.getsize(asar_path)
-            if file_size < MIN_ASAR_SIZE:
-                logger.error(f"ASAR file too small: {file_size} bytes")
-                return False
-            if file_size > MAX_ASAR_SIZE:
-                logger.error(f"ASAR file too large: {file_size} bytes")
-                return False
-
-            return is_valid_asar(asar_path)
-        except OSError as e:
-            logger.error(f"Failed to read ASAR file: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"ASAR integrity validation failed: {e}")
-            return False
+        valid, reason, _ = validate_asar_comprehensive(
+            asar_path,
+            check_min_size=True,
+            check_max_size=True,
+            enable_performance_monitor=False,
+        )
+        if not valid:
+            logger.error(f"ASAR validation failed: {reason}")
+        return valid
 
     def __init__(self):
         logger.info("CoreLogic initialized (Pure Python ASAR mode)")
