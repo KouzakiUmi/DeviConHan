@@ -408,6 +408,20 @@ def _collect_unpacked_files(node: dict, prefix: str = "") -> set:
     return unpacked
 
 
+def _path_within(path: Path, parent: Path) -> bool:
+    """检查 path 是否在 parent 目录内（含 parent 自身）"""
+    try:
+        path_abs = path.resolve() if path.is_absolute() else (parent / path).resolve()
+        parent_abs = parent.resolve()
+    except Exception:
+        return True
+    try:
+        path_abs.relative_to(parent_abs)
+        return True
+    except ValueError:
+        return False
+
+
 def _extract_node(
     node: dict,
     current_dest: Path,
@@ -448,6 +462,15 @@ def _extract_node(
         elif "link" in child:
             child_dest.parent.mkdir(parents=True, exist_ok=True)
             link_target = root_dest / child["link"]
+            try:
+                resolved_target = link_target.resolve()
+            except Exception:
+                resolved_target = link_target
+            if not _path_within(resolved_target, root_dest):
+                raise ValueError(
+                    f"Symlink target escapes extraction directory: "
+                    f"'{rel_path}' -> '{child['link']}'"
+                )
             try:
                 child_dest.symlink_to(link_target)
             except FileExistsError:

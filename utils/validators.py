@@ -36,7 +36,9 @@ def sanitize_text_input(
     清理并验证用户输入文本，拒绝控制字符和超长输入。
     """
     if value is None:
-        return "" if allow_empty else ""
+        if allow_empty:
+            return ""
+        raise ValidationError("Null input is not allowed")
 
     text = str(value).strip()
     if not text:

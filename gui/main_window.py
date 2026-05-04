@@ -101,7 +101,10 @@ class App(tk.Tk):
         try:
             while True:
                 task = self._ui_queue.get_nowait()
-                task()
+                try:
+                    task()
+                except Exception:
+                    logger.debug("UI queue task failed", exc_info=True)
         except queue.Empty:
             pass
         self.after(50, self._process_ui_queue)
@@ -498,6 +501,7 @@ class App(tk.Tk):
         if not self._op_lock.acquire(op_type):
             logger.warning(f"Failed to acquire lock for {op_type.value}")
             return False
+        self._terminal_state_seen = False
         self.is_operating = True
         self.toggle_progress(True)
         return True

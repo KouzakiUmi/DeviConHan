@@ -9,6 +9,7 @@ import os
 from typing import Callable, Iterable, Optional, Tuple, Union
 
 from core.save_service import SaveService
+from utils.error_handler import PatcherError
 
 logger = logging.getLogger(__name__)
 
@@ -228,11 +229,12 @@ class SaveManagerController:
         try:
             result = self.save_service.restore_save(save_dir, backup_src, **kwargs)
             if result is not None:
-                # 回滚成功但还原失败，返回警告
                 self._log(f"Restore failed but rollback succeeded: {result}", "warning")
                 return True, result
             self._log("Restore completed")
             return True, ""
+        except PatcherError:
+            raise
         except Exception as e:
             logger.error(f"Restore error: {e}")
             return False, str(e)
@@ -269,7 +271,9 @@ class SaveManagerController:
             (成功数量, 失败数量)
         """
         try:
-            return self.save_service.migrate_backups(old_dir, new_dir, **kwargs)
+            migrated, failed = self.save_service.migrate_backups(old_dir, new_dir, **kwargs)
+            self._log(f"Migration result: {migrated} succeeded, {failed} failed")
+            return migrated, failed
         except Exception as e:
             self._log(f"Migration error: {e}", "error")
-            return 0, 0
+            return -1, -1

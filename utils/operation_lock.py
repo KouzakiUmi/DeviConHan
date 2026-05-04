@@ -35,6 +35,7 @@ class OperationType(Enum):
     SAVE_BACKUP = "save_backup"  # 备份存档
     SAVE_RESTORE = "save_restore"  # 还原存档
     SAVE_DELETE = "save_delete"  # 删除备份
+    SAVE_MIGRATE = "save_migrate"  # 迁移备份
 
 
 # 互斥的操作组
@@ -61,6 +62,7 @@ MUTEX_GROUPS = {
             OperationType.SAVE_BACKUP,
             OperationType.SAVE_RESTORE,
             OperationType.SAVE_DELETE,
+            OperationType.SAVE_MIGRATE,
         }
     ),
 }

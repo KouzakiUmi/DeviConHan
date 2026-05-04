@@ -308,7 +308,9 @@ class ToolsTab(ttk.Frame):
                 )
 
     def _tool_extract(self):
-        if self.app.is_operating:
+        from utils.operation_lock import OperationType
+
+        if not self.app._acquire_operation_lock(OperationType.EXTRACT):
             return messagebox.showwarning(
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
@@ -338,8 +340,6 @@ class ToolsTab(ttk.Frame):
                 logger.debug(f"Failed to remove existing output directory {out_dir}: {e}")
 
         self.app.performance_monitor.start("gui_extract_asar")
-        self.app.is_operating = True
-        self.app.toggle_progress(True)
 
         core = self.app.core
 
@@ -375,7 +375,7 @@ class ToolsTab(ttk.Frame):
                     ),
                 )
             finally:
-                self.app._finish_operation("gui_extract_asar")
+                self.app._finish_operation("gui_extract_asar", OperationType.EXTRACT)
 
         self.app.async_manager.submit("gui_extract_asar_op", _t)
 
@@ -458,7 +458,9 @@ class ToolsTab(ttk.Frame):
         return out_path
 
     def _tool_pack(self):
-        if self.app.is_operating:
+        from utils.operation_lock import OperationType
+
+        if not self.app._acquire_operation_lock(OperationType.PACK):
             return messagebox.showwarning(
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
@@ -483,8 +485,6 @@ class ToolsTab(ttk.Frame):
                 logger.debug(f"Failed to remove existing output file {out_path}: {e}")
 
         self.app.performance_monitor.start("gui_pack_asar")
-        self.app.is_operating = True
-        self.app.toggle_progress(True)
 
         if not self.app.core:
             return
@@ -512,7 +512,7 @@ class ToolsTab(ttk.Frame):
                     ),
                 )
             finally:
-                self.app._finish_operation("gui_pack_asar")
+                self.app._finish_operation("gui_pack_asar", OperationType.PACK)
 
         self.app.async_manager.submit("gui_pack_asar_op", _t)
 

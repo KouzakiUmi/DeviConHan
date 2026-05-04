@@ -204,23 +204,35 @@ def _is_suspicious_asar_name(name: str) -> bool:
     )
 
 
-def _is_safe_link_target(link: str, current_prefix: str) -> bool:
-    """检查 link 目标是否仍位于归档逻辑根内"""
-    if not link or link.startswith("/") or link.startswith("\\") or ":" in link or "\x00" in link:
-        return False
+def _resolve_link_target(link: str) -> list:
+    """将链接目标路径解析为组件列表，从归档根开始解析。
 
-    parts = [p for p in current_prefix.split("/") if p]
-    resolved = parts[:-1]
+    链接目标在 ASAR 中是相对于归档根目录的，这与 @electron/asar 的行为一致。
+    返回解析后的路径组件列表；如果链接会逃逸到根目录外则返回 None。
+    """
+    if not link or link.startswith("/") or link.startswith("\\") or ":" in link or "\x00" in link:
+        return None
+
+    resolved: list = []
     for part in link.replace("\\", "/").split("/"):
         if not part or part == ".":
             continue
         if part == "..":
             if not resolved:
-                return False
+                return None
             resolved.pop()
         else:
             resolved.append(part)
-    return True
+    return resolved
+
+
+def _is_safe_link_target(link: str, _current_prefix: str = "") -> bool:
+    """检查 link 目标是否仍位于归档逻辑根内。
+
+    链接目标相对于归档根目录解析（与 @electron/asar 的行为一致）。
+    _current_prefix 参数保留用于向后兼容，不再使用。
+    """
+    return _resolve_link_target(link) is not None
 
 
 def _validate_file_ranges(
@@ -431,6 +443,7 @@ def check_asar_path_traversal(asar_path: str) -> bool:
     """
     Check if the ASAR file contains any paths that could lead to path traversal
     (e.g., absolute paths, or paths containing '../').
+    Also validates symlink targets to ensure they don't escape the archive root.
 
     Args:
         asar_path: Path to the ASAR file
@@ -446,8 +459,16 @@ def check_asar_path_traversal(asar_path: str) -> bool:
         if "files" in node:
             for name, child in node["files"].items():
                 if ".." in name or name.startswith("/") or name.startswith("\\") or ":" in name:
-                    logger.error(f"Path traversal detected in ASAR: {name}")
+                    logger.error(f"Path traversal detected in ASAR entry name: {name}")
                     return False
+                if "link" in child:
+                    link_target = child.get("link")
+                    if not isinstance(link_target, str) or _resolve_link_target(link_target) is None:
+                        logger.error(
+                            f"Path traversal detected in ASAR symlink target: "
+                            f"{name!r} -> {link_target!r}"
+                        )
+                        return False
                 if not check_node(child):
                     return False
         return True

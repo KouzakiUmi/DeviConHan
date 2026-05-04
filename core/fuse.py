@@ -28,6 +28,7 @@ from utils.constants import (
     FUSE_PARTIAL_HASH_TAIL_SIZE,
     FUSE_VALIDATION_MIN_SIZE,
 )
+from utils.language import T
 from utils.paths import normalize_path
 
 logger = logging.getLogger(__name__)
@@ -189,7 +190,7 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         backup_path = exe_path + ".fuse_backup"
 
         if not os.path.exists(backup_path):
-            msg = "Fuse backup not found, cannot restore"
+            msg = T("err_fuse_backup_not_found")
             logger.error(msg)
             if callback:
                 callback(msg)
@@ -200,7 +201,7 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         if not ok:
             logger.error(f"Backup verification failed: {reason}")
             if callback:
-                callback(f"Backup verification failed: {reason}")
+                callback(T("err_fuse_backup_verify").format(reason=reason))
             return False
 
         # 恢复备份（先写临时文件，再原子替换）
@@ -213,7 +214,7 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
             if not _verify_backup_with_full_hash(temp_restore_path, backup_path):
                 logger.error("Restore temp file verification failed")
                 if callback:
-                    callback("Restore verification failed!")
+                    callback(T("err_fuse_restore_verify"))
                 return False
 
             os.replace(temp_restore_path, exe_path)
@@ -228,18 +229,18 @@ def restore_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
         if _verify_backup_with_full_hash(exe_path, backup_path):
             logger.info("Fuse restored successfully")
             if callback:
-                callback("Fuse restored successfully.")
+                callback(T("msg_fuse_restored"))
             return True
         else:
             logger.error("Restore verification failed")
             if callback:
-                callback("Restore verification failed!")
+                callback(T("err_fuse_restore_verify"))
             return False
 
     except Exception as e:
         logger.exception(f"Failed to restore Fuse: {e}")
         if callback:
-            callback(f"Restore error: {e}")
+            callback(T("err_fuse_error").format(error=e))
         return False
 
 
@@ -291,9 +292,9 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
     except FuseError as e:
         logger.error(f"Fuse operation failed: {e}")
         if callback:
-            callback(f"Fuse Error: {e}")
+            callback(T("err_fuse_error").format(error=e))
         if not _rollback_fuse(exe_path, temp_backup):
-            rollback_msg = "Rollback failed! The executable may be corrupted."
+            rollback_msg = T("err_fuse_rollback_failed")
             logger.error(rollback_msg)
             if callback:
                 callback(rollback_msg)
@@ -301,9 +302,9 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
     except OSError as e:
         logger.error(f"MMap/IO error: {e}")
         if callback:
-            callback(f"IO Error: {e}")
+            callback(T("err_fuse_io_error").format(error=e))
         if not _rollback_fuse(exe_path, temp_backup):
-            rollback_msg = "Rollback failed! The executable may be corrupted."
+            rollback_msg = T("err_fuse_rollback_failed")
             logger.error(rollback_msg)
             if callback:
                 callback(rollback_msg)
@@ -311,9 +312,9 @@ def remove_fuse(exe_path: str, callback: Optional[Callable] = None) -> bool:
     except Exception as e:
         logger.exception(f"Failed to remove Fuse: {e}")
         if callback:
-            callback(f"Fuse Error: {e}")
+            callback(T("err_fuse_error").format(error=e))
         if not _rollback_fuse(exe_path, temp_backup):
-            rollback_msg = "Rollback failed! The executable may be corrupted."
+            rollback_msg = T("err_fuse_rollback_failed")
             logger.error(rollback_msg)
             if callback:
                 callback(rollback_msg)
@@ -390,7 +391,7 @@ def _ensure_fuse_backup(exe_path: str, callback: Optional[Callable]) -> bool:
         return False
 
     if callback:
-        callback(f"Backup created: {os.path.basename(backup_path)}")
+        callback(T("msg_fuse_backup_created").format(name=os.path.basename(backup_path)))
     return True
 
 
@@ -439,13 +440,13 @@ def _modify_fuse_byte(exe_path: str, callback: Optional[Callable]) -> Optional[b
 
                 logger.info("Fuse checksum byte modified (0x31 -> 0x30) and verified")
                 if callback:
-                    callback("Fuse removed and verified.")
+                    callback(T("msg_fuse_removed"))
                 return False
 
             elif current_byte == FUSE_DISABLED_BYTE:
                 logger.info("Fuse already disabled")
                 if callback:
-                    callback("Fuse already disabled.")
+                    callback(T("msg_fuse_already_disabled"))
                 return True
             else:
                 logger.warning(f"Unexpected byte at target position: {current_byte!r}")

@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from utils.language import T
+from utils.error_handler import ErrorSeverity, PatcherError
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,8 @@ class SaveTab(ttk.Frame):
         return d
 
     def change_backup_dir(self):
+        from utils.operation_lock import OperationType
+
         new_dir = filedialog.askdirectory(
             title=T("title_select_dir"), initialdir=self.get_backup_dir()
         )
@@ -103,7 +106,7 @@ class SaveTab(ttk.Frame):
                 previous_dir = self.app.var_backup_dir.get()
                 self.app.var_backup_dir.set(new_dir)
                 if self.app.save_config():
-                    self._additional_backup_dirs = {old_dir}
+                    self._additional_backup_dirs.add(old_dir)
                     self.app.log(
                         "Backup directory updated without migration; existing backups remain in the old location.",
                         "warning",
@@ -115,8 +118,8 @@ class SaveTab(ttk.Frame):
                 self.scan_saves()
                 return
 
-            self.app.is_operating = True
-            self.app.toggle_progress(True)
+            if not self.app._acquire_operation_lock(OperationType.SAVE_MIGRATE):
+                return
 
             def _migrate_worker(cancel_event=None, _check_cancelled=None):
                 try:
@@ -152,7 +155,8 @@ class SaveTab(ttk.Frame):
                                     "error",
                                 )
 
-                        messagebox.showinfo(T("title_success"), msg)
+                        if self.app._window_alive():
+                            messagebox.showinfo(T("title_success"), msg)
                         self.scan_saves()
 
                     self.after(0, _apply_migration_result)
@@ -166,7 +170,7 @@ class SaveTab(ttk.Frame):
                         ),
                     )
                 finally:
-                    self.app._finish_operation()
+                    self.app._finish_operation("migrate_backups", OperationType.SAVE_MIGRATE)
 
             self.app.async_manager.submit("migrate_backup_op", _migrate_worker)
 
@@ -316,6 +320,19 @@ class SaveTab(ttk.Frame):
                         0,
                         lambda e_str=msg: messagebox.showerror(T("title_error"), e_str),
                     )
+            except PatcherError as e:
+                from utils.error_handler import ErrorHandler
+
+                traceback_str = ErrorHandler.format_traceback(e)
+                logger.error(f"Restore error: {e}\n{traceback_str}")
+                title = T("title_error")
+                msg = f"{e}\n\n{traceback_str}"
+                if e.severity == ErrorSeverity.CRITICAL:
+                    msg = T("err_fatal_error", "Fatal Error") + f":\n{msg}"
+                self.after(
+                    0,
+                    lambda e_title=title, e_msg=msg: messagebox.showerror(e_title, e_msg),
+                )
             except Exception as e:
                 from utils.error_handler import ErrorHandler
 

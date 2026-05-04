@@ -169,6 +169,7 @@ class AppConfig:
         try:
             return self.config.getint(section, key)
         except Exception:
+            logger.warning(f"Config [{section}] {key} is missing or invalid, using fallback {fallback}")
             return fallback
 
     def _get_list_unsafe(
@@ -196,6 +197,7 @@ class AppConfig:
             try:
                 return self.config.getint(section, key)
             except Exception:
+                logger.warning(f"Config [{section}] {key} is missing or invalid, using fallback {fallback}")
                 return fallback
 
     def get_bool(self, section: str, key: str, fallback: bool = False) -> bool:
@@ -214,6 +216,7 @@ class AppConfig:
             try:
                 return self.config.getboolean(section, key)
             except Exception:
+                logger.warning(f"Config [{section}] {key} is missing or invalid, using fallback {fallback}")
                 return fallback
 
     def get_list(self, section: str, key: str, fallback: Optional[List[str]] = None) -> List[str]:

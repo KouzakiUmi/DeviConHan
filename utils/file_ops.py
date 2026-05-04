@@ -144,9 +144,10 @@ def safe_extract_zip(
         abs_dest_dir = os.path.normpath(os.path.abspath(dest_dir))
 
         with zipfile.ZipFile(zip_path, "r") as zf:
+            members = zf.infolist()
             total_uncompressed = 0
             file_count = 0
-            for info in zf.infolist():
+            for info in members:
                 file_count += 1
                 total_uncompressed += info.file_size
                 if file_count > MAX_ZIP_EXTRACT_FILES:
@@ -160,7 +161,7 @@ def safe_extract_zip(
                         "Possible ZIP bomb."
                     )
 
-            for member in zf.infolist():
+            for member in members:
                 if check_cancelled:
                     check_cancelled()
 

@@ -115,7 +115,7 @@ class PatchController:
             if os.path.exists(bak):
                 # 删除损坏的 ASAR（如果存在），然后重命名 bak → app.asar
                 if asar_corrupted and os.path.exists(asar):
-                    self._log("app.asar corrupted, removing and restoring from backup...")
+                    self._log(T("log_patch_corrupted_restoring"))
                     try:
                         os.remove(asar)
                     except Exception as e:
@@ -123,7 +123,7 @@ class PatchController:
                 # 重命名 bak → app.asar（原子操作）
                 try:
                     os.replace(bak, asar)
-                    self._log("Restored app.asar from backup.")
+                    self._log(T("log_patch_restored_backup"))
                 except Exception as e:
                     return False, f"Failed to restore from backup: {e}"
             elif asar_corrupted:
@@ -183,17 +183,11 @@ class PatchController:
         if not lock.acquire(OperationType.PATCH):
             return False, None, "另一个操作正在进行中"
 
-        if self._is_operating:
-            lock.release(OperationType.PATCH)
-            return False, None, "另一个操作正在进行中"
-
-        self._is_operating = True
         _check_cancelled = kwargs.get("_check_cancelled")
 
         try:
             return self._do_run_auto_patch(gui_app, _check_cancelled)
         finally:
-            self._is_operating = False
             lock.release(OperationType.PATCH)
 
     def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
@@ -230,7 +224,7 @@ class PatchController:
                 self._log(f"Warning: {issue.message}")
 
         if state == SystemState.PATCHED:
-            self._log("Game is already patched.")
+            self._log(T("msg_already_patched"))
             if on_info:
                 on_info(
                     T("title_success", "Already Patched"),
@@ -296,7 +290,7 @@ class PatchController:
             need_backup = os.path.exists(asar) and not os.path.exists(bak)
 
             # 3.1 解包 ASAR
-            self._log("Extracting ASAR...")
+            self._log(T("log_patch_extracting_asar"))
             if _check_cancelled:
                 _check_cancelled()
             _, unpacked_files = self.core.run_asar("extract", asar, temp, callback=self._log)
@@ -308,25 +302,25 @@ class PatchController:
             # 3.2 清理解包残留的 app.asar.unpacked 目录
             unpacked_leftover = os.path.join(temp, "app.asar.unpacked")
             if os.path.exists(unpacked_leftover):
-                self._log("Cleaning up extraction leftover...")
+                self._log(T("log_patch_cleaning_temp"))
                 shutil.rmtree(unpacked_leftover, ignore_errors=True)
 
             # 3.3 应用补丁
-            self._log("Applying patch...")
+            self._log(T("log_patch_applying"))
             patch_zip = get_resource_path("Patch.zip")
             patch_dir = get_resource_path("Patch")
 
             if os.path.exists(patch_zip):
-                self._log("Extracting Patch.zip...")
+                self._log(T("log_patch_extracting_zip"))
                 try:
                     extracted = safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
                     if not extracted:
                         raise PatchError(f"Failed to extract patch data from: {patch_zip}")
-                    self._log("Patch.zip extracted successfully.")
+                    self._log(T("log_patch_zip_extracted"))
                 except ValueError as e:
                     raise PatchError(f"Security violation in patch ZIP: {e}") from e
             elif os.path.exists(patch_dir):
-                self._log("Copying Patch directory...")
+                self._log(T("log_patch_copying_dir"))
 
                 def copy_with_cancel(src, dst):
                     if _check_cancelled:
@@ -339,18 +333,18 @@ class PatchController:
                     dirs_exist_ok=True,
                     copy_function=copy_with_cancel,
                 )
-                self._log("Patch files copied.")
+                self._log(T("log_patch_files_copied"))
             else:
                 raise PatchError("Patch data not found")
 
             # 3.4 如果需要备份，重命名 app.asar -> app.asar.bak
             if need_backup:
-                self._log("Creating backup...")
+                self._log(T("log_patch_creating_backup"))
                 os.replace(asar, bak)
-                self._log("Backup created.")
+                self._log(T("log_patch_backup_created"))
 
             # 3.5 打包为新的 ASAR
-            self._log("Packing ASAR...")
+            self._log(T("log_patch_packing_asar"))
             if _check_cancelled:
                 _check_cancelled()
             self.core.run_asar(
@@ -363,17 +357,17 @@ class PatchController:
             if os.path.getsize(asar) < 1024:
                 raise PatchError("ASAR packing failed - output file too small")
 
-            self._log("ASAR replaced successfully.")
+            self._log(T("log_patch_asar_replaced"))
 
             # 3.6 生成补丁元数据
-            self._log("Generating patch metadata...")
+            self._log(T("log_patch_generating_meta"))
             try:
                 save_patch_info(base, asar, bak)
                 save_patch_meta(base, temp)
             except Exception as e:
                 logger.warning(f"Failed to save patch metadata: {e}")
 
-            self._log("Patch applied successfully.")
+            self._log(T("log_patch_complete"))
             self._log(T("patch_done", "✅ 安装完成！"))
 
             return True, temp, ""
@@ -458,7 +452,7 @@ class PatchController:
                 except Exception as e_rm:
                     logger.error(f"Failed to remove corrupted ASAR: {e_rm}")
             os.replace(bak_path, asar_path)
-            self._log("Restored app.asar from backup.")
+            self._log(T("log_patch_restored_backup"))
         except Exception as be:
             logger.error(f"Backup restore error: {be}")
-            self._log(f"Failed to restore backup: {be}")
+            self._log(T("log_patch_restore_failed").format(error=be))

@@ -128,6 +128,7 @@ class SaveService:
             base_path = os.path.normpath(os.path.abspath(save_dir))
             base_len = len(base_path)
             try:
+                skipped_count = 0
                 with zipfile.ZipFile(temp_zip, "w", zipfile.ZIP_DEFLATED) as zf:
                     for root, _dirs, files in os.walk(base_path):
                         if _check_cancelled:
@@ -139,10 +140,12 @@ class SaveService:
                                 abs_root.startswith(base_path + os.sep) or abs_root == base_path
                             ):
                                 logger.warning(f"Skipped path outside base directory: {abs_root}")
+                                skipped_count += 1
                                 continue
-                            # 正确的相对路径：从规范化基础路径之后截取
                             rel_path = abs_path[base_len:].lstrip(os.sep)
                             zf.write(abs_path, rel_path)
+                if skipped_count:
+                    logger.warning(f"ZIP backup skipped {skipped_count} file(s) outside base dir")
                 # 原子替换： rename 操作在 POSIX 下是原子的，Windows 下也足够安全
                 os.replace(temp_zip, dest_zip)
             except Exception:
@@ -333,6 +336,7 @@ class SaveService:
 
         temp_dir = None
         current_save_backup_path = None
+        _rollback_failed = False
 
         def copy_with_cancel(src, dst):
             if _check_cancelled:
@@ -377,18 +381,26 @@ class SaveService:
         except Exception as e:
             logger.error(f"Restore error: {e}")
             if temp_dir and current_save_backup_path and os.path.exists(current_save_backup_path):
-                self._rollback_restore(save_dir, current_save_backup_path, copy_with_cancel, e)
+                try:
+                    self._rollback_restore(save_dir, current_save_backup_path, copy_with_cancel, e)
+                except Exception:
+                    _rollback_failed = True
+                    raise
                 warning_msg = (
                     f"[{type(e).__name__}] {e}\n\nCurrent save has been restored from backup."
                 )
                 return warning_msg
             raise PatcherError(f"{type(e).__name__}: {e}") from e
         finally:
-            if temp_dir and os.path.exists(temp_dir):
+            if temp_dir and os.path.exists(temp_dir) and not _rollback_failed:
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as cleanup_err:
                     logger.warning(f"Failed to cleanup temp directory: {cleanup_err}")
+            elif _rollback_failed and temp_dir and os.path.exists(temp_dir):
+                logger.error(
+                    f"Rollback failed. Temp directory preserved for manual recovery: {temp_dir}"
+                )
 
         return None
 

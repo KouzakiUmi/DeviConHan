@@ -113,7 +113,7 @@ class CoreLogic:
                         f"Possible malicious ASAR file."
                     )
 
-                unpacked_files, _ = asar_extract(src, dest, callback=callback)
+                extracted_unpacked, _ = asar_extract(src, dest, callback=callback)
 
                 if not verify_directory_safe(dest):
                     raise PatcherError(
@@ -138,7 +138,7 @@ class CoreLogic:
                 callback("Asar operation success.")
 
             if action == "extract":
-                return True, unpacked_files
+                return True, extracted_unpacked
             return True, None
 
         except Exception as e:

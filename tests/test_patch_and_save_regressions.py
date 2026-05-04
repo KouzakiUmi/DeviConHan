@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from controllers.patch_controller import PatchController
+from controllers.save_manager_controller import SaveManagerController
 from core.save_service import SaveService
 from gui.tabs.save_tab import SaveTab
 
@@ -145,6 +146,29 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
         self.assertEqual(tab._additional_backup_dirs, {old_dir})
         tab.app.save_config.assert_called_once()
         tab.scan_saves.assert_called_once()
+
+    def test_migrate_backups_returns_error_tuple_distinct_from_empty(self):
+        svc = SaveService(Mock())
+        ctrl = SaveManagerController(svc)
+        ctrl.set_log_callback(lambda msg: None)
+
+        with patch.object(svc, "migrate_backups", side_effect=RuntimeError("disk full")):
+            migrated, failed = ctrl.migrate_backups("old", "new")
+
+        self.assertEqual(migrated, -1)
+        self.assertEqual(failed, -1)
+        self.assertNotEqual((migrated, failed), (0, 0))
+
+    def test_migrate_backups_returns_normal_result(self):
+        svc = SaveService(Mock())
+        ctrl = SaveManagerController(svc)
+        ctrl.set_log_callback(lambda msg: None)
+
+        with patch.object(svc, "migrate_backups", return_value=(3, 1)):
+            migrated, failed = ctrl.migrate_backups("old", "new")
+
+        self.assertEqual(migrated, 3)
+        self.assertEqual(failed, 1)
 
 
 if __name__ == "__main__":
