@@ -13,11 +13,10 @@ import struct
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from utils.constants import MAX_ASAR_SIZE, MIN_ASAR_SIZE
-
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "AsarFormatError",
     "parse_asar_header",
     "validate_asar_with_reason",
     "validate_asar_comprehensive",
@@ -30,6 +29,12 @@ __all__ = [
 
 HEADER_SIZE_BYTES = 8
 MAX_HEADER_SIZE = 50 * 1024 * 1024
+DEFAULT_MIN_ASAR_SIZE = 1024
+DEFAULT_MAX_ASAR_SIZE = 8 * 1024 * 1024 * 1024
+
+
+class AsarFormatError(ValueError):
+    """Raised when an archive header or payload violates the ASAR format."""
 
 
 @dataclass(frozen=True)
@@ -69,14 +74,14 @@ def _parse_pickle_header(f: Any) -> Optional[AsarHeaderInfo]:
     payload_size, json_size = struct.unpack("<II", header_buf[:8])
     if (
         payload_size < 4
-        or payload_size > header_buf_len
+        or header_buf_len != payload_size + 4
         or json_size <= 0
         or json_size > MAX_HEADER_SIZE
     ):
         return None
 
     json_end = 8 + json_size
-    if json_end > header_buf_len:
+    if payload_size != 4 + ((json_size + 3) & ~3) or json_end > header_buf_len:
         return None
 
     header_dict = json.loads(header_buf[8:json_end].decode("utf-8"))
@@ -204,7 +209,7 @@ def _is_suspicious_asar_name(name: str) -> bool:
     )
 
 
-def _resolve_link_target(link: str) -> list:
+def _resolve_link_target(link: str) -> Optional[List[str]]:
     """将链接目标路径解析为组件列表，从归档根开始解析。
 
     链接目标在 ASAR 中是相对于归档根目录的，这与 @electron/asar 的行为一致。
@@ -239,16 +244,20 @@ def _validate_file_ranges(
     node: dict, base_offset: int, file_size: int, prefix: str = ""
 ) -> Tuple[bool, str]:
     """验证 header 中所有条目的路径、link 和 offset/size 是否安全"""
-    if "files" not in node:
-        return True, ""
+    if not isinstance(node, dict) or "files" not in node or not isinstance(node["files"], dict):
+        return False, f"ASAR directory has invalid files field: {prefix or '/'}"
 
     for name, child in node["files"].items():
+        if not isinstance(name, str) or not isinstance(child, dict):
+            return False, "ASAR entry name and value must be string/object"
         rel_path = f"{prefix}/{name}" if prefix else name
 
         if _is_suspicious_asar_name(name):
             return False, f"ASAR entry has suspicious name: {rel_path!r}"
 
         if "files" in child:
+            if child.get("unpacked") not in (None, True, False):
+                return False, f"ASAR directory has invalid unpacked flag: {rel_path}"
             ok, reason = _validate_file_ranges(child, base_offset, file_size, rel_path)
             if not ok:
                 return False, reason
@@ -261,14 +270,25 @@ def _validate_file_ranges(
             continue
 
         if child.get("unpacked"):
+            if (
+                child.get("unpacked") is not True
+                or not isinstance(child.get("size"), int)
+                or isinstance(child.get("size"), bool)
+                or child["size"] < 0
+            ):
+                return False, f"ASAR unpacked entry has invalid size/flag: {rel_path}"
             continue
 
         if "offset" not in child or "size" not in child:
             return False, f"ASAR entry missing offset/size: {rel_path}"
 
         try:
+            if not isinstance(child["offset"], str) or not child["offset"].isdigit():
+                return False, f"ASAR entry has invalid offset: {rel_path}"
+            if not isinstance(child["size"], int) or isinstance(child["size"], bool):
+                return False, f"ASAR entry has invalid size: {rel_path}"
             offset = int(child["offset"])
-            size = int(child["size"])
+            size = child["size"]
         except (TypeError, ValueError):
             return False, f"ASAR entry has invalid offset/size: {rel_path}"
 
@@ -338,10 +358,10 @@ def validate_asar_comprehensive(
     asar_path: str,
     check_min_size: bool = True,
     check_max_size: bool = True,
-    min_size: int = MIN_ASAR_SIZE,
-    max_size: int = MAX_ASAR_SIZE,
+    min_size: int = DEFAULT_MIN_ASAR_SIZE,
+    max_size: int = DEFAULT_MAX_ASAR_SIZE,
     enable_performance_monitor: bool = False,
-) -> tuple[bool, str, dict]:
+) -> Tuple[bool, str, dict]:
     """
     统一的 ASAR 文件验证函数
 
@@ -362,10 +382,11 @@ def validate_asar_comprehensive(
             - 失败原因（成功时为空字符串）
             - 额外信息字典（包含 file_size、validation_time 等）
     """
-    extra_info = {}
+    extra_info: Dict[str, Any] = {}
 
     if enable_performance_monitor:
         from utils.performance import get_performance_monitor
+
         monitor = get_performance_monitor()
         monitor.start("validate_asar_comprehensive")
 
@@ -463,7 +484,10 @@ def check_asar_path_traversal(asar_path: str) -> bool:
                     return False
                 if "link" in child:
                     link_target = child.get("link")
-                    if not isinstance(link_target, str) or _resolve_link_target(link_target) is None:
+                    if (
+                        not isinstance(link_target, str)
+                        or _resolve_link_target(link_target) is None
+                    ):
                         logger.error(
                             f"Path traversal detected in ASAR symlink target: "
                             f"{name!r} -> {link_target!r}"
@@ -490,16 +514,24 @@ def _resolve_node(header_dict: Dict[str, Any], file_path: str) -> Optional[Dict[
     return node
 
 
+def _hash_regular_file(path: str) -> Optional[str]:
+    try:
+        digest = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(4 * 1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
 def _compute_node_hash(asar_file: Any, base_offset: int, node: Dict[str, Any]) -> Optional[str]:
     """对单个 ASAR 文件节点计算哈希"""
     if "offset" not in node or "size" not in node:
         return None
 
-    if "integrity" in node and node["integrity"].get("algorithm") == "SHA256":
-        return node["integrity"].get("hash")
-
     offset = int(node["offset"])
-    size = node["size"]
+    size = int(node["size"])
 
     asar_file.seek(base_offset + offset)
 
@@ -518,7 +550,7 @@ def _compute_node_hash(asar_file: Any, base_offset: int, node: Dict[str, Any]) -
         chunk_size = min(dynamic_chunk, size - bytes_read)
         chunk = asar_file.read(chunk_size)
         if not chunk:
-            break
+            return None
         sha256_hash.update(chunk)
         bytes_read += len(chunk)
 
@@ -541,7 +573,13 @@ def get_file_hashes_in_asar(asar_path: str, file_paths: List[str]) -> Dict[str, 
                 if node is None:
                     results[file_path] = None
                     continue
-                results[file_path] = _compute_node_hash(f, reader.header_info.base_offset, node)
+                if node.get("unpacked"):
+                    unpacked_path = os.path.join(
+                        f"{asar_path}.unpacked", *file_path.replace("\\", "/").split("/")
+                    )
+                    results[file_path] = _hash_regular_file(unpacked_path)
+                else:
+                    results[file_path] = _compute_node_hash(f, reader.header_info.base_offset, node)
     except OSError as e:
         logger.debug(f"OS error reading ASAR file {asar_path}: {e}")
         return dict.fromkeys(file_paths, None)
@@ -574,6 +612,11 @@ def get_file_hash_in_asar(asar_path: str, file_path: str) -> Optional[str]:
 
     try:
         with open(asar_path, "rb") as f:
+            if node.get("unpacked"):
+                unpacked_path = os.path.join(
+                    f"{asar_path}.unpacked", *file_path.replace("\\", "/").split("/")
+                )
+                return _hash_regular_file(unpacked_path)
             return _compute_node_hash(f, reader.header_info.base_offset, node)
     except OSError as e:
         logger.debug(f"OS error reading ASAR file {asar_path} for {file_path}: {e}")

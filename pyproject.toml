@@ -7,7 +7,7 @@ name = "tyrano-patcher"
 version = "1.0.0"
 description = "A localization tool for TyranoV8-based games (Devil Connection)"
 readme = "README.md"
-license = {text = "CC-BY-NC-SA-4.0"}
+license = "CC-BY-NC-SA-4.0"
 authors = [
     {name = "KouzakiUmi", email = "kouzaki@outlook.com"}
 ]
@@ -80,6 +80,8 @@ ignore = [
     "E501", # line too long, handled by formatter
     "B008", # do not perform function calls in argument defaults
     "C901", # too complex
+    "UP006", # typing generics are required for annotations evaluated by Python 3.8
+    "UP045", # PEP 604 unions are not safe for the declared Python 3.8 runtime
 ]
 
 [tool.ruff.lint.isort]

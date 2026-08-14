@@ -6,17 +6,19 @@
 
 __all__ = [
     "OperationLock",
+    "FileOperationLock",
     "OperationType",
     "get_operation_lock",
     "with_operation_lock",
 ]
 
 import logging
+import os
 import threading
 from contextlib import contextmanager
 from enum import Enum
 from functools import wraps
-from typing import Callable, Optional, Set
+from typing import Callable, Optional, Set, TextIO
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +198,62 @@ def with_operation_lock(op_type: OperationType):
         return wrapper
 
     return decorator
+
+
+class FileOperationLock:
+    """A non-blocking, cross-process lock for one game resource path.
+
+    The lock is deliberately a sibling of the ASAR so two portable builds of
+    the tool coordinate even when they use different user configuration dirs.
+    OS-managed advisory locks are released when a crashed process exits.
+    """
+
+    def __init__(self, target_path: str) -> None:
+        self.path = os.path.abspath(target_path) + ".tyranopatcher.lock"
+        self._file: Optional[TextIO] = None
+        self._locked = False
+
+    def acquire(self) -> bool:
+        try:
+            file_obj = open(self.path, "a+", encoding="utf-8")
+            self._file = file_obj
+            file_obj.seek(0)
+            if not file_obj.read(1):
+                file_obj.write("0")
+                file_obj.flush()
+            file_obj.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(file_obj.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._locked = True
+            return True
+        except OSError:
+            self.release()
+            return False
+
+    def release(self) -> None:
+        file_obj = self._file
+        if file_obj is None:
+            return
+        try:
+            if self._locked:
+                file_obj.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(file_obj.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            file_obj.close()
+            self._file = None
+            self._locked = False

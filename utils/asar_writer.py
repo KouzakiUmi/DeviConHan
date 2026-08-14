@@ -32,15 +32,16 @@ import os
 import shutil
 import struct
 from pathlib import Path
-from typing import Optional
-
-from utils.constants import NATIVE_EXTENSIONS
+from typing import Callable, FrozenSet, Optional
 
 logger = logging.getLogger(__name__)
 
 DATA_SIZE = 4
 BLOCK_SIZE = 4 * 1024 * 1024
 ALGORITHM = "SHA256"
+# Kept local so this module can be extracted as a standalone library.  The
+# application imports this public alias for its existing behaviour.
+NATIVE_EXTENSIONS = frozenset({".node", ".dll", ".so", ".dylib", ".bin", ".exe", ".lib"})
 
 
 def _align(size: int, alignment: int = DATA_SIZE) -> int:
@@ -77,7 +78,7 @@ def _pickle_write_string(s: str) -> bytes:
     return struct.pack("<I", payload_size) + payload  # [payload_size][payload]
 
 
-def _file_integrity(file_path: str) -> tuple:
+def _file_integrity(file_path: str, check_cancelled: Optional[Callable[[], None]] = None) -> tuple:
     """
     计算文件的完整性哈希值和大小
 
@@ -97,6 +98,8 @@ def _file_integrity(file_path: str) -> tuple:
     size = 0
     with open(file_path, "rb") as f:
         while True:
+            if check_cancelled:
+                check_cancelled()
             chunk = f.read(BLOCK_SIZE)
             if not chunk:
                 break
@@ -111,7 +114,7 @@ def _file_integrity(file_path: str) -> tuple:
     }, size
 
 
-def _dir_has_native(directory: Path, unpack_extensions: frozenset[str]) -> bool:
+def _dir_has_native(directory: Path, unpack_extensions: FrozenSet[str]) -> bool:
     """
     检查目录是否包含需要解压的原生扩展文件
 
@@ -220,14 +223,27 @@ def asar_pack(
         callback("Writing unpacked files...")
 
     unpacked_dir = Path(f"{dest}.unpacked")
+    if unpacked_dir.is_symlink() or unpacked_dir.is_file():
+        unpacked_dir.unlink()
+    elif unpacked_dir.is_dir():
+        shutil.rmtree(unpacked_dir)
     has_unpacked = False
     for _rel_path, abs_path, is_unpacked, _fsize in file_entries:
         if not is_unpacked:
             continue
+        if check_cancelled:
+            check_cancelled()
         has_unpacked = True
         target = unpacked_dir / _rel_path
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(abs_path, target)
+        with open(abs_path, "rb") as src_file, open(target, "wb") as target_file:
+            while True:
+                if check_cancelled:
+                    check_cancelled()
+                chunk = src_file.read(BLOCK_SIZE)
+                if not chunk:
+                    break
+                target_file.write(chunk)
 
     if not has_unpacked and unpacked_dir.exists():
         shutil.rmtree(str(unpacked_dir), ignore_errors=True)
@@ -240,7 +256,7 @@ def _walk_for_pack(
     current: Path,
     src_root: Path,
     header_node: dict,
-    unpack_extensions: frozenset[str],
+    unpack_extensions: FrozenSet[str],
     file_entries: list,
     offset_ref: list,
     callback,
@@ -307,7 +323,7 @@ def _walk_for_pack(
                 should_unpack = rel in unpacked_files
             else:
                 should_unpack = entry.suffix.lower() in unpack_extensions
-            integrity, fsize = _file_integrity(str(entry))
+            integrity, fsize = _file_integrity(str(entry), check_cancelled)
 
             entry_dict: dict = {
                 "size": fsize,
@@ -353,7 +369,7 @@ def asar_extract(
     Returns:
         tuple: (unpacked_files: set, base_offset: int) 记录哪些文件是 unpacked 的
     """
-    from utils.asar_utils import parse_asar_header
+    from utils.asar_utils import validate_asar_with_reason
 
     src = Path(src)
     dest = Path(dest)
@@ -364,8 +380,13 @@ def asar_extract(
     dest.mkdir(parents=True, exist_ok=True)
     unpacked_dir = Path(f"{src}.unpacked")
 
+    valid, reason = validate_asar_with_reason(str(src))
+    if not valid:
+        raise ValueError(f"Invalid ASAR archive '{src}': {reason}")
+    from utils.asar_utils import parse_asar_header
+
     header_info = parse_asar_header(str(src))
-    if header_info is None:
+    if header_info is None:  # defensive: validation already parsed this
         raise ValueError(f"Failed to parse ASAR header from {src}")
 
     base_offset = header_info.base_offset
@@ -414,7 +435,7 @@ def _path_within(path: Path, parent: Path) -> bool:
         path_abs = path.resolve() if path.is_absolute() else (parent / path).resolve()
         parent_abs = parent.resolve()
     except Exception:
-        return True
+        return False
     try:
         path_abs.relative_to(parent_abs)
         return True
@@ -472,10 +493,12 @@ def _extract_node(
                     f"'{rel_path}' -> '{child['link']}'"
                 )
             try:
-                child_dest.symlink_to(link_target)
+                relative_target = os.path.relpath(link_target, child_dest.parent)
+                child_dest.symlink_to(relative_target)
             except FileExistsError:
                 child_dest.unlink()
-                child_dest.symlink_to(link_target)
+                relative_target = os.path.relpath(link_target, child_dest.parent)
+                child_dest.symlink_to(relative_target)
             except OSError as e:
                 if os.name == "nt":
                     logger.warning(
@@ -496,12 +519,11 @@ def _extract_node(
             if is_unpacked:
                 unpacked_files.add(rel_path)
                 unpacked_src = unpacked_dir / rel_path
-                if unpacked_src.exists():
-                    shutil.copy2(str(unpacked_src), str(child_dest))
-                else:
-                    logger.warning(
-                        f"Unpacked file missing from external dir (no offset in ASAR): {rel_path}"
+                if not unpacked_src.is_file():
+                    raise FileNotFoundError(
+                        f"Unpacked ASAR file is missing: {unpacked_src} ({rel_path})"
                     )
+                shutil.copy2(str(unpacked_src), str(child_dest))
             else:
                 offset = int(child["offset"])
                 size = child["size"]
@@ -509,9 +531,11 @@ def _extract_node(
                 remaining = size
                 with open(child_dest, "wb") as out:
                     while remaining > 0:
+                        if check_cancelled:
+                            check_cancelled()
                         chunk = asar_file.read(min(remaining, BLOCK_SIZE))
                         if not chunk:
-                            break
+                            raise EOFError(f"ASAR payload truncated while extracting: {rel_path}")
                         out.write(chunk)
                         remaining -= len(chunk)
 

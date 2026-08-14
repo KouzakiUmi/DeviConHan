@@ -75,6 +75,19 @@ class TestAsarUtils(unittest.TestCase):
         self.assertIn("outside archive", reason)
         self.assertFalse(is_valid_asar(str(truncated)))
 
+    def test_hash_reader_reads_payload_instead_of_trusting_header_integrity(self):
+        header = parse_asar_header(str(self.archive))
+        self.assertIsNotNone(header)
+        payload_offset = header.base_offset
+        with self.archive.open("r+b") as archive:
+            archive.seek(payload_offset)
+            archive.write(b"X")
+
+        self.assertNotEqual(
+            get_file_hash_in_asar(str(self.archive), "package.json"),
+            hashlib.sha256(self.package_content).hexdigest(),
+        )
+
     def test_invalid_when_archive_contains_escaping_symlink(self):
         header = parse_asar_header(str(self.archive))
         self.assertIsNotNone(header)

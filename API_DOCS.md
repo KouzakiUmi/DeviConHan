@@ -1,3 +1,10 @@
+# API 签名索引（历史）
+
+本文件由旧的自动化流程生成，适合作为函数名和部分签名的检索入口，但不再宣称
+覆盖全部公开接口。补丁事务、取消和恢复边界、存档三态返回值、CLI 和跨进程锁
+的当前契约见 [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md)；两者冲突时以
+源码与测试为准。
+
 <a id="core.config"></a>
 
 # core.config
@@ -2279,6 +2286,5 @@ def validate_not_empty(func: Callable) -> Callable
 def process_name(name: str):
     pass
 ```
-
 
 

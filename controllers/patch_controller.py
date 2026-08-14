@@ -12,6 +12,7 @@
 
 __all__ = ["PatchController", "PatchError"]
 
+import json
 import logging
 import os
 import shutil
@@ -30,11 +31,101 @@ from utils.disk_utils import (
 )
 from utils.file_ops import safe_extract_zip
 from utils.language import T
-from utils.operation_lock import OperationType
+from utils.operation_lock import FileOperationLock, OperationType
 from utils.paths import get_resource_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
+
+_TRANSACTION_FILE = ".patch_transaction.json"
+
+
+def _transaction_path(base_dir: str) -> str:
+    return os.path.join(base_dir, _TRANSACTION_FILE)
+
+
+def _write_transaction(base_dir: str, phase: str) -> None:
+    """Persist a tiny recovery marker before a game-file state transition."""
+    path = _transaction_path(base_dir)
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump({"phase": phase}, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp_path, path)
+
+
+def _clear_transaction(base_dir: str) -> None:
+    try:
+        os.remove(_transaction_path(base_dir))
+    except FileNotFoundError:
+        pass
+
+
+def recover_incomplete_patch(base_dir: str) -> Optional[str]:
+    """Restore the original ASAR after an interrupted commit, when possible.
+
+    The marker is intentionally conservative: an unverified transaction is
+    always rolled back to the known backup rather than trying to guess whether
+    a partially-written ASAR is usable.
+    """
+    marker = _transaction_path(base_dir)
+    if not os.path.exists(marker):
+        return None
+
+    cfg = get_config()
+    res = get_resources_path(base_dir, get_platform_info().system)
+    asar = os.path.join(res, cfg.target_asar_name)
+    bak = asar + ".bak"
+    staged = asar + ".new"
+    asar_unpacked = asar + ".unpacked"
+    bak_unpacked = bak + ".unpacked"
+    staged_unpacked = staged + ".unpacked"
+    file_lock = FileOperationLock(asar)
+    if not file_lock.acquire():
+        message = "Another patch process is active; deferred transaction recovery."
+        logger.warning(message)
+        return message
+    try:
+        if not os.path.exists(marker):
+            return None
+        phase = "committing"
+        try:
+            with open(marker, encoding="utf-8") as f:
+                marker_data = json.load(f)
+            if isinstance(marker_data, dict) and marker_data.get("phase") in {
+                "packing",
+                "committing",
+            }:
+                phase = marker_data["phase"]
+        except (OSError, ValueError) as e:
+            logger.warning("Could not read patch transaction marker: %s", e)
+
+        if phase == "packing":
+            message = "Removed an incomplete staged ASAR; the original was unchanged."
+        elif os.path.exists(bak):
+            if os.path.exists(asar):
+                os.remove(asar)
+            if os.path.isdir(asar_unpacked):
+                shutil.rmtree(asar_unpacked, ignore_errors=True)
+            os.replace(bak, asar)
+            if os.path.isdir(bak_unpacked):
+                os.replace(bak_unpacked, asar_unpacked)
+            message = "Recovered original ASAR from an incomplete patch transaction."
+        else:
+            message = "Found an incomplete patch transaction, but no ASAR backup is available."
+        if os.path.exists(staged):
+            os.remove(staged)
+        if os.path.isdir(staged_unpacked):
+            shutil.rmtree(staged_unpacked, ignore_errors=True)
+        _clear_transaction(base_dir)
+        logger.warning(message)
+        return message
+    except OSError as e:
+        logger.error("Could not recover incomplete patch transaction: %s", e)
+        return f"Could not recover incomplete patch transaction: {e}"
+    finally:
+        file_lock.release()
 
 
 class PatchError(Exception):
@@ -123,6 +214,12 @@ class PatchController:
                 # 重命名 bak → app.asar（原子操作）
                 try:
                     os.replace(bak, asar)
+                    bak_unpacked = bak + ".unpacked"
+                    asar_unpacked = asar + ".unpacked"
+                    if os.path.isdir(bak_unpacked):
+                        if os.path.isdir(asar_unpacked):
+                            shutil.rmtree(asar_unpacked, ignore_errors=True)
+                        os.replace(bak_unpacked, asar_unpacked)
                     self._log(T("log_patch_restored_backup"))
                 except Exception as e:
                     return False, f"Failed to restore from backup: {e}"
@@ -183,11 +280,22 @@ class PatchController:
         if not lock.acquire(OperationType.PATCH):
             return False, None, "另一个操作正在进行中"
 
+        cfg = get_config()
+        base = get_runtime_game_path() or os.path.abspath(".")
+        asar = os.path.join(
+            get_resources_path(base, get_platform_info().system), cfg.target_asar_name
+        )
+        file_lock = FileOperationLock(asar)
+        if not file_lock.acquire():
+            lock.release(OperationType.PATCH)
+            return False, None, "该游戏目录正在被另一个补丁工具操作"
+
         _check_cancelled = kwargs.get("_check_cancelled")
 
         try:
             return self._do_run_auto_patch(gui_app, _check_cancelled)
         finally:
+            file_lock.release()
             lock.release(OperationType.PATCH)
 
     def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
@@ -201,6 +309,7 @@ class PatchController:
         asar = os.path.join(res, cfg.target_asar_name)
         bak = asar + ".bak"
         temp = None
+        staged_asar = asar + ".new"
 
         # ========== 阶段 1: 前置检查 ==========
         ok, prereq_err = self.check_prerequisites()
@@ -293,7 +402,10 @@ class PatchController:
             self._log(T("log_patch_extracting_asar"))
             if _check_cancelled:
                 _check_cancelled()
-            _, unpacked_files = self.core.run_asar("extract", asar, temp, callback=self._log)
+            extract_kwargs = {"callback": self._log}
+            if _check_cancelled:
+                extract_kwargs["check_cancelled"] = _check_cancelled
+            _, unpacked_files = self.core.run_asar("extract", asar, temp, **extract_kwargs)
 
             # 验证解压结果
             if not os.path.exists(temp) or not os.listdir(temp):
@@ -337,25 +449,56 @@ class PatchController:
             else:
                 raise PatchError("Patch data not found")
 
-            # 3.4 如果需要备份，重命名 app.asar -> app.asar.bak
-            if need_backup:
-                self._log(T("log_patch_creating_backup"))
-                os.replace(asar, bak)
-                self._log(T("log_patch_backup_created"))
-
-            # 3.5 打包为新的 ASAR
+            # 3.4 Build beside the original ASAR.  This writes the new archive
+            # once, but keeps the playable original untouched until validation.
+            if os.path.exists(staged_asar):
+                os.remove(staged_asar)
             self._log(T("log_patch_packing_asar"))
             if _check_cancelled:
                 _check_cancelled()
-            self.core.run_asar(
-                "pack", temp, asar, callback=self._log, unpacked_files=unpacked_files
-            )
+            _write_transaction(base, "packing")
+            pack_kwargs = {"callback": self._log, "unpacked_files": unpacked_files}
+            if _check_cancelled:
+                pack_kwargs["check_cancelled"] = _check_cancelled
+            self.core.run_asar("pack", temp, staged_asar, **pack_kwargs)
 
-            # 验证打包结果
-            if not os.path.exists(asar):
-                raise PatchError("ASAR packing failed - output file not created")
-            if os.path.getsize(asar) < 1024:
+            # Lightweight post-build validation: structural ranges plus all
+            # externally-unpacked files.  It avoids a second full 8GB read.
+            valid, reason = validate_asar_with_reason(staged_asar)
+            if not valid:
+                raise PatchError(f"ASAR packing failed validation: {reason}")
+            if os.path.getsize(staged_asar) < 1024:
                 raise PatchError("ASAR packing failed - output file too small")
+            staged_unpacked = staged_asar + ".unpacked"
+            for relative_path in unpacked_files or set():
+                if not os.path.isfile(os.path.join(staged_unpacked, relative_path)):
+                    raise PatchError(
+                        f"ASAR packing failed - unpacked file missing: {relative_path}"
+                    )
+
+            if _check_cancelled:
+                _check_cancelled()
+
+            # Commit is intentionally non-cancellable.  Both renames are in
+            # the same directory; the journal lets the next launch recover
+            # the backup if power is lost between them.
+            _write_transaction(base, "committing")
+            if need_backup:
+                self._log(T("log_patch_creating_backup"))
+                os.replace(asar, bak)
+                asar_unpacked = asar + ".unpacked"
+                bak_unpacked = bak + ".unpacked"
+                if os.path.isdir(asar_unpacked):
+                    if os.path.isdir(bak_unpacked):
+                        shutil.rmtree(bak_unpacked, ignore_errors=True)
+                    os.replace(asar_unpacked, bak_unpacked)
+                self._log(T("log_patch_backup_created"))
+            os.replace(staged_asar, asar)
+            self._replace_unpacked_sidecar(staged_asar, asar)
+
+            valid, reason = validate_asar_with_reason(asar)
+            if not valid:
+                raise PatchError(f"Committed ASAR failed validation: {reason}")
 
             self._log(T("log_patch_asar_replaced"))
 
@@ -367,6 +510,8 @@ class PatchController:
             except Exception as e:
                 logger.warning(f"Failed to save patch metadata: {e}")
 
+            _clear_transaction(base)
+
             self._log(T("log_patch_complete"))
             self._log(T("patch_done", "✅ 安装完成！"))
 
@@ -375,10 +520,14 @@ class PatchController:
         except PatchError as e:
             logger.error(f"Patch error: {e}")
             self._rollback_asar_on_failure(asar, bak, need_backup)
+            self._cleanup_staged_asar(staged_asar)
+            _clear_transaction(base)
             return False, temp, str(e)
         except Exception as e:
             logger.exception("Unexpected error during patching")
             self._rollback_asar_on_failure(asar, bak, need_backup)
+            self._cleanup_staged_asar(staged_asar)
+            _clear_transaction(base)
             return False, temp, f"Unexpected error: {e}"
         finally:
             # 清理临时目录
@@ -389,23 +538,47 @@ class PatchController:
                     logger.warning(f"Failed to cleanup temp directory: {e}")
 
     @staticmethod
+    def _cleanup_staged_asar(staged_asar: str) -> None:
+        """Best-effort cleanup of an uncommitted ASAR and unpacked sidecar."""
+        for path in (staged_asar, staged_asar + ".unpacked"):
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                elif os.path.exists(path):
+                    os.remove(path)
+            except OSError as e:
+                logger.warning("Failed to remove staged ASAR artifact %s: %s", path, e)
+
+    @staticmethod
+    def _replace_unpacked_sidecar(staged_asar: str, asar: str) -> None:
+        """Replace or remove the live sidecar to match the committed ASAR."""
+        staged_unpacked = staged_asar + ".unpacked"
+        asar_unpacked = asar + ".unpacked"
+        if os.path.isdir(asar_unpacked):
+            shutil.rmtree(asar_unpacked)
+        elif os.path.exists(asar_unpacked):
+            os.remove(asar_unpacked)
+        if os.path.isdir(staged_unpacked):
+            os.replace(staged_unpacked, asar_unpacked)
+
+    @staticmethod
     def _rollback_asar_on_failure(asar: str, bak: str, need_backup: bool) -> None:
         if not need_backup or not os.path.exists(bak):
             return
         if os.path.exists(asar):
             try:
-                from utils.asar_utils import is_valid_asar
-                if is_valid_asar(asar):
-                    return
-            except Exception:
-                pass
-            try:
                 os.remove(asar)
-                logger.info("Removed corrupted ASAR before rollback")
+                logger.info("Removed unverified ASAR before rollback")
             except Exception as e:
                 logger.warning(f"Failed to remove corrupted ASAR: {e}")
         try:
+            asar_unpacked = asar + ".unpacked"
+            bak_unpacked = bak + ".unpacked"
+            if os.path.isdir(asar_unpacked):
+                shutil.rmtree(asar_unpacked, ignore_errors=True)
             os.replace(bak, asar)
+            if os.path.isdir(bak_unpacked):
+                os.replace(bak_unpacked, asar_unpacked)
             logger.info(f"Rolled back ASAR from backup: {bak} -> {asar}")
         except Exception as e:
             logger.error(f"Failed to rollback ASAR from backup: {e}")
