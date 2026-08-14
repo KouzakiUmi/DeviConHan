@@ -420,6 +420,7 @@ def _find_game_by_directory_scan(
     Returns:
         str: 游戏目录路径，未找到返回 None
     """
+
     def search():
         for base in search_paths:
             common_dir = os.path.join(base, "common")
@@ -439,23 +440,29 @@ def _find_game_by_directory_scan(
 
         return None
 
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(search)
-            result = future.result(timeout=timeout)
+        future = executor.submit(search)
+        result = future.result(timeout=timeout)
     except FuturesTimeoutError:
         logger.warning("Directory scan timed out")
+        future.cancel()
         result = None
     except Exception as e:
         logger.warning(f"Directory scan failed: {e}")
         result = None
+    finally:
+        # Do not let a slow or disconnected Windows drive turn a configured
+        # timeout into a UI freeze while the executor context waits to exit.
+        if sys.version_info >= (3, 9):
+            executor.shutdown(wait=False, cancel_futures=True)
+        else:
+            executor.shutdown(wait=False)
 
     if result is None:
         logger.warning("Game not found by any method")
 
     return result
-
-
 
 
 def _normalize_japanese(s: str) -> str:

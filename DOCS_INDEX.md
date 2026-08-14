@@ -31,8 +31,9 @@
 | 文档 | 说明 | 目标读者 |
 |------|------|----------|
 | [PROJECT_SPECS.md](PROJECT_SPECS.md) | 项目架构和技术规范 | 开发者 |
+| [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md) | 当前 CLI、事务、存档与核心接口契约 | 开发者/集成人员 |
 | [MODULE_GUIDE.md](MODULE_GUIDE.md) | 核心/GUI/工具模块补充说明 | 开发者 |
-| [API_DOCS.md](API_DOCS.md) | API 参考文档 | 开发者 |
+| [API_DOCS.md](API_DOCS.md) | 历史自动生成的函数签名索引 | 开发者 |
 | [UTILS_GUIDE.md](UTILS_GUIDE.md) | 工具模块详细说明 | 开发者 |
 
 ### 打包与分发
@@ -119,19 +120,27 @@
 
 ---
 
+### TECHNICAL_REFERENCE.md
+
+**内容**：
+- CLI 参数和退出码
+- 补丁事务、取消和崩溃恢复边界
+- 存档还原三态结果与恢复标记
+- 配置、锁和 ASAR 集成接口
+
+**适用场景**：
+- 集成或扩展核心模块
+- 排查补丁、存档和 Steam 恢复问题
+
 ### API_DOCS.md
 
 **内容**：
-- 完整的 API 参考
-- 函数签名
-- 参数说明
-- 返回值说明
-- 使用示例
+- 历史自动生成的函数签名索引
+- 部分旧模块的参数与返回值说明
 
 **适用场景**：
-- 查找特定函数的用法
-- 了解模块接口
-- IDE 集成文档提示
+- 快速定位旧函数或模块
+- 不用于判断事务、取消和恢复行为
 
 ---
 

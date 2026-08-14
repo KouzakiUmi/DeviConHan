@@ -3,6 +3,7 @@
 """
 
 import datetime
+import json
 import logging
 import os
 import shutil
@@ -22,6 +23,44 @@ from utils.validators import validate_not_empty, validate_path
 # 注意: core.config 在方法内延迟导入以避免循环导入
 
 logger = logging.getLogger(__name__)
+
+
+def _restore_journal_path(save_dir: str) -> str:
+    return save_dir + ".restore-journal"
+
+
+def _write_restore_journal(save_dir: str, old_path: str) -> None:
+    path = _restore_journal_path(save_dir)
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump({"old_path": old_path}, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(temp_path, path)
+
+
+def _clear_restore_journal(save_dir: str) -> None:
+    try:
+        os.remove(_restore_journal_path(save_dir))
+    except FileNotFoundError:
+        pass
+
+
+def _recover_restore_if_needed(save_dir: str) -> None:
+    """Recover the old save if a prior directory switch stopped mid-commit."""
+    path = _restore_journal_path(save_dir)
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, encoding="utf-8") as f:
+            old_path = json.load(f).get("old_path")
+        if old_path and os.path.isdir(old_path) and not os.path.exists(save_dir):
+            os.replace(old_path, save_dir)
+            logger.warning("Recovered save directory from interrupted restore")
+        if os.path.exists(save_dir):
+            _clear_restore_journal(save_dir)
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        logger.error("Could not recover interrupted save restore: %s", e)
 
 
 class SaveService:
@@ -161,7 +200,7 @@ class SaveService:
             dest_folder = os.path.join(backup_dir, folder_name)
             temp_folder = dest_folder + TEMP_FILE_SUFFIX
 
-            def copy_with_cancel(src, dst):
+            def copy_with_cancel(src: str, dst: str) -> None:
                 if _check_cancelled:
                     _check_cancelled()
                 shutil.copy2(src, dst)
@@ -254,27 +293,33 @@ class SaveService:
         is_zip: bool,
         copy_func: Callable[[str, str], None],
         check_cancelled: Optional[Callable] = None,
-    ) -> None:
-        """步骤4: 原子替换目标目录"""
-        if os.path.exists(save_dir):
-            if not self.clear_save_directory(save_dir):
-                raise RuntimeError("Failed to clear current save directory. Aborting restore.")
+    ) -> Optional[str]:
+        """步骤4: 同卷目录切换，返回待清理的旧存档目录。
 
-        if prepared_restore_path and os.path.exists(prepared_restore_path):
-            os.makedirs(save_dir, exist_ok=True)
-            for item in os.listdir(prepared_restore_path):
-                src_item = os.path.join(prepared_restore_path, item)
-                dst_item = os.path.join(save_dir, item)
-                if os.path.isdir(src_item):
-                    shutil.copytree(src_item, dst_item, copy_function=copy_func)
-                else:
-                    copy_func(src_item, dst_item)
-        else:
-            if is_zip:
-                os.makedirs(save_dir, exist_ok=True)
-                safe_extract_zip(backup_src, save_dir, check_cancelled=check_cancelled)
-            else:
-                shutil.copytree(backup_src, save_dir, dirs_exist_ok=True, copy_function=copy_func)
+        ``prepared_restore_path`` is created under the save directory's
+        parent, so both renames stay on one filesystem.  The old directory is
+        kept until the new one is in place, making failures recoverable.
+        """
+        if not prepared_restore_path or not os.path.isdir(prepared_restore_path):
+            raise RuntimeError("Prepared restore directory is missing")
+
+        old_path = None
+        if os.path.exists(save_dir):
+            old_path = prepared_restore_path + ".old"
+            _write_restore_journal(save_dir, old_path)
+            os.replace(save_dir, old_path)
+
+        try:
+            os.replace(prepared_restore_path, save_dir)
+        except Exception:
+            if old_path and os.path.exists(old_path) and not os.path.exists(save_dir):
+                os.replace(old_path, save_dir)
+                _clear_restore_journal(save_dir)
+            raise
+
+        if not os.path.isdir(save_dir):
+            raise RuntimeError("Restore directory switch did not produce a directory")
+        return old_path
 
     def _rollback_restore(
         self,
@@ -290,14 +335,8 @@ class SaveService:
             logger.info("Attempting rollback: restoring current save from backup...")
             if os.path.exists(save_dir):
                 shutil.rmtree(save_dir, onerror=self.core.remove_readonly_handler)
-            os.makedirs(save_dir, exist_ok=True)
-            for item in os.listdir(current_save_backup_path):
-                src_item = os.path.join(current_save_backup_path, item)
-                dst_item = os.path.join(save_dir, item)
-                if os.path.isdir(src_item):
-                    shutil.copytree(src_item, dst_item, copy_function=copy_func)
-                else:
-                    copy_func(src_item, dst_item)
+            os.replace(current_save_backup_path, save_dir)
+            _clear_restore_journal(save_dir)
             logger.info("Rollback completed successfully")
         except Exception as restore_err:
             logger.error(f"Rollback failed: {restore_err}")
@@ -333,24 +372,27 @@ class SaveService:
         _check_cancelled = kwargs.get("_check_cancelled")
         save_dir = normalize_path(save_dir)
         backup_src = normalize_path(backup_src)
+        _recover_restore_if_needed(save_dir)
 
         temp_dir = None
         current_save_backup_path = None
+        old_save_path = None
+        commit_completed = False
         _rollback_failed = False
 
-        def copy_with_cancel(src, dst):
+        def copy_with_cancel(src: str, dst: str) -> None:
             if _check_cancelled:
                 _check_cancelled()
             shutil.copy2(src, dst)
 
         try:
-            # 步骤1: 备份当前存档（如果存在）
-            if os.path.exists(save_dir):
-                temp_dir, current_save_backup_path = self._backup_current_save(
-                    save_dir, copy_with_cancel
-                )
-            else:
-                temp_dir = tempfile.mkdtemp(prefix=TEMP_BACKUP_PREFIX)
+            # Prepare beside the live save so the final directory switch is
+            # same-volume.  This avoids the previous delete-then-copy window.
+            parent_dir = os.path.dirname(save_dir)
+            os.makedirs(parent_dir, exist_ok=True)
+            temp_dir = tempfile.mkdtemp(
+                prefix=f".{os.path.basename(save_dir)}.restore-new-", dir=parent_dir
+            )
 
             # 步骤2: 验证备份源
             if not os.path.exists(backup_src):
@@ -367,7 +409,12 @@ class SaveService:
             )
 
             # 步骤4: 原子替换目标目录
-            self._apply_restore_data(
+            # Record the recovery location before the helper starts moving
+            # directories.  If both its first switch and immediate rollback
+            # fail, the outer rollback still knows where the live save went.
+            if os.path.exists(save_dir):
+                old_save_path = prepared_restore_path + ".old"
+            applied_old_path = self._apply_restore_data(
                 save_dir,
                 prepared_restore_path,
                 backup_src,
@@ -375,11 +422,16 @@ class SaveService:
                 copy_with_cancel,
                 _check_cancelled,
             )
+            old_save_path = applied_old_path
+            commit_completed = True
+            _clear_restore_journal(save_dir)
 
             logger.info(f"Restored save from: {backup_src}")
 
         except Exception as e:
             logger.error(f"Restore error: {e}")
+            if old_save_path and os.path.exists(old_save_path):
+                current_save_backup_path = old_save_path
             if temp_dir and current_save_backup_path and os.path.exists(current_save_backup_path):
                 try:
                     self._rollback_restore(save_dir, current_save_backup_path, copy_with_cancel, e)
@@ -390,8 +442,14 @@ class SaveService:
                     f"[{type(e).__name__}] {e}\n\nCurrent save has been restored from backup."
                 )
                 return warning_msg
+            # Preparation happens beside the live save.  If it fails before
+            # the directory switch, the original is still intact.
+            if not commit_completed and os.path.exists(save_dir):
+                return f"[{type(e).__name__}] {e}\n\nCurrent save was not modified."
             raise PatcherError(f"{type(e).__name__}: {e}") from e
         finally:
+            if commit_completed and old_save_path and os.path.exists(old_save_path):
+                self._cleanup_temp(old_save_path, is_dir=True)
             if temp_dir and os.path.exists(temp_dir) and not _rollback_failed:
                 try:
                     shutil.rmtree(temp_dir)

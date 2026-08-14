@@ -65,6 +65,7 @@ class CoreLogic:
         callback: Optional[Callable] = None,
         unpack_pattern: Optional[str] = None,
         unpacked_files: Optional[set] = None,
+        check_cancelled: Optional[Callable] = None,
     ) -> Tuple[bool, Optional[Any]]:
         """
         执行ASAR操作（解包或打包）- 使用纯 Python 实现
@@ -113,7 +114,9 @@ class CoreLogic:
                         f"Possible malicious ASAR file."
                     )
 
-                extracted_unpacked, _ = asar_extract(src, dest, callback=callback)
+                extracted_unpacked, _ = asar_extract(
+                    src, dest, callback=callback, check_cancelled=check_cancelled
+                )
 
                 if not verify_directory_safe(dest):
                     raise PatcherError(
@@ -128,6 +131,7 @@ class CoreLogic:
                     unpack_extensions=NATIVE_EXTENSIONS,
                     callback=callback,
                     unpacked_files=unpacked_files,
+                    check_cancelled=check_cancelled,
                 )
 
             else:

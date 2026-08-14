@@ -10,7 +10,11 @@ import os
 from typing import Callable, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hashes_in_asar, validate_asar_comprehensive, validate_asar_with_reason
+from utils.asar_utils import (
+    get_file_hashes_in_asar,
+    validate_asar_comprehensive,
+    validate_asar_with_reason,
+)
 from utils.language import T
 
 logger = logging.getLogger(__name__)
@@ -55,6 +59,19 @@ def _show_info(gui_app, title, msg):
         gui_app.thread_safe_showinfo(title, msg)
 
 
+def _restore_unpacked_sidecar(bak_path, asar_path):
+    """Keep ASAR's external native-module directory aligned with its backup."""
+    bak_unpacked = bak_path + ".unpacked"
+    asar_unpacked = asar_path + ".unpacked"
+    if not os.path.isdir(bak_unpacked):
+        return
+    if os.path.isdir(asar_unpacked):
+        import shutil
+
+        shutil.rmtree(asar_unpacked, ignore_errors=True)
+    os.replace(bak_unpacked, asar_unpacked)
+
+
 # ================= 状态机处理函数 =================
 
 
@@ -85,8 +102,7 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
         if on_error:
             on_error(
                 T("title_backup_corrupted"),
-                T("msg_backup_corrupted")
-                + f"\n\n{T('lbl_reason', 'Reason')}: {backup_reason}",
+                T("msg_backup_corrupted") + f"\n\n{T('lbl_reason', 'Reason')}: {backup_reason}",
             )
         return (False, True)
 
@@ -110,6 +126,7 @@ def _handle_asar_missing(core, bak_path, asar_path, on_error, on_ask_yes_no):
         if os.path.exists(asar_path):
             os.remove(asar_path)
         os.replace(bak_path, asar_path)
+        _restore_unpacked_sidecar(bak_path, asar_path)
         logger.info(f"Successfully restored ASAR from backup: {bak_path}")
         return (True, False)
     except OSError as e:
@@ -126,8 +143,7 @@ def _handle_backup_missing(core, asar_path, on_error, on_ask_yes_no):
         if on_error:
             on_error(
                 T("title_asar_corrupted"),
-                T("msg_asar_corrupted")
-                + f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}",
+                T("msg_asar_corrupted") + f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}",
             )
         return (False, True)
 
@@ -294,6 +310,7 @@ def _handle_asar_corrupted_backup_valid(asar_path, bak_path, on_ask_yes_no, on_e
         if os.path.exists(asar_path):
             os.remove(asar_path)
         os.replace(bak_path, asar_path)
+        _restore_unpacked_sidecar(bak_path, asar_path)
         logger.info(f"Successfully restored ASAR from backup: {bak_path}")
     except OSError as e:
         logger.error(f"Failed to restore ASAR from backup: {e}")
@@ -359,9 +376,7 @@ def _handle_both_valid(base_dir, asar_path, bak_path, on_info, on_ask_yes_no, on
     if not patch_files:
         return (True, False)
 
-    expected_check_files = [
-        file_path for file_path in check_files if patch_files.get(file_path)
-    ]
+    expected_check_files = [file_path for file_path in check_files if patch_files.get(file_path)]
     asar_hashes = get_file_hashes_in_asar(asar_path, expected_check_files)
 
     asar_match_patch, mismatched_against_patch = _compare_asar_with_patch(
@@ -380,14 +395,10 @@ def _handle_both_valid(base_dir, asar_path, bak_path, on_info, on_ask_yes_no, on
             )
         return (False, False)
 
-    check_files_match_bak = _compare_asar_with_backup(
-        asar_hashes, bak_path, expected_check_files
-    )
+    check_files_match_bak = _compare_asar_with_backup(asar_hashes, bak_path, expected_check_files)
 
     if not check_files_match_bak:
-        return _handle_inconsistent_state(
-            mismatched_against_patch, bak_path, on_ask_yes_no
-        )
+        return _handle_inconsistent_state(mismatched_against_patch, bak_path, on_ask_yes_no)
 
     return _handle_steam_update_detected(asar_path, bak_path)
 

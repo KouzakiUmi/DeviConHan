@@ -230,6 +230,17 @@ def bootstrap_system(
     global _detected_game_path
     _detected_game_path = base_dir if is_game_directory(base_dir, config) else None
 
+    # If a previous process died during the two-rename ASAR commit, restore
+    # the known original before any state validation presents misleading data.
+    try:
+        from controllers.patch_controller import recover_incomplete_patch
+
+        recovery_message = recover_incomplete_patch(base_dir)
+        if recovery_message:
+            messages.append(f"Warning: {recovery_message}")
+    except Exception as e:
+        messages.append(f"Warning: Could not check incomplete patch recovery: {e}")
+
     # 2. 配置验证
     try:
         config_valid, errors, warnings = config.validate_config()
