@@ -30,6 +30,150 @@ class _VarStub:
 
 
 class TestPatchAndSaveRegressions(unittest.TestCase):
+    def test_patch_zip_layout_is_rejected_before_asar_extraction(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            patch_zip = base / "Patch.zip"
+            patch_zip.write_bytes(b"zip-placeholder")
+            config_stub = SimpleNamespace(
+                target_asar_name="app.asar",
+                temp_patch_dir="temp_patch",
+                check_files_for_update=["data/expected.txt"],
+            )
+            core = Mock()
+            controller = PatchController(core)
+
+            with patch.object(controller, "check_prerequisites", return_value=(True, "")), patch(
+                "controllers.patch_controller.get_runtime_game_path", return_value=str(base)
+            ), patch("controllers.patch_controller.get_config", return_value=config_stub), patch(
+                "controllers.patch_controller.get_platform_info",
+                return_value=SimpleNamespace(system="Windows"),
+            ), patch(
+                "controllers.patch_controller.get_resources_path", return_value=str(resources)
+            ), patch(
+                "controllers.patch_controller.get_resource_path",
+                side_effect=lambda name: str(base / name),
+            ), patch(
+                "controllers.patch_controller.detect_patch_zip_root",
+                side_effect=ValueError("ambiguous payload"),
+            ):
+                success, temp, error = controller._do_run_auto_patch(None, None)
+
+            self.assertFalse(success)
+            self.assertIsNone(temp)
+            self.assertIn("ambiguous payload", error)
+            core.run_asar.assert_not_called()
+
+    def test_manual_patch_restore_replaces_asar_sidecar_and_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            asar = resources / "app.asar"
+            backup = resources / "app.asar.bak"
+            asar.write_bytes(b"patched-asar")
+            backup.write_bytes(b"original-asar")
+
+            live_sidecar = resources / "app.asar.unpacked"
+            backup_sidecar = resources / "app.asar.bak.unpacked"
+            live_sidecar.mkdir()
+            backup_sidecar.mkdir()
+            (live_sidecar / "patched.node").write_bytes(b"patched")
+            (backup_sidecar / "original.node").write_bytes(b"original")
+
+            patch_info = base / ".patch_info"
+            patch_meta = base / ".patch_meta"
+            patch_info.write_text("{}", encoding="utf-8")
+            patch_meta.write_text("{}", encoding="utf-8")
+            config_stub = SimpleNamespace(
+                patch_info_file=".patch_info",
+                patch_meta_file=".patch_meta",
+            )
+
+            controller = PatchController(_CoreStub())
+            with patch(
+                "controllers.patch_controller.validate_asar_with_reason",
+                return_value=(True, ""),
+            ), patch("controllers.patch_controller.get_config", return_value=config_stub):
+                success, _message = controller._do_restore_patch(str(base), str(asar))
+
+            self.assertTrue(success)
+            self.assertEqual(asar.read_bytes(), b"original-asar")
+            self.assertFalse(backup.exists())
+            self.assertFalse((live_sidecar / "patched.node").exists())
+            self.assertEqual((live_sidecar / "original.node").read_bytes(), b"original")
+            self.assertFalse(backup_sidecar.exists())
+            self.assertFalse(patch_info.exists())
+            self.assertFalse(patch_meta.exists())
+            self.assertFalse((base / ".patch_transaction.json").exists())
+
+    def test_manual_patch_restore_rejects_invalid_backup_without_changes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            asar = resources / "app.asar"
+            backup = resources / "app.asar.bak"
+            asar.write_bytes(b"patched-asar")
+            backup.write_bytes(b"broken-backup")
+
+            controller = PatchController(_CoreStub())
+            with patch(
+                "controllers.patch_controller.validate_asar_with_reason",
+                return_value=(False, "bad header"),
+            ):
+                success, message = controller._do_restore_patch(str(base), str(asar))
+
+            self.assertFalse(success)
+            self.assertIn("bad header", message)
+            self.assertEqual(asar.read_bytes(), b"patched-asar")
+            self.assertEqual(backup.read_bytes(), b"broken-backup")
+            self.assertFalse((base / ".patch_transaction.json").exists())
+
+    def test_recovery_finishes_manual_restore_after_atomic_asar_commit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            marker = base / ".patch_transaction.json"
+            marker.write_text('{"phase":"restoring"}', encoding="utf-8")
+            asar = resources / "app.asar"
+            asar.write_bytes(b"original-asar")
+
+            live_sidecar = resources / "app.asar.unpacked"
+            backup_sidecar = resources / "app.asar.bak.unpacked"
+            live_sidecar.mkdir()
+            backup_sidecar.mkdir()
+            (live_sidecar / "patched.node").write_bytes(b"patched")
+            (backup_sidecar / "original.node").write_bytes(b"original")
+            (base / ".patch_info").write_text("{}", encoding="utf-8")
+            (base / ".patch_meta").write_text("{}", encoding="utf-8")
+
+            config_stub = SimpleNamespace(
+                target_asar_name="app.asar",
+                patch_info_file=".patch_info",
+                patch_meta_file=".patch_meta",
+            )
+            platform_info = SimpleNamespace(system="Windows")
+            with patch("controllers.patch_controller.get_config", return_value=config_stub), patch(
+                "controllers.patch_controller.get_platform_info",
+                return_value=platform_info,
+            ), patch(
+                "controllers.patch_controller.get_resources_path",
+                return_value=str(resources),
+            ), patch("controllers.patch_controller.FileOperationLock") as lock_cls:
+                lock_cls.return_value.acquire.return_value = True
+                message = recover_incomplete_patch(str(base))
+
+            self.assertIn("Completed cleanup", message)
+            self.assertEqual((live_sidecar / "original.node").read_bytes(), b"original")
+            self.assertFalse((live_sidecar / "patched.node").exists())
+            self.assertFalse((base / ".patch_info").exists())
+            self.assertFalse((base / ".patch_meta").exists())
+            self.assertFalse(marker.exists())
+
     def test_file_operation_lock_excludes_a_second_process_handle(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             target = str(Path(temp_dir) / "app.asar")
@@ -86,8 +230,8 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
                 "controllers.patch_controller.safe_path_within",
                 return_value=str(temp_patch_dir),
             ), patch("controllers.patch_controller.get_resource_path") as mock_resource_path, patch(
-                "controllers.patch_controller.safe_extract_zip", return_value=False
-            ):
+                "controllers.patch_controller.detect_patch_zip_root", return_value=""
+            ), patch("controllers.patch_controller.safe_extract_zip", return_value=False):
                 mock_validator = mock_validator_cls.return_value
                 mock_validator.validate_all.return_value = (SimpleNamespace(value="clean"), [])
                 mock_resource_path.side_effect = lambda relative: (

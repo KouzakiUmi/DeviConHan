@@ -23,6 +23,12 @@ class PatchTab(ttk.Frame):
             command=self.run_auto_patch,
         )
         self.btn_p.pack(pady=10, ipady=10, fill="x", padx=50)
+        self.btn_restore_patch = ttk.Button(
+            self,
+            text=T("btn_restore_patch"),
+            command=self.restore_patch,
+        )
+        self.btn_restore_patch.pack(pady=5, ipady=6, fill="x", padx=50)
         ttk.Button(
             self,
             text=T("btn_to_tools"),
@@ -72,16 +78,7 @@ class PatchTab(ttk.Frame):
                 except Exception:
                     pass
 
-            if hasattr(self, "btn_p") and self.btn_p:
-
-                def _enable_btn():
-                    if hasattr(self, "btn_p") and self.btn_p:
-                        try:
-                            self.btn_p.state(["!disabled"])
-                        except tk.TclError:
-                            pass
-
-                self.after(0, _enable_btn)
+            self.after(0, lambda: self._set_action_buttons_enabled(True))
             self.app._finish_operation("auto_patch")
 
     def run_auto_patch(self):
@@ -91,6 +88,50 @@ class PatchTab(ttk.Frame):
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
         self.app.is_operating = True
-        self.btn_p.state(["disabled"])
+        self._set_action_buttons_enabled(False)
         self.app.toggle_progress(True)
         self.app.async_manager.submit("auto_patch_op", self._run_auto_patch_worker)
+
+    def _set_action_buttons_enabled(self, enabled):
+        state = ["!disabled"] if enabled else ["disabled"]
+        for name in ("btn_p", "btn_restore_patch"):
+            button = getattr(self, name, None)
+            if button:
+                try:
+                    button.state(state)
+                except tk.TclError:
+                    pass
+
+    def _restore_patch_worker(self, cancel_event=None, _check_cancelled=None):
+        self.app.performance_monitor.start("restore_patch")
+        try:
+            success, message = self.app.patch_controller.restore_patch()
+            if success:
+                self.after(
+                    0,
+                    lambda msg=message: messagebox.showinfo(T("title_success"), msg),
+                )
+            else:
+                self.after(
+                    0,
+                    lambda msg=message: messagebox.showerror(T("title_error"), msg),
+                )
+        except Exception as e:
+            self.after(0, lambda msg=str(e): messagebox.showerror(T("title_error"), msg))
+        finally:
+            self.after(0, lambda: self._set_action_buttons_enabled(True))
+            self.app._finish_operation("restore_patch")
+
+    def restore_patch(self):
+        if self.app.is_operating:
+            return messagebox.showwarning(
+                T("title_warning"),
+                T("warn_operation_in_progress", "Operation in progress..."),
+            )
+        if not messagebox.askyesno(T("title_confirm"), T("msg_restore_patch_confirm")):
+            return None
+
+        self.app.is_operating = True
+        self._set_action_buttons_enabled(False)
+        self.app.toggle_progress(True)
+        self.app.async_manager.submit("restore_patch_op", self._restore_patch_worker)

@@ -171,12 +171,13 @@ def my_function():
 |------|------|
 | `compute_file_hash(file_path)` | 计算文件的 SHA256 哈希值 |
 | `migrate_backup(src, dest_dir)` | 将备份文件迁移到目标目录，复制后校验哈希值 |
-| `safe_extract_zip(zip_path, dest_dir)` | 安全解压 ZIP 文件（防止路径遍历） |
+| `detect_patch_zip_root(zip_path, expected_paths)` | 定位 ZIP 内任意深度的实际 ASAR 补丁根目录 |
+| `safe_extract_zip(zip_path, dest_dir, strip_prefix=...)` | 安全解压 ZIP，并可剥离已检测到的包装目录 |
 
 ### 使用示例
 
 ```python
-from utils.file_ops import compute_file_hash, migrate_backup, safe_extract_zip
+from utils.file_ops import compute_file_hash, detect_patch_zip_root, migrate_backup, safe_extract_zip
 
 # 计算文件哈希
 hash_value = compute_file_hash("game_save.dat")
@@ -184,8 +185,9 @@ hash_value = compute_file_hash("game_save.dat")
 # 安全迁移备份（校验后删除源文件）
 success = migrate_backup("old_backup.zip", "C:/backups")
 
-# 安全解压 ZIP
-safe_extract_zip("patch.zip", "C:/game/resources")
+# 自动识别并剥离 Patch/data、release/Patch/data 等包装层级
+prefix = detect_patch_zip_root("Patch.zip", ["data/others/font.ttf"])
+safe_extract_zip("Patch.zip", "C:/game/resources", strip_prefix=prefix)
 ```
 
 ---

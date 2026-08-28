@@ -29,7 +29,7 @@ from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 from utils.disk_utils import (
     check_operation_space,
 )
-from utils.file_ops import safe_extract_zip
+from utils.file_ops import detect_patch_zip_root, safe_extract_zip
 from utils.language import T
 from utils.operation_lock import FileOperationLock, OperationType
 from utils.paths import get_resource_path, safe_path_within
@@ -60,6 +60,18 @@ def _clear_transaction(base_dir: str) -> None:
         os.remove(_transaction_path(base_dir))
     except FileNotFoundError:
         pass
+
+
+def _remove_patch_metadata(base_dir: str) -> None:
+    """Remove state files that only describe an installed patch."""
+    cfg = get_config()
+    for filename in (cfg.patch_info_file, cfg.patch_meta_file):
+        path = os.path.join(base_dir, filename)
+        for candidate in (path, path + ".tmp", path + ".old"):
+            try:
+                os.remove(candidate)
+            except FileNotFoundError:
+                pass
 
 
 def recover_incomplete_patch(base_dir: str) -> Optional[str]:
@@ -96,12 +108,27 @@ def recover_incomplete_patch(base_dir: str) -> Optional[str]:
             if isinstance(marker_data, dict) and marker_data.get("phase") in {
                 "packing",
                 "committing",
+                "restoring",
             }:
                 phase = marker_data["phase"]
         except (OSError, ValueError) as e:
             logger.warning("Could not read patch transaction marker: %s", e)
 
-        if phase == "packing":
+        if phase == "restoring":
+            # Manual restore commits with one atomic bak -> live replacement.
+            # A remaining backup therefore means the commit never happened;
+            # otherwise finish the sidecar/metadata cleanup after a crash.
+            if os.path.exists(bak):
+                message = "Cancelled an incomplete manual restore; game files were unchanged."
+            elif os.path.exists(asar):
+                PatchController._replace_unpacked_sidecar(bak, asar)
+                _remove_patch_metadata(base_dir)
+                message = "Completed cleanup after an interrupted manual restore."
+            else:
+                message = "Manual restore was interrupted and no usable ASAR is available."
+                logger.error(message)
+                return message
+        elif phase == "packing":
             message = "Removed an incomplete staged ASAR; the original was unchanged."
         elif os.path.exists(bak):
             if os.path.exists(asar):
@@ -298,6 +325,82 @@ class PatchController:
             file_lock.release()
             lock.release(OperationType.PATCH)
 
+    def restore_patch(self) -> Tuple[bool, str]:
+        """Restore the original ASAR backup and remove installed-patch state."""
+        from utils.operation_lock import get_operation_lock
+
+        lock = get_operation_lock()
+        if not lock.acquire(OperationType.PATCH):
+            return False, T("warn_operation_in_progress", "Another operation is in progress.")
+
+        cfg = get_config()
+        base = get_runtime_game_path() or os.path.abspath(".")
+        asar = os.path.join(
+            get_resources_path(base, get_platform_info().system), cfg.target_asar_name
+        )
+        file_lock = FileOperationLock(asar)
+        if not file_lock.acquire():
+            lock.release(OperationType.PATCH)
+            return False, T(
+                "err_patch_directory_busy",
+                "The game directory is being modified by another patch process.",
+            )
+
+        try:
+            return self._do_restore_patch(base, asar)
+        finally:
+            file_lock.release()
+            lock.release(OperationType.PATCH)
+
+    def _do_restore_patch(self, base: str, asar: str) -> Tuple[bool, str]:
+        """Perform the locked manual restore operation."""
+        bak = asar + ".bak"
+        if not os.path.exists(bak):
+            return False, T(
+                "err_patch_backup_not_found",
+                "No original ASAR backup was found. Verify the game files in Steam to restore them.",
+            )
+
+        try:
+            valid, reason = validate_asar_with_reason(bak)
+        except Exception as e:
+            valid, reason = False, str(e)
+        if not valid:
+            return False, T(
+                "err_patch_backup_invalid",
+                "The original ASAR backup is invalid: {reason}",
+            ).format(reason=reason)
+
+        self._log(T("log_patch_restoring_original", "Restoring the original game files..."))
+        try:
+            # The backup and live archive are siblings, so os.replace performs
+            # a single atomic commit without exposing a missing app.asar.
+            _write_transaction(base, "restoring")
+            os.replace(bak, asar)
+            self._replace_unpacked_sidecar(bak, asar)
+
+            valid, reason = validate_asar_with_reason(asar)
+            if not valid:
+                raise PatchError(f"Restored ASAR failed validation: {reason}")
+
+            _remove_patch_metadata(base)
+            _clear_transaction(base)
+            self._log(T("log_patch_restore_complete", "Original game files restored."))
+            return True, T(
+                "msg_patch_restore_success",
+                "The patch was removed and the original game files were restored.",
+            )
+        except Exception as e:
+            logger.exception("Manual patch restore failed")
+            # If the atomic replacement already consumed the backup, retain
+            # the marker so startup recovery can finish sidecar/metadata work.
+            if os.path.exists(bak):
+                _clear_transaction(base)
+            return False, T(
+                "err_patch_restore_failed",
+                "Failed to restore the original game files: {error}",
+            ).format(error=e)
+
     def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
         base = get_runtime_game_path() or os.path.abspath(".")
@@ -310,6 +413,34 @@ class PatchController:
         bak = asar + ".bak"
         temp = None
         staged_asar = asar + ".new"
+
+        # Validate the embedded payload layout before extracting a potentially
+        # very large ASAR or changing any game/backup state.
+        patch_zip = get_resource_path("Patch.zip")
+        patch_dir = get_resource_path("Patch")
+        patch_root = ""
+        if os.path.exists(patch_zip):
+            try:
+                patch_root = detect_patch_zip_root(
+                    patch_zip,
+                    getattr(cfg, "check_files_for_update", ()),
+                )
+            except (OSError, ValueError) as e:
+                return (
+                    False,
+                    None,
+                    T(
+                        "err_patch_zip_layout",
+                        "Cannot determine the patch ZIP layout safely: {error}",
+                    ).format(error=e),
+                )
+
+            if patch_root:
+                self._log(T("log_patch_zip_root_detected").format(root=patch_root))
+            else:
+                self._log(T("log_patch_zip_root_direct"))
+        elif not os.path.exists(patch_dir):
+            return False, None, "Patch data not found"
 
         # ========== 阶段 1: 前置检查 ==========
         ok, prereq_err = self.check_prerequisites()
@@ -419,13 +550,16 @@ class PatchController:
 
             # 3.3 应用补丁
             self._log(T("log_patch_applying"))
-            patch_zip = get_resource_path("Patch.zip")
-            patch_dir = get_resource_path("Patch")
 
             if os.path.exists(patch_zip):
                 self._log(T("log_patch_extracting_zip"))
                 try:
-                    extracted = safe_extract_zip(patch_zip, temp, check_cancelled=_check_cancelled)
+                    extracted = safe_extract_zip(
+                        patch_zip,
+                        temp,
+                        check_cancelled=_check_cancelled,
+                        strip_prefix=patch_root,
+                    )
                     if not extracted:
                         raise PatchError(f"Failed to extract patch data from: {patch_zip}")
                     self._log(T("log_patch_zip_extracted"))
@@ -446,8 +580,6 @@ class PatchController:
                     copy_function=copy_with_cancel,
                 )
                 self._log(T("log_patch_files_copied"))
-            else:
-                raise PatchError("Patch data not found")
 
             # 3.4 Build beside the original ASAR.  This writes the new archive
             # once, but keeps the playable original untouched until validation.

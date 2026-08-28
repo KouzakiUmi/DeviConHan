@@ -43,13 +43,16 @@ PatchController.run_auto_patch(gui_app=None, _check_cancelled=None) 返回：
 
 它先取得进程内 PATCH 锁和 app.asar 同目录的跨进程锁文件，然后执行：
 
-1. 验证 ASAR、备份、Steam 状态和磁盘空间。
-2. 解包到游戏目录内的 TEMP_PATCH_DIR，并安全提取 Patch.zip 或复制 Patch 目录。
-3. 写入 app.asar.new 及其 .unpacked sidecar。
-4. 对 staged ASAR 执行结构校验，并确认已声明的 unpacked 文件存在。
-5. 写入 .patch_transaction.json，按同目录重命名将原文件变为 .bak，再将 staged
+1. 预检 Patch.zip 的真实负载根目录：优先匹配配置中的关键文件，再识别任意深度下
+   直接包含 `data`、`tyrano` 等 ASAR 根目录的层级；歧义布局会在解包 ASAR 前终止。
+2. 验证 ASAR、备份、Steam 状态和磁盘空间。
+3. 解包到游戏目录内的 TEMP_PATCH_DIR，并在安全提取 Patch.zip 时自动剥离压缩工具
+   添加的任意层包装目录，或复制 Patch 目录。
+4. 写入 app.asar.new 及其 .unpacked sidecar。
+5. 对 staged ASAR 执行结构校验，并确认已声明的 unpacked 文件存在。
+6. 写入 .patch_transaction.json，按同目录重命名将原文件变为 .bak，再将 staged
    文件变为正式 ASAR。
-6. 再次校验正式 ASAR，写入补丁元数据并删除事务标记。
+7. 再次校验正式 ASAR，写入补丁元数据并删除事务标记。
 
 取消检查只在准备、解包、补丁覆盖、完整性哈希和打包阶段协作式生效。提交阶段的
 重命名刻意不可取消：在此阶段终止进程或断电可能留下事务标记。下次

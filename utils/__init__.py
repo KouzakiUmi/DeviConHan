@@ -22,7 +22,12 @@ from utils.error_handler import (
     PatcherError,
     get_error_handler,
 )
-from utils.file_ops import compute_file_hash, safe_extract_zip, verify_directory_safe
+from utils.file_ops import (
+    compute_file_hash,
+    detect_patch_zip_root,
+    safe_extract_zip,
+    verify_directory_safe,
+)
 from utils.language import T, get_font, get_mono_font, init_lang, set_language
 from utils.operation_lock import OperationLock, OperationType, get_operation_lock
 from utils.paths import get_resource_path, get_user_config_path, normalize_path, safe_path_within
@@ -48,6 +53,7 @@ __all__ = [
     "PatcherError",
     "get_error_handler",
     "compute_file_hash",
+    "detect_patch_zip_root",
     "safe_extract_zip",
     "verify_directory_safe",
     "T",

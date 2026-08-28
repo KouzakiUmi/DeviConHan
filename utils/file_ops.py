@@ -8,6 +8,7 @@ __all__ = [
     "compute_file_hash",
     "quick_file_hash",
     "migrate_backup",
+    "detect_patch_zip_root",
     "safe_extract_zip",
     "verify_directory_safe",
 ]
@@ -19,7 +20,7 @@ import shutil
 import stat
 import struct
 import zipfile
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 from utils.cleanup import force_cleanup_dir
 from utils.constants import HASH_CHUNK_SIZE, MAX_ZIP_EXTRACT_FILES, MAX_ZIP_EXTRACT_SIZE
@@ -119,8 +120,87 @@ def compute_file_hash(file_path: str, chunk_size: int = HASH_CHUNK_SIZE) -> str:
         return ""
 
 
+def detect_patch_zip_root(
+    zip_path: str,
+    expected_paths: Optional[Iterable[str]] = None,
+    root_markers: Iterable[str] = ("data", "tyrano"),
+) -> str:
+    """Locate the actual ASAR payload root inside an arbitrarily wrapped ZIP.
+
+    A ZIP may contain ``data/...``, ``Patch/data/...`` or any number of wrapper
+    directories depending on how it was created. Configured patch file paths
+    are used as the strongest signal, with common ASAR root directories as a
+    fallback. Ambiguous archives are rejected instead of guessing.
+    """
+    expected = [
+        path.replace("\\", "/").strip("/")
+        for path in (expected_paths or ())
+        if path and path.replace("\\", "/").strip("/")
+    ]
+    markers = {marker.strip("/") for marker in root_markers if marker.strip("/")}
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = []
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                name = info.filename.replace("\\", "/").strip("/")
+                if not name or name.split("/", 1)[0] == "__MACOSX":
+                    continue
+                names.append(name)
+    except zipfile.BadZipFile as e:
+        raise ValueError(f"invalid ZIP archive: {e}") from e
+
+    expected_candidates = set()
+    for name in names:
+        for expected_path in expected:
+            if name == expected_path:
+                expected_candidates.add("")
+            elif name.endswith("/" + expected_path):
+                expected_candidates.add(name[: -(len(expected_path) + 1)])
+
+    if expected_candidates:
+        if len(expected_candidates) != 1:
+            choices = ", ".join(
+                sorted(prefix or "<archive root>" for prefix in expected_candidates)
+            )
+            raise ValueError(f"multiple patch payload roots match configured files: {choices}")
+        return next(iter(expected_candidates))
+
+    # Find the parent of data/ or tyrano/ at any nesting depth. Descendant
+    # candidates are discarded when an ancestor is also a candidate; this
+    # prevents an asset subfolder named "data" from becoming the payload root.
+    candidates = set()
+    for name in names:
+        parts = name.split("/")
+        for index, component in enumerate(parts[:-1]):
+            if component in markers:
+                candidates.add("/".join(parts[:index]))
+
+    if not candidates:
+        return ""
+
+    roots = []
+    for candidate in candidates:
+        has_ancestor = any(
+            ancestor != candidate and (not ancestor or candidate.startswith(ancestor + "/"))
+            for ancestor in candidates
+        )
+        if not has_ancestor:
+            roots.append(candidate)
+
+    if len(roots) != 1:
+        choices = ", ".join(sorted(prefix or "<archive root>" for prefix in roots))
+        raise ValueError(f"multiple patch payload roots contain ASAR directories: {choices}")
+    return roots[0]
+
+
 def safe_extract_zip(
-    zip_path: str, dest_dir: str, check_cancelled: Optional[Callable] = None
+    zip_path: str,
+    dest_dir: str,
+    check_cancelled: Optional[Callable] = None,
+    strip_prefix: Optional[str] = None,
 ) -> bool:
     """
     安全地解压ZIP文件，防止路径遍历攻击并防止 ZIP 炸弹攻击
@@ -129,6 +209,7 @@ def safe_extract_zip(
         zip_path: ZIP文件路径
         dest_dir: 目标目录
         check_cancelled: 取消检查回调函数
+        strip_prefix: 解压时移除的ZIP包装目录（例如 ``Patch``）
 
     Returns:
         bool: 是否成功解压
@@ -143,10 +224,14 @@ def safe_extract_zip(
     try:
         abs_dest_dir = os.path.normpath(os.path.abspath(dest_dir))
 
+        normalized_prefix = (strip_prefix or "").replace("\\", "/").strip("/")
+
         with zipfile.ZipFile(zip_path, "r") as zf:
             members = zf.infolist()
             total_uncompressed = 0
             file_count = 0
+            extracted_file_count = 0
+            extracted_targets = set()
             for info in members:
                 file_count += 1
                 total_uncompressed += info.file_size
@@ -165,17 +250,42 @@ def safe_extract_zip(
                 if check_cancelled:
                     check_cancelled()
 
-                if os.path.isabs(member.filename):
+                normalized_name = member.filename.replace("\\", "/")
+                if os.path.isabs(member.filename) or normalized_name.startswith("/"):
                     raise ValueError(f"Absolute path not allowed in ZIP file: {member.filename}")
 
                 if _is_zip_symlink(member):
                     raise ValueError(f"Symlink not allowed in ZIP file: {member.filename}")
 
-                abs_member_path = safe_path_within(member.filename, abs_dest_dir)
+                # Validate every member before filtering. A wrapper must not
+                # be able to hide unsafe entries elsewhere in the archive.
+                if safe_path_within(normalized_name, abs_dest_dir) is None:
+                    raise ValueError(f"Path traversal detected in ZIP file: {member.filename}")
+
+                relative_name = normalized_name
+                if normalized_prefix:
+                    prefix_with_slash = normalized_prefix + "/"
+                    if relative_name.rstrip("/") == normalized_prefix:
+                        continue
+                    if not relative_name.startswith(prefix_with_slash):
+                        continue
+                    relative_name = relative_name[len(prefix_with_slash) :]
+
+                if not relative_name:
+                    continue
+                abs_member_path = safe_path_within(relative_name, abs_dest_dir)
                 if abs_member_path is None:
                     raise ValueError(f"Path traversal detected in ZIP file: {member.filename}")
 
-                if member.filename.endswith("/"):
+                normalized_target = os.path.normcase(os.path.normpath(abs_member_path))
+                if not normalized_name.endswith("/"):
+                    if normalized_target in extracted_targets:
+                        raise ValueError(
+                            f"Multiple ZIP entries map to the same output path: {relative_name}"
+                        )
+                    extracted_targets.add(normalized_target)
+
+                if normalized_name.endswith("/"):
                     os.makedirs(abs_member_path, exist_ok=True)
                 else:
                     parent_dir = os.path.dirname(abs_member_path)
@@ -187,6 +297,11 @@ def safe_extract_zip(
                             if not chunk:
                                 break
                             target.write(chunk)
+                    extracted_file_count += 1
+
+            if normalized_prefix and extracted_file_count == 0:
+                logger.error(f"ZIP prefix contains no files: {normalized_prefix}")
+                return False
 
         logger.info(f"Successfully extracted ZIP file: {zip_path}")
         return True
