@@ -37,9 +37,13 @@ set_main_config、set_gui_config 与 set_gui_config_batch 会保存配置。保�
 
 ## 补丁事务与恢复
 
-PatchController.run_auto_patch(gui_app=None, _check_cancelled=None) 返回：
+PatchController.run_auto_patch(gui_app=None, patch_zip_path=None, _check_cancelled=None) 返回：
 
     success, temporary_directory_or_none, message
+
+GUI 可通过 `patch_zip_path` 为本次安装传入自定义 ZIP。该参数只替换本次运行使用的
+补丁源，不会覆盖程序目录中的内置 `Patch.zip`；未传入时仍使用内置 ZIP 或 `Patch/`
+目录。
 
 它先取得进程内 PATCH 锁和 app.asar 同目录的跨进程锁文件，然后执行：
 

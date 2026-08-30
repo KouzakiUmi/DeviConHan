@@ -28,7 +28,7 @@ This project is a non-profit personal localization toolbox for TyranoV8-based ga
 
 **✨ Core Features:**
 
-- **🚀 One-Click Patching**: Graphical interface for automatic patch installation, backup, and Fuse integrity check removal.
+- **🚀 One-Click Patching**: Uses the bundled `Patch.zip` by default or a custom ZIP selected in the GUI, with automatic payload-root detection, backup, and manual original-file restoration.
 - **💾 Professional Save Manager**: Independent backup location (`~/.tyranopatcher/backups`), ZIP/Dir support, smooth migration with hash verification.
 - **🛠️ Developer Toolbox**: ASAR unpack/pack (using pure Python ASAR implementation), dynamic Fuse offset configuration, config validation.
 - **⚙️ Isolated Config System**: User config in home dir with hot-reload, validation, and template fallback.

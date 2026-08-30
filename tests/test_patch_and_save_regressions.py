@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from controllers.patch_controller import PatchController, recover_incomplete_patch
 from controllers.save_manager_controller import SaveManagerController
 from core.save_service import SaveService
+from gui.tabs.patch_tab import PatchTab
 from gui.tabs.save_tab import SaveTab
 from utils.operation_lock import FileOperationLock
 
@@ -30,6 +31,108 @@ class _VarStub:
 
 
 class TestPatchAndSaveRegressions(unittest.TestCase):
+    def test_custom_patch_zip_takes_priority_over_bundled_patch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            custom_patch = base / "my-custom-patch.zip"
+            custom_patch.write_bytes(b"zip-placeholder")
+            config_stub = SimpleNamespace(
+                target_asar_name="app.asar",
+                patch_zip_name="Patch.zip",
+                patch_dir_name="Patch",
+                check_files_for_update=["data/expected.txt"],
+            )
+            controller = PatchController(Mock())
+
+            with patch(
+                "controllers.patch_controller.get_runtime_game_path", return_value=str(base)
+            ), patch("controllers.patch_controller.get_config", return_value=config_stub), patch(
+                "controllers.patch_controller.get_platform_info",
+                return_value=SimpleNamespace(system="Windows"),
+            ), patch(
+                "controllers.patch_controller.get_resources_path", return_value=str(resources)
+            ), patch(
+                "controllers.patch_controller.get_resource_path",
+                side_effect=lambda name: str(base / name),
+            ), patch(
+                "controllers.patch_controller.detect_patch_zip_root",
+                side_effect=ValueError("custom layout checked"),
+            ) as detect_root:
+                success, temp, error = controller._do_run_auto_patch(None, None, str(custom_patch))
+
+            self.assertFalse(success)
+            self.assertIsNone(temp)
+            self.assertIn("custom layout checked", error)
+            detect_root.assert_called_once_with(
+                str(custom_patch.resolve()), config_stub.check_files_for_update
+            )
+
+    def test_missing_custom_patch_does_not_fall_back_to_bundled_patch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            resources = base / "resources"
+            resources.mkdir()
+            bundled_patch = base / "Patch.zip"
+            bundled_patch.write_bytes(b"bundled")
+            missing_patch = base / "missing.zip"
+            config_stub = SimpleNamespace(
+                target_asar_name="app.asar",
+                patch_zip_name="Patch.zip",
+                patch_dir_name="Patch",
+            )
+            controller = PatchController(Mock())
+
+            with patch(
+                "controllers.patch_controller.get_runtime_game_path", return_value=str(base)
+            ), patch("controllers.patch_controller.get_config", return_value=config_stub), patch(
+                "controllers.patch_controller.get_platform_info",
+                return_value=SimpleNamespace(system="Windows"),
+            ), patch(
+                "controllers.patch_controller.get_resources_path", return_value=str(resources)
+            ), patch(
+                "controllers.patch_controller.get_resource_path",
+                side_effect=lambda name: str(base / name),
+            ), patch("controllers.patch_controller.detect_patch_zip_root") as detect_root:
+                success, temp, error = controller._do_run_auto_patch(None, None, str(missing_patch))
+
+            self.assertFalse(success)
+            self.assertIsNone(temp)
+            self.assertIn("missing.zip", error)
+            detect_root.assert_not_called()
+
+    def test_patch_tab_selects_resets_and_submits_custom_patch(self):
+        tab = PatchTab.__new__(PatchTab)
+        tab.default_patch_zip = os.path.abspath("Patch.zip")
+        tab.var_patch_zip = _VarStub(tab.default_patch_zip)
+        custom_patch = os.path.abspath("custom.zip")
+
+        with patch("gui.tabs.patch_tab.filedialog.askopenfilename", return_value=custom_patch):
+            tab.select_patch_zip()
+        self.assertEqual(tab.var_patch_zip.get(), custom_patch)
+
+        tab.use_default_patch()
+        self.assertEqual(tab.var_patch_zip.get(), tab.default_patch_zip)
+
+        tab._pending_patch_zip = custom_patch
+        tab.after = lambda _delay, callback: callback()
+        tab.app = SimpleNamespace(
+            performance_monitor=Mock(),
+            patch_controller=Mock(),
+            _finish_operation=Mock(),
+        )
+        tab.app.patch_controller.run_auto_patch.return_value = (True, None, "")
+        cancellation_check = Mock()
+
+        tab._run_auto_patch_worker(_check_cancelled=cancellation_check)
+
+        tab.app.patch_controller.run_auto_patch.assert_called_once_with(
+            gui_app=tab.app,
+            patch_zip_path=custom_patch,
+            _check_cancelled=cancellation_check,
+        )
+
     def test_patch_zip_layout_is_rejected_before_asar_extraction(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

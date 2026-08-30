@@ -18,7 +18,6 @@ keywords = ["tyrano", "localization", "patcher", "electron"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
-    "License :: Free for non-commercial use",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
@@ -37,7 +36,7 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.optional-dependencies]
-build = ["pyinstaller"]
+build = ["build", "pyinstaller"]
 test = ["pytest"]
 
 [project.urls]
@@ -51,14 +50,15 @@ tyrano-patcher = "main:main"
 
 [tool.setuptools]
 include-package-data = true
+py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core", "gui", "utils", "controllers"]
+include = ["core", "gui", "gui.tabs", "utils", "controllers"]
 exclude = ["tests*", "docs*", "tools*"]
 
 [tool.setuptools.package-data]
-"" = ["*.ini", "*.ico", "*.md", "*.txt", "*.json", "*.zip"]
+"*" = ["*.ini", "*.ico", "*.md", "*.txt", "*.json", "*.zip"]
 "resources" = ["*"]
 "gui.tabs" = ["*"]
 

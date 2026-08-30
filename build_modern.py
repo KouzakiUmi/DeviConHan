@@ -16,13 +16,14 @@ import sys
 
 def install_build():
     """Install build module if not available."""
-    try:
-        import importlib.util
-        return importlib.util.find_spec("build") is not None
-    except Exception:
-        print("Installing build module...")
-        result = subprocess.run([sys.executable, "-m", "pip", "install", "build"], check=True)
-        return result.returncode == 0
+    import importlib.util
+
+    if importlib.util.find_spec("build") is not None:
+        return True
+
+    print("Installing build module...")
+    result = subprocess.run([sys.executable, "-m", "pip", "install", "build"], check=True)
+    return result.returncode == 0
 
 
 def build_wheel():

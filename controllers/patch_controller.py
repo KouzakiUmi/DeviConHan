@@ -285,7 +285,12 @@ class PatchController:
             logger.warning(f"Failed to check disk space: {e}")
             return True, "无法检查磁盘空间，继续操作"  # 保守策略：继续
 
-    def run_auto_patch(self, gui_app=None, **kwargs) -> Tuple[bool, Optional[str], str]:
+    def run_auto_patch(
+        self,
+        gui_app=None,
+        patch_zip_path: Optional[str] = None,
+        **kwargs,
+    ) -> Tuple[bool, Optional[str], str]:
         """
         执行自动补丁安装（事务性版本）
 
@@ -296,6 +301,7 @@ class PatchController:
 
         Args:
             gui_app: GUI 应用实例（用于显示对话框）
+            patch_zip_path: 本次安装使用的自定义补丁 ZIP；为空时使用内置补丁
             **kwargs: 其他参数，如 _check_cancelled
 
         Returns:
@@ -320,7 +326,7 @@ class PatchController:
         _check_cancelled = kwargs.get("_check_cancelled")
 
         try:
-            return self._do_run_auto_patch(gui_app, _check_cancelled)
+            return self._do_run_auto_patch(gui_app, _check_cancelled, patch_zip_path)
         finally:
             file_lock.release()
             lock.release(OperationType.PATCH)
@@ -401,7 +407,12 @@ class PatchController:
                 "Failed to restore the original game files: {error}",
             ).format(error=e)
 
-    def _do_run_auto_patch(self, gui_app, _check_cancelled) -> Tuple[bool, Optional[str], str]:
+    def _do_run_auto_patch(
+        self,
+        gui_app,
+        _check_cancelled,
+        patch_zip_path: Optional[str] = None,
+    ) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
         base = get_runtime_game_path() or os.path.abspath(".")
         cfg = get_config()
@@ -416,8 +427,28 @@ class PatchController:
 
         # Validate the embedded payload layout before extracting a potentially
         # very large ASAR or changing any game/backup state.
-        patch_zip = get_resource_path("Patch.zip")
-        patch_dir = get_resource_path("Patch")
+        bundled_patch_zip = get_resource_path(getattr(cfg, "patch_zip_name", "Patch.zip"))
+        patch_dir = get_resource_path(getattr(cfg, "patch_dir_name", "Patch"))
+        patch_zip = bundled_patch_zip
+        using_custom_patch = False
+        if patch_zip_path and os.fspath(patch_zip_path).strip():
+            patch_zip = os.path.abspath(os.path.expanduser(os.fspath(patch_zip_path).strip()))
+            using_custom_patch = os.path.normcase(os.path.normpath(patch_zip)) != os.path.normcase(
+                os.path.normpath(os.path.abspath(bundled_patch_zip))
+            )
+
+        if using_custom_patch:
+            if not os.path.isfile(patch_zip):
+                return (
+                    False,
+                    None,
+                    T(
+                        "err_custom_patch_missing",
+                        "The selected custom patch ZIP does not exist: {path}",
+                    ).format(path=patch_zip),
+                )
+            self._log(T("log_custom_patch_selected").format(path=patch_zip))
+
         patch_root = ""
         if os.path.exists(patch_zip):
             try:
