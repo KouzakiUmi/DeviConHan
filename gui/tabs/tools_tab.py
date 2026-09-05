@@ -196,7 +196,7 @@ class ToolsTab(ttk.Frame):
         ttk.Button(box_fuse, text=T("btn_locate"), command=self._auto_scan_exe).pack(side="left")
         ttk.Button(
             box_fuse,
-            text=T("btn_fuse_setting", "修改Fuse偏移"),
+            text=T("btn_fuse_setting", "Change Fuse offset"),
             command=self._edit_fuse_offset,
         ).pack(side="left", padx=10)
         ttk.Button(box_fuse, text=T("btn_fuse"), command=self._tool_fuse).pack(side="right")
@@ -276,7 +276,7 @@ class ToolsTab(ttk.Frame):
                 self.app.log(f"Found: {p}")
                 return
         self.app.log("app.asar not found in default locations.")
-        messagebox.showinfo(T("title_warning"), T("warn_no_file", "未找到文件"))
+        messagebox.showinfo(T("title_warning"), T("warn_no_file", "File not found"))
 
     def _auto_scan_exe(self):
         exe_name = get_config().auto_target_exe

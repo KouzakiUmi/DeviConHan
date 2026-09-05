@@ -7,7 +7,7 @@ import sys
 
 from core.config import get_config
 from gui.main_window import App
-from utils.language import init_lang
+from utils.language import T, init_lang
 from utils.logging import retarget_console_streams, setup_logging
 
 
@@ -123,7 +123,7 @@ def main() -> int:
         from core.bootstrap import bootstrap_system
 
         bootstrap_ok, bootstrap_messages = bootstrap_system(
-            skip_state_check=args.batch
+            skip_state_check=args.batch, allow_recovery=not args.batch
         )
 
         for msg in bootstrap_messages:
@@ -154,6 +154,15 @@ def main() -> int:
 
     try:
         app = App()
+        if any(T("msg_game_recovery_needed") in msg for msg in bootstrap_messages):
+            from tkinter import messagebox
+
+            app.after(
+                0,
+                lambda: messagebox.showwarning(
+                    T("title_warning"), T("msg_game_recovery_needed"), parent=app
+                ),
+            )
         app.mainloop()
         return 0
     except Exception:

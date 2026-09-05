@@ -19,6 +19,7 @@ __all__ = [
     "AsarFormatError",
     "parse_asar_header",
     "validate_asar_with_reason",
+    "validate_asar_with_sidecar",
     "validate_asar_comprehensive",
     "open_asar_reader",
     "is_valid_asar",
@@ -332,6 +333,34 @@ def validate_asar_with_reason(asar_path: str) -> Tuple[bool, str]:
     if not ok:
         return False, reason
 
+    return True, ""
+
+
+def validate_asar_with_sidecar(asar_path: str) -> Tuple[bool, str]:
+    """Validate structure and the presence/size of all external ASAR files."""
+    asar_path = os.fspath(asar_path)
+    valid, reason = validate_asar_with_reason(asar_path)
+    if not valid:
+        return valid, reason
+    header = parse_asar_header(asar_path)
+    if header is None:
+        return False, "Unsupported or unreadable ASAR header"
+
+    def check(node, prefix="", inherited=False):
+        for name, child in node.get("files", {}).items():
+            relative = f"{prefix}/{name}" if prefix else name
+            unpacked = inherited or child.get("unpacked", False)
+            if "files" in child:
+                check(child, relative, unpacked)
+            elif unpacked and "link" not in child:
+                path = os.path.join(asar_path + ".unpacked", relative)
+                if not os.path.isfile(path) or os.path.getsize(path) != child["size"]:
+                    raise ValueError(f"Missing or incomplete external ASAR file: {relative}")
+
+    try:
+        check(header.header_dict)
+    except (OSError, ValueError) as e:
+        return False, str(e)
     return True, ""
 
 

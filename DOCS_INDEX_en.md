@@ -1,51 +1,29 @@
 # Documentation Index
 
-> **Project status:** RC (Release Candidate)
+[中文](DOCS_INDEX.md) · [English](DOCS_INDEX_en.md) · [日本語](DOCS_INDEX_ja.md)
 
-<div align="center">
+Choose a guide for your task. Before switching patches or recovering damaged game files, read the Steam recovery instructions in the user guide.
 
-**🌐 Language Switch**
+| Task | Guide |
+| --- | --- |
+| Install, switch or restore a patch; manage saves | [User guide](README_en.md) |
+| Create a patch package or adapt another game | [Patch creation and game adaptation](PLUGIN_GUIDE.md) (Chinese) |
+| Build and check distribution artifacts | [Packaging and distribution](PACK.md) (Chinese) |
+| Understand the design, installation and recovery flow | [Project specification](PROJECT_SPECS.md) (Chinese) |
+| Look up CLI behavior, patch hashes, state files and recovery contracts | [Technical reference](TECHNICAL_REFERENCE.md) (Chinese) |
+| Locate module responsibilities and entry points | [Module guide](MODULE_GUIDE_en.md) |
+| Check utility usage and limitations | [Utilities guide](UTILS_GUIDE.md) (Chinese) |
 
-**[中文 🇨🇳](DOCS_INDEX.md)** • **[English 🇬🇧 (Current)](DOCS_INDEX_en.md)** • **[日本語 🇯🇵](DOCS_INDEX_ja.md)**
+The README, module guide and documentation index have separate Chinese, English and Japanese editions. Other developer guides are primarily in Chinese.
 
-</div>
+## Historical material
 
-This file is the multilingual entry point for the documentation set.
-
----
-
-## Quick Start
+These files preserve earlier reference material and review context. They are not current API contracts or lists of outstanding defects.
 
 | Document | Purpose |
-|------|------|
-| [README_en.md](README_en.md) | English overview, install, architecture summary |
-| [MODULE_GUIDE_en.md](MODULE_GUIDE_en.md) | English module reference for previously under-documented areas |
-| [PROJECT_SPECS.md](PROJECT_SPECS.md) | Deep technical architecture reference |
-| [UTILS_GUIDE.md](UTILS_GUIDE.md) | Utility modules and implementation notes |
-| [API_DOCS.md](API_DOCS.md) | Function/class level API reference |
-| [PACK.md](PACK.md) | Packaging and distribution guide |
-| [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) | Toolbox adaptation guide for other games |
+| --- | --- |
+| [API signature index](API_DOCS.md) | Older generated names and signatures |
+| [Code review](CODE_REVIEW.md) | Review snapshot dated 2026-04-26 |
+| [Documentation issues](DOCS_ISSUES.md) | Earlier findings, some already resolved |
 
----
-
-## Language Support
-
-- Overviews are available in Chinese, English, and Japanese
-- The new module guide is also available in all three languages
-- Deeper technical references remain source-of-truth documents and may stay Chinese-first unless translated later
-
----
-
-## Recommended Reading Order
-
-1. [README_en.md](README_en.md)
-2. [MODULE_GUIDE_en.md](MODULE_GUIDE_en.md)
-3. [PROJECT_SPECS.md](PROJECT_SPECS.md)
-4. [UTILS_GUIDE.md](UTILS_GUIDE.md)
-5. [API_DOCS.md](API_DOCS.md)
-6. [PACK.md](PACK.md)
-
----
-
-*Document version: 1.0*  
-*Last updated: 2026-04-16*
+Use current source, tests and the technical reference for behavior. Update relevant guides when changing a flow, and provide all three translations with matching format arguments for new user messages.

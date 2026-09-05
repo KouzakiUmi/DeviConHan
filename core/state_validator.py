@@ -20,7 +20,11 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 from core.config import get_config
-from utils.asar_utils import get_file_hashes_in_asar, validate_asar_comprehensive, validate_asar_with_reason
+from utils.asar_utils import (
+    get_file_hashes_in_asar,
+    validate_asar_comprehensive,
+    validate_asar_with_sidecar,
+)
 from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
@@ -170,6 +174,9 @@ class StateValidator:
             enable_performance_monitor=False,
         )
 
+        if valid:
+            valid, reason = validate_asar_with_sidecar(self.asar_path)
+
         state.size = extra_info.get("file_size", 0)
 
         if not valid:
@@ -184,9 +191,7 @@ class StateValidator:
                     message=f"ASAR validation failed: {reason}",
                     file_path=self.asar_path,
                     suggestion=(
-                        "File is corrupted, restore from backup"
-                        if severity == "critical"
-                        else ""
+                        "File is corrupted, restore from backup" if severity == "critical" else ""
                     ),
                 )
             )
@@ -212,7 +217,7 @@ class StateValidator:
 
         try:
             state.size = os.path.getsize(self.bak_path)
-            state.is_valid, backup_reason = validate_asar_with_reason(self.bak_path)
+            state.is_valid, backup_reason = validate_asar_with_sidecar(self.bak_path)
             if not state.is_valid:
                 self.warnings.append(
                     StateValidationError(
@@ -426,7 +431,7 @@ class StateValidator:
             return False, "Backup file not found"
 
         try:
-            valid, reason = validate_asar_with_reason(self.bak_path)
+            valid, reason = validate_asar_with_sidecar(self.bak_path)
             if not valid:
                 return False, f"Backup file is corrupted: {reason}"
         except Exception as e:

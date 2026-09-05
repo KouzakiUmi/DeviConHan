@@ -1,51 +1,29 @@
 # ドキュメント索引
 
-> **プロジェクト状態:** RC (Release Candidate)
+[中文](DOCS_INDEX.md) · [English](DOCS_INDEX_en.md) · [日本語](DOCS_INDEX_ja.md)
 
-<div align="center">
+目的に合うガイドを選んでください。パッチの変更や破損したゲームファイルの復元を行う場合は、まず利用ガイドの Steam による復元手順を確認してください。
 
-**🌐 言語切替**
+| 目的 | ガイド |
+| --- | --- |
+| パッチの適用・変更・復元、セーブ管理 | [利用ガイド](README_ja.md) |
+| パッチ作成、他のゲームへの対応 | [パッチ作成とゲーム対応](PLUGIN_GUIDE.md)（中国語） |
+| ビルド、配布物の確認 | [ビルドと配布](PACK.md)（中国語） |
+| 設計方針、適用・復元フローの理解 | [プロジェクト仕様](PROJECT_SPECS.md)（中国語） |
+| CLI、パッチハッシュ、状態ファイル、復元の仕様確認 | [技術リファレンス](TECHNICAL_REFERENCE.md)（中国語） |
+| モジュールの役割と入口の確認 | [モジュールガイド](MODULE_GUIDE_ja.md) |
+| ユーティリティの使い方と制約の確認 | [ユーティリティガイド](UTILS_GUIDE.md)（中国語） |
 
-**[中文 🇨🇳](DOCS_INDEX.md)** • **[English 🇬🇧](DOCS_INDEX_en.md)** • **[日本語 🇯🇵 (現在)](DOCS_INDEX_ja.md)**
+README、モジュールガイド、索引は中国語・英語・日本語の独立した文書を用意しています。その他の開発者向け文書は主に中国語です。
 
-</div>
+## 過去の資料
 
-このファイルはドキュメント群の多言語入口です。
-
----
-
-## クイックスタート
+以下は過去の参考資料とレビュー記録です。現在の API 仕様や未解決問題の一覧ではありません。
 
 | 文書 | 用途 |
-|------|------|
-| [README_ja.md](README_ja.md) | 日本語の概要、インストール、構成要約 |
-| [MODULE_GUIDE_ja.md](MODULE_GUIDE_ja.md) | これまで説明不足だった領域の日本語モジュールリファレンス |
-| [PROJECT_SPECS.md](PROJECT_SPECS.md) | 詳細な技術アーキテクチャ |
-| [UTILS_GUIDE.md](UTILS_GUIDE.md) | ユーティリティモジュール解説 |
-| [API_DOCS.md](API_DOCS.md) | 関数/クラス単位の API リファレンス |
-| [PACK.md](PACK.md) | パッケージングと配布ガイド |
-| [PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) | 他ゲーム向け適応ガイド |
+| --- | --- |
+| [API シグネチャ索引](API_DOCS.md) | 以前に自動生成した関数名・シグネチャ |
+| [コードレビュー](CODE_REVIEW.md) | 2026-04-26 時点のレビュー |
+| [ドキュメントの問題記録](DOCS_ISSUES.md) | 一部修正済みの過去の指摘 |
 
----
-
-## 多言語対応
-
-- 概要文書は中国語・英語・日本語で提供
-- 新しいモジュールガイドも三言語対応
-- より深い技術文書は現時点で中国語中心のソース・オブ・トゥルースとして維持
-
----
-
-## 推奨読書順
-
-1. [README_ja.md](README_ja.md)
-2. [MODULE_GUIDE_ja.md](MODULE_GUIDE_ja.md)
-3. [PROJECT_SPECS.md](PROJECT_SPECS.md)
-4. [UTILS_GUIDE.md](UTILS_GUIDE.md)
-5. [API_DOCS.md](API_DOCS.md)
-6. [PACK.md](PACK.md)
-
----
-
-*文書版: 1.0*  
-*最終更新: 2026-04-16*
+現在の動作はソースコード、テスト、技術リファレンスを参照してください。フローを変更した際は関連文書も更新し、新しい利用者向けメッセージには同じ書式引数を持つ三言語の翻訳を追加してください。

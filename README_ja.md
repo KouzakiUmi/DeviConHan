@@ -1,133 +1,85 @@
-# Tyranoパッチツールボックス
+# Tyrano パッチツールボックス
 
-**でびるコネクショん漢化パッチは組み込みサンプル作品です。**
+[中文](README.md) · [English](README_en.md) · [日本語](README_ja.md)
 
-**開発者向け説明**: このツールボックスはTyranoV8/Electronベースのゲーム向けの汎用ツールです。`config.ini`を修正（WINDOWS_EXE、MACOS_APP、LINUX_BINARY、FUSE_SENTINEL、CHECK_FILES_FOR_UPDATEなど）し、対象ゲームのローカライズファイルを含む`patch.zip`を提供することで、他のゲームに適応できます。詳細は[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md)を参照してください。
+Tyrano / Electron ゲーム向けのパッチ適用、セーブ管理、ASAR 操作ツールです。`でびるコネクショん` の中国語翻訳パッチを同梱サンプルとしています。
 
-<div align="center">
+By KouzakiUmi（呜咪 / 神前海）
 
-**🌐 言語切替**
+## 使い方
 
-**[中文 🇨🇳](README.md)** • **[English 🇬🇧](README_en.md)** • **[日本語 🇯🇵 (現在)](README_ja.md)**
+[Releases](../../releases) から使用する OS 向けのビルドをダウンロードしてください。
 
-</div>
+- `Tyrano_Toolbox`：パッチなし。GUI でカスタム ZIP を選択できます。
+- `DevilConnection_Patch`：サンプルパッチ同梱版。パッチ素材がある場合に生成されます。
 
-![Status](https://img.shields.io/badge/Status-RC-orange?style=flat-square)
-![Platform](https://img.shields.io/badge/Platform-Win%20|%20Mac%20|%20Linux-blue?style=flat-square)
-![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey?style=flat-square)
-![Build](https://img.shields.io/badge/Build-Automated-success?style=flat-square)
+どちらにもパッチ適用、元のゲームファイルへの復元、セーブ管理、開発者ツールがあります。
 
-> **By KouzakiUmi (呜咪 / 神前海)**
+1. ゲームを終了し、ツールを起動します。
+2. パッチ適用タブで同梱パッチまたはカスタム ZIP を選び、インストールします。
+3. 別のパッチに変更する場合は、先に Steam で整合性を確認するか元のゲームファイルに戻し、そのゲームのバージョンに対応するパッチを適用します。
 
+## パッチの変更とゲームファイルの復元
 
----
+元の ASAR を展開し、新しい Patch で対応するファイルを上書きして再パックします。バージョンの不一致や既存の変更により、ファイルの混在、内容の不整合、起動不能が起こる可能性があります。
 
-## 概要
+ゲームファイルに問題がある場合は、まず Steam のゲームのプロパティ → インストール済みファイル → ゲームファイルの整合性を確認してください。ツール内で確認のうえ、ローカルの元のバックアップから復元することもできます。ただし古いゲームバージョンの場合があり、ファイル検証に合格してもパッチとの互換性は保証されません。
 
-このプロジェクトはTyranoV8ベースゲーム向けの非営利個人ローカライズツールボックスで、でびるコネクショんの漢化パッチを組み込み例としています。フルGUI、クロスプラットフォーム（Windows/macOS/Linux）、高度なセーブ管理、開発者ツールを搭載。
+インストール記録にはパッチのハッシュが保存されます。同じパッチで適用状態が正常な場合のみ処理を省略します。異なるパッチやハッシュのない旧記録の場合は、復元方法を確認します。ローカルバックアップを選択すると、以前のパッチに重ねず、元のアーカイブから再構築します。
 
-**✨ 主な機能：**
+## セーブ管理
 
-- **🚀 ワンクリックパッチ適用**: 内蔵 `Patch.zip` またはGUIで選択したカスタムZIPを使用し、負荷ルートの自動検出、バックアップ、オリジナルファイルの手動復元に対応。
-- **💾 プロフェッショナルセーブマネージャー**: 独立したバックアップ場所(`~/.tyranopatcher/backups`)、ZIP/Dir対応、ハッシュ検証付きスムーズ移行。
-- **🛠️ 開発者ツールボックス**: 純粋Python ASAR展開/パック、動的Fuseオフセット設定、設定検証。
-- **⚙️ 隔離設定システム**: ホームディレクトリのユーザー設定、ホットリロード、検証、テンプレートフォールバック。
-- **🔒 安全保護**: 同時実行ロック、確認ダイアログ、ハッシュチェック、原子性書き込み。
-- **🌐 多言語対応**: 中/英/日、メニューによるランタイム切替。
-- **📚 包括的なドキュメント**: まず [DOCS_INDEX_ja.md](DOCS_INDEX_ja.md) を参照し、その後 [MODULE_GUIDE_ja.md](MODULE_GUIDE_ja.md)、[PROJECT_SPECS.md](PROJECT_SPECS.md)、[API_DOCS.md](API_DOCS.md)、[PLUGIN_GUIDE.md](PLUGIN_GUIDE.md) を利用してください。
+- `_storage`、`save`、`SaveData`、`UserData` を検出し、ZIP またはフォルダー形式でバックアップします。
+- 既定の保存先は `~/.tyranopatcher/backups`。場所を変更し、既存バックアップを移行するか選択できます。
+- 復元先を確認してから処理します。現在のセーブフォルダーがなくても、既存バックアップと復元先を選択できます。
+- 復元失敗時はロールバックを試み、成功、変更なし・ロールバック済み、ロールバック失敗を区別します。
 
----
+**Steam のゲームファイル検証はセーブデータのバックアップ復元の代わりにはなりません。** パッチの適用・削除ではセーブデータを直接変更しません。
 
-## インストール
+## ソースからの実行・ビルド
 
-### 自動ビルド版（推奨）
+Python 3.8 以上と動作する Tkinter が必要です。実行時の ASAR 操作に外部 ASAR ライブラリや Node.js は不要です。
 
-mainブランチへのプッシュで自動ビルド。最新版を[Releases](../../releases)からダウンロード：
-- `Tyrano_Toolbox.exe` - 純粋ツールボックス
-- `DevilConnection_Patch.exe` - 組み込み例パッチ付き（利用可能時）
+```bash
+python main.py
+python main.py --help
+```
 
-### ソースからのビルド（Windows）
+ビルド時は `pyinstaller` と `pillow` をインストールします。`Pack.sh` はアイコン変換に Pillow を使用します。対象 OS 上で実行してください。
 
-```cmd
-git clone <repo-url>
-cd DeviConHan
+```powershell
+python -m pip install pyinstaller pillow
 .\Pack.cmd
 ```
 
-`dist/`に出力：
-- `Tyrano_Toolbox.exe`
-- Patchデータがある場合`DevilConnection_Patch.exe`
-
-### macOS / Linux
-
-Python 3.8+ が必要です。パッケージング時のみ PyInstaller も必要です。
-
 ```bash
-pip install pyinstaller
-python -m PyInstaller -F -w --clean -i "icon.ico" \
-  --add-data "icon.ico:." \
-  --add-data "config.ini:." \
-  --name "Tyrano_Toolbox" main.py
+python3 -m pip install pyinstaller pillow
+bash Pack.sh
 ```
 
-パッチ版は既存の`Patch.zip`を使うか、`Patch/`ディレクトリをそのまま置いてください。Packスクリプトがビルド中に一時的な`Patch.zip`を作成し、追跡中のパッチ資産は変更しません。
+出力先は `dist/` です。スクリプトは以前のビルド成果物を削除します。`Patch.zip` または空でない `Patch/` があればパッチ同梱版も生成します。[ビルドガイド](PACK.md)（中国語）を参照してください。
 
-**注意**: `Pack.cmd`/`Pack.sh` は一時ビルドディレクトリでのみ staged `Patch.zip` を作成し、ビルド後にクリーンアップするため、git 作業ツリーを汚しません。
+## 設定とログ
 
----
+| 内容 | 既定の場所 |
+|---|---|
+| ユーザー設定 | `~/.tyranopatcher/config.ini` |
+| ログ | `~/.tyranopatcher/tyrano_patcher.log` |
+| セーブバックアップ | `~/.tyranopatcher/backups` |
 
-## セーブマネージャー
+Windows の `~` は `%USERPROFILE%` です。初回起動で同梱テンプレートをコピーし、以降はユーザー設定を使用します。言語メニューで中国語・英語・日本語を選択できます。利用者向けのメッセージと進行状況は選択言語に従い、技術診断ログは英語を使用します。
 
-組み込みのSave Managerタブでプロ級のバックアップ/復元を提供：
+## 開発と他ゲームへの適応
 
-- セーブディレクトリの自動検出（パッチ実行場所に関係なく確実に位置を特定）。
-- タイムスタンプ付き独立バックアップ（ZIPまたはディレクトリ）。
-- バックアップパス変更時のスムーズ移行（ハッシュ検証付き）。
-- 確認付きワンクリック復元。
-- UIをブロックしない非同期操作。
-- 同時実行安全ロック。
+- [ドキュメント索引](DOCS_INDEX_ja.md)：目的別の案内。
+- [技術リファレンス](TECHNICAL_REFERENCE.md)（中国語）：CLI、パッチハッシュ、トランザクション、復元の契約。
+- [プロジェクト仕様](PROJECT_SPECS.md)（中国語）と[モジュールガイド](MODULE_GUIDE_ja.md)：設計の境界と各モジュールの役割。
+- [パッチ適応ガイド](PLUGIN_GUIDE.md)（中国語）：ゲーム設定とパッチ構成。
 
-実装詳細は[UTILS_GUIDE.md](UTILS_GUIDE.md)を参照。
+設定の変更とパッチの用意に加えて、対象ゲームのバージョンで動作確認が必要です。Fuse の編集は独立した開発者向け操作で、自動パッチ適用には含まれません。
 
----
+## 著作権とライセンス
 
-## 開発者向け
+本プロジェクトは原作者 **ばやちゃお（Bayachao）** の[二次創作ガイドライン](https://bayachao.com/devil-connection/guideline)に従います。非商用のみ。パッチにゲーム本体は含まれません。ゲーム、キャラクター、素材の権利は原作者に帰属します。
 
-日本語ドキュメント入口は [DOCS_INDEX_ja.md](DOCS_INDEX_ja.md)、完全なアーキテクチャと設計原則は [PROJECT_SPECS.md](PROJECT_SPECS.md) を参照。
-
-**他のゲームへの適応**（上記参照）：configとpatch.zipを修正。現在のコードは`utils/asar_writer.py`による純粋Python ASAR処理、`utils/asar_utils.py`と`core/state_validator.py`での検証、bootstrap、state machineを採用。パッケージングスクリプトも現在のロジックに更新（node.exe依存をコア操作から除去）。
-
-**現在のアーキテクチャ**（コード分析に基づく更新）:
-- `main.py`: 引数解析、bootstrap、GUI/バッチモード。
-- `core/`: bootstrap.py, patcher.py (`utils.asar_writer.asar_extract` / `asar_pack` を呼ぶ CoreLogic), config.py (スナップショット/TTL/ホットリロード/ユーザーディレクトリ優先のシングルトン), steam.py (ステートマシン), save_service.py, fuse.py, state_validator.py, patch_info.py, batch.py。
-- `gui/`: main_window.py, tabs/(patch_tab.py, save_tab.py, tools_tab.py)。
-- `controllers/`: patch_controller, save_manager_controller。
-- `utils/`: language.py (システム言語検出+ini設定), paths.py, async_ops.py など。
-- Bootstrapは起動前に包括的なシステムチェックを実行。
-
-**パッケージングスクリプト分析**:
-- `Pack.cmd`/`Pack.sh`: 依存チェック、ツールボックスビルド、必要に応じた `Patch/` の一時ZIP化、パッチャービルド、クリーンアップ。現在のPyInstaller仕様と純Python ASARに更新。
-
-**設定**:
-テンプレートから`~/.tyranopatcher/config.ini`へコピー。すべてのキーに対応。Toolsタブで検証/リセット可能。
-
-**実行ロジック**（コードから）:
-1. Bootstrap: 設定ロード、パス、状態検証 (ASAR/bak/metaのハッシュ整合性)。
-2. パッチフロー: Steam更新検出 (`patch_meta` ハッシュ使用)、バックアップ、抽出 (`utils.asar_writer.asar_extract`)、パッチ適用、再パック (`utils.asar_writer.asar_pack`)、メタ/情報原子性保存、クリーンアップ。
-3. セーブ操作: ゲームディレクトリ独立、ZIP対応、ハッシュチェック付き移行。
-4. Fuse除去: 設定可能オフセット、EXEへのバイナリパッチ。
-
-詳細は`core/bootstrap.py`、`controllers/patch_controller.py`、`core/steam.py`のhandle_steam_update() (4ケースのステートマシン)、`gui/tabs/tools_tab.py`を分析してください。
-
----
-
-## ライセンス
-
-本プロジェクトは原作者**ばやちゃお (Bayachao)**氏の二次創作ガイドラインを厳守します。
-
-- **非営利のみ**。商用利用禁止。
-- パッチは翻訳/注入ファイルのみを含み、**ゲーム本体は含まれません**。
-- ゲーム、キャラクター、デザインの全権利は原作者に帰属。
-
-参照: [作者ガイドライン](https://bayachao.com/devil-connection/guideline)
-ライセンス: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+プロジェクトのライセンス：[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。[LICENSE](LICENSE)も参照してください。

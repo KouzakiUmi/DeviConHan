@@ -17,6 +17,8 @@ import os
 import shutil
 from typing import Tuple, Union
 
+from utils.language import T
+
 logger = logging.getLogger(__name__)
 
 # 安全余量系数：预留额外空间防止意外增长
@@ -103,10 +105,10 @@ def check_disk_space(
         has_space = free_space >= required_with_margin
 
         if not has_space:
-            msg = (
-                f"磁盘空间不足: 需要 {format_bytes(required_bytes)} "
-                f"(含余量 {format_bytes(required_with_margin)}), "
-                f"可用 {format_bytes(free_space)}"
+            msg = T("err_disk_space_required").format(
+                required=format_bytes(required_bytes),
+                reserved=format_bytes(required_with_margin),
+                available=format_bytes(free_space),
             )
             logger.error(msg)
             if raise_on_error:
@@ -117,7 +119,7 @@ def check_disk_space(
     except DiskSpaceError:
         raise
     except Exception as e:
-        msg = f"检查磁盘空间时出错: {e}"
+        msg = T("err_disk_space_check").format(error=e)
         logger.error(msg)
         if raise_on_error:
             raise DiskSpaceError(msg) from e
@@ -244,24 +246,24 @@ def check_operation_space(operations: list, base_path: str = ".") -> Tuple[bool,
         required_with_margin = int(total_required * SAFETY_MARGIN)
 
         detail_lines = [
-            "磁盘空间检查:",
-            f"  所需空间: {format_bytes(total_required)}",
-            f"  安全余量: {format_bytes(required_with_margin)}",
-            f"  可用空间: {format_bytes(free_space)}",
-            "  详细需求:",
+            T("log_disk_space_header"),
+            "  " + T("log_disk_required").format(size=format_bytes(total_required)),
+            "  " + T("log_disk_reserved").format(size=format_bytes(required_with_margin)),
+            "  " + T("log_disk_available").format(size=format_bytes(free_space)),
+            "  " + T("log_disk_breakdown"),
         ]
 
         for desc, size in operations:
             detail_lines.append(f"    - {desc}: {format_bytes(size)}")
 
         if free_space >= required_with_margin:
-            detail_lines.append("  ✓ 空间充足")
+            detail_lines.append("  " + T("log_disk_sufficient"))
             return True, "\n".join(detail_lines)
         else:
             detail_lines.append(
-                f"  ✗ 空间不足，缺少 {format_bytes(required_with_margin - free_space)}"
+                "  " + T("log_disk_shortfall").format(size=format_bytes(required_with_margin - free_space))
             )
             return False, "\n".join(detail_lines)
 
     except Exception as e:
-        return False, f"无法检查磁盘空间: {e}"
+        return False, T("err_disk_space_check").format(error=e)

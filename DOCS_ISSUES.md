@@ -1,5 +1,7 @@
 # Documentation Issues Found
 
+> Historical audit: these findings describe an earlier documentation snapshot, and some have been resolved. This is not a current issue tracker. See the [documentation index](DOCS_INDEX_en.md) and [technical reference](TECHNICAL_REFERENCE.md) for current guidance.
+
 ## Missing Files & Broken References
 
 ### 1. Broken Link in DOCS_INDEX.md

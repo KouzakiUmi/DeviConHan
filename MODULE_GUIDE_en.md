@@ -20,7 +20,7 @@ This guide fills the gap for:
 - runtime/build/UI modules only mentioned briefly in the READMEs
 - adaptation-related boundaries that are easy to miss when reusing the toolbox for another Tyrano/Electron game
 
-Use `API_DOCS.md` and the source code for signature-level detail.
+Use the [technical reference](TECHNICAL_REFERENCE.md) and source for current contracts and recovery boundaries. `API_DOCS.md` is a historical index.
 
 ---
 
@@ -38,9 +38,10 @@ Use `API_DOCS.md` and the source code for signature-level detail.
 
 | Module | Responsibility | Notes |
 |------|------|------|
+| `core.bootstrap` | Startup checks and interrupted-operation recovery | The GUI uses `allow_recovery=True` so damaged files do not prevent access to recovery guidance. |
 | `core.batch` | Non-GUI batch patch flow | `batch_mode()` is the automation-friendly entry; `_validate_fuse_path()` guards risky file targets. |
 | `core.fuse` | Electron Fuse backup, verification, restore, and patching | Exposes `remove_fuse()`, `restore_fuse()`, `verify_fuse_backup()`; backup availability is checked mainly via sentinel/byte validation, with full-hash verification during backup creation and restore. |
-| `core.patch_info` | Patch metadata persistence | `has_embedded_patch()` detects bundled patch data; save helpers use atomic writes. |
+| `core.patch_info` | Patch metadata persistence | `get_patch_hash()` fingerprints the patch source; `load_patch_hash()` reads `.patch_meta.patch_hash`. Save helpers use atomic writes. |
 | `core.state_validator` | System state consistency checks | `StateValidator` and `validate_system_state()` aggregate ASAR, backup, patch-meta, and patch-info health. |
 | `core.steam` | Steam update detection and patch state machine | `handle_steam_update()` covers missing backup, overwritten ASAR, and tampering branches. |
 
@@ -50,8 +51,8 @@ Use `API_DOCS.md` and the source code for signature-level detail.
 
 | Module | Responsibility | Notes |
 |------|------|------|
-| `gui.tabs.patch_tab` | Patch-install tab | Handles patch-path input, main patch actions, and UI state feedback. |
-| `gui.tabs.save_tab` | Save-management tab | Connects to `SaveManagerController` for scan, backup, restore, delete, and migration flows. |
+| `gui.tabs.patch_tab` | Patch-install tab | Available in both editions, including custom ZIP selection. The main page gives operation guidance; confirmation dialogs explain risks. |
+| `gui.tabs.save_tab` | Save-management tab | Connects to `SaveManagerController` for scan, backup, restore, delete, and migration. Separate backups remain accessible when the save directory is missing; users can select a restore destination. |
 | `gui.tabs.tools_tab` | Developer tools tab | Hosts ASAR pack/extract, Fuse editing, config validation, and related utilities. |
 
 ---
@@ -65,7 +66,7 @@ Use `API_DOCS.md` and the source code for signature-level detail.
 | `utils.disk_utils` | Disk-space and write-permission checks | Used by bootstrap and patching prechecks; not every file operation invokes it automatically. |
 | `utils.operation_lock` | Operation-scoped mutual exclusion | Prevents conflicting patch/save/toolbox write operations. |
 | `utils.platform` | Cross-platform game and Steam discovery | Scans Steam libraries, locates app resources, and resolves platform-specific paths. |
-| `utils.transaction` | Transactional file operations | `FileTransaction`, `atomic_rename()`, and `safe_backup()` support rollback-safe workflows. |
+| `utils.transaction` | Transactional file operations | Provides general helpers such as `FileTransaction`; the patch controller uses its own transaction markers and recovery flow. |
 
 ---
 
@@ -79,8 +80,8 @@ Use `API_DOCS.md` and the source code for signature-level detail.
 
 ### Runtime i18n
 
-- All UI text should go through `utils.language.T(key)`
-- Every new key must be added for `cn`, `en`, and `jp`
+- UI text, user-facing progress and disk-space reports should use `utils.language.T(key)`; internal diagnostic logs use English
+- Add each new key for `cn`, `en`, and `jp` with matching format arguments; order confirmations as question, effect, recommendation
 - In the current code, persisted language preference is written by `utils.language` through `core.config`; `utils.config_bridge` is an available decoupling hook, not the only active path
 
 ---
@@ -92,9 +93,4 @@ Use `API_DOCS.md` and the source code for signature-level detail.
 3. `PROJECT_SPECS.md`
 4. `MODULE_GUIDE*`
 5. `UTILS_GUIDE.md`
-6. `API_DOCS.md`
-
----
-
-*Document version: 1.0*  
-*Last updated: 2026-04-16*
+6. `TECHNICAL_REFERENCE.md`

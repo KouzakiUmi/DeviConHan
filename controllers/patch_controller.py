@@ -20,10 +20,10 @@ from typing import Callable, Optional, Tuple
 
 from core.bootstrap import get_runtime_game_path
 from core.config import get_config
-from core.patch_info import save_patch_info, save_patch_meta
+from core.patch_info import get_patch_hash, load_patch_hash, save_patch_info, save_patch_meta
 from core.state_validator import StateValidator, SystemState
 from core.steam import handle_steam_update
-from utils.asar_utils import validate_asar_with_reason
+from utils.asar_utils import validate_asar_with_reason, validate_asar_with_sidecar
 from utils.cleanup import force_cleanup_dir
 from utils.constants import BATCH_CANCEL_OR_ERROR_MSG
 from utils.disk_utils import (
@@ -90,7 +90,6 @@ def recover_incomplete_patch(base_dir: str) -> Optional[str]:
     asar = os.path.join(res, cfg.target_asar_name)
     bak = asar + ".bak"
     staged = asar + ".new"
-    asar_unpacked = asar + ".unpacked"
     bak_unpacked = bak + ".unpacked"
     staged_unpacked = staged + ".unpacked"
     file_lock = FileOperationLock(asar)
@@ -121,26 +120,34 @@ def recover_incomplete_patch(base_dir: str) -> Optional[str]:
             if os.path.exists(bak):
                 message = "Cancelled an incomplete manual restore; game files were unchanged."
             elif os.path.exists(asar):
-                PatchController._replace_unpacked_sidecar(bak, asar)
+                valid, reason = validate_asar_with_reason(asar)
+                if not valid:
+                    return T("msg_game_recovery_needed") + "\n\n" + reason
+                # The sidecar may already have moved before metadata cleanup failed.
+                # Repeating a restore must preserve that only remaining copy.
+                if os.path.isdir(bak_unpacked):
+                    PatchController._replace_unpacked_sidecar(bak, asar)
+                valid, reason = validate_asar_with_sidecar(asar)
+                if not valid:
+                    return T("msg_game_recovery_needed") + "\n\n" + reason
                 _remove_patch_metadata(base_dir)
                 message = "Completed cleanup after an interrupted manual restore."
             else:
-                message = "Manual restore was interrupted and no usable ASAR is available."
+                message = T("msg_game_recovery_needed")
                 logger.error(message)
                 return message
         elif phase == "packing":
             message = "Removed an incomplete staged ASAR; the original was unchanged."
         elif os.path.exists(bak):
-            if os.path.exists(asar):
-                os.remove(asar)
-            if os.path.isdir(asar_unpacked):
-                shutil.rmtree(asar_unpacked, ignore_errors=True)
+            valid, reason = validate_asar_with_sidecar(bak)
+            if not valid:
+                return T("msg_game_recovery_needed") + "\n\n" + reason
             os.replace(bak, asar)
-            if os.path.isdir(bak_unpacked):
-                os.replace(bak_unpacked, asar_unpacked)
+            PatchController._replace_unpacked_sidecar(bak, asar)
+            _remove_patch_metadata(base_dir)
             message = "Recovered original ASAR from an incomplete patch transaction."
         else:
-            message = "Found an incomplete patch transaction, but no ASAR backup is available."
+            message = T("msg_game_recovery_needed")
         if os.path.exists(staged):
             os.remove(staged)
         if os.path.isdir(staged_unpacked):
@@ -150,7 +157,7 @@ def recover_incomplete_patch(base_dir: str) -> Optional[str]:
         return message
     except OSError as e:
         logger.error("Could not recover incomplete patch transaction: %s", e)
-        return f"Could not recover incomplete patch transaction: {e}"
+        return T("msg_game_recovery_needed") + f"\n\n{e}"
     finally:
         file_lock.release()
 
@@ -214,51 +221,13 @@ class PatchController:
         res = get_resources_path(base, get_platform_info().system)
 
         asar = os.path.join(res, cfg.target_asar_name)
-        bak = asar + ".bak"
 
         if not os.path.exists(res):
-            return False, T("err_res_missing", "❌ 错误: 缺少 resources 文件夹。")
+            return False, T("err_res_missing", "The game resources folder was not found.")
 
-        asar_corrupted = False
-        asar_reason = ""
-        if os.path.exists(asar):
-            try:
-                asar_valid, asar_reason = validate_asar_with_reason(asar)
-                asar_corrupted = not asar_valid
-            except Exception:
-                asar_corrupted = True
-                asar_reason = "Unexpected validation error"
-
-        if not os.path.exists(asar) or asar_corrupted:
-            if os.path.exists(bak):
-                # 删除损坏的 ASAR（如果存在），然后重命名 bak → app.asar
-                if asar_corrupted and os.path.exists(asar):
-                    self._log(T("log_patch_corrupted_restoring"))
-                    try:
-                        os.remove(asar)
-                    except Exception as e:
-                        return False, f"Failed to remove corrupted ASAR: {e}"
-                # 重命名 bak → app.asar（原子操作）
-                try:
-                    os.replace(bak, asar)
-                    bak_unpacked = bak + ".unpacked"
-                    asar_unpacked = asar + ".unpacked"
-                    if os.path.isdir(bak_unpacked):
-                        if os.path.isdir(asar_unpacked):
-                            shutil.rmtree(asar_unpacked, ignore_errors=True)
-                        os.replace(bak_unpacked, asar_unpacked)
-                    self._log(T("log_patch_restored_backup"))
-                except Exception as e:
-                    return False, f"Failed to restore from backup: {e}"
-            elif asar_corrupted:
-                msg = T("err_asar_corrupted_no_backup")
-                if asar_reason:
-                    msg += f"\n\n{T('lbl_reason', 'Reason')}: {asar_reason}"
-                return False, msg
-
-        # ASAR 和 BAK 都不存在才算失败（BAK 存在时 run_auto_patch 可直接用 BAK 为源）
-        if not os.path.exists(asar) and not os.path.exists(bak):
-            return False, T("err_asar_missing", "❌ 错误: 未找到 app.asar 文件且无备份。")
+        valid, reason = validate_asar_with_sidecar(asar)
+        if not valid:
+            return False, T("msg_game_recovery_needed") + "\n\n" + reason
 
         return True, ""
 
@@ -273,17 +242,17 @@ class PatchController:
             asar_size = os.path.getsize(asar_path) if os.path.exists(asar_path) else 0
 
             operations = [
-                ("ASAR备份", asar_size),
-                ("ASAR解压", asar_size * 1.2),  # 解压后通常更大
-                ("ASAR重新打包", asar_size * 1.1),
-                ("临时文件", 100 * 1024 * 1024),  # 100MB临时空间
+                (T("disk_operation_backup"), asar_size),
+                (T("disk_operation_extract"), asar_size * 1.2),  # 解压后通常更大
+                (T("disk_operation_pack"), asar_size * 1.1),
+                (T("disk_operation_temp"), 100 * 1024 * 1024),  # 100MB临时空间
             ]
 
             return check_operation_space(operations, base_dir)
 
         except Exception as e:
             logger.warning(f"Failed to check disk space: {e}")
-            return True, "无法检查磁盘空间，继续操作"  # 保守策略：继续
+            return True, T("warn_disk_check_unavailable")  # 保守策略：继续
 
     def run_auto_patch(
         self,
@@ -311,7 +280,7 @@ class PatchController:
 
         lock = get_operation_lock()
         if not lock.acquire(OperationType.PATCH):
-            return False, None, "另一个操作正在进行中"
+            return False, None, T("warn_operation_in_progress")
 
         cfg = get_config()
         base = get_runtime_game_path() or os.path.abspath(".")
@@ -321,7 +290,7 @@ class PatchController:
         file_lock = FileOperationLock(asar)
         if not file_lock.acquire():
             lock.release(OperationType.PATCH)
-            return False, None, "该游戏目录正在被另一个补丁工具操作"
+            return False, None, T("err_patch_directory_busy")
 
         _check_cancelled = kwargs.get("_check_cancelled")
 
@@ -368,7 +337,7 @@ class PatchController:
             )
 
         try:
-            valid, reason = validate_asar_with_reason(bak)
+            valid, reason = validate_asar_with_sidecar(bak)
         except Exception as e:
             valid, reason = False, str(e)
         if not valid:
@@ -385,7 +354,7 @@ class PatchController:
             os.replace(bak, asar)
             self._replace_unpacked_sidecar(bak, asar)
 
-            valid, reason = validate_asar_with_reason(asar)
+            valid, reason = validate_asar_with_sidecar(asar)
             if not valid:
                 raise PatchError(f"Restored ASAR failed validation: {reason}")
 
@@ -471,7 +440,10 @@ class PatchController:
             else:
                 self._log(T("log_patch_zip_root_direct"))
         elif not os.path.exists(patch_dir):
-            return False, None, "Patch data not found"
+            return False, None, T("err_patch_data_missing")
+
+        patch_source = patch_zip if os.path.isfile(patch_zip) else patch_dir
+        patch_hash = get_patch_hash(patch_source, _check_cancelled)
 
         # ========== 阶段 1: 前置检查 ==========
         ok, prereq_err = self.check_prerequisites()
@@ -484,45 +456,49 @@ class PatchController:
         on_info = getattr(gui_app, "thread_safe_showinfo", None) if gui_app else None
 
         # 系统状态验证
-        self._log("Checking system state...")
+        self._log(T("log_checking_game_state"))
         validator = StateValidator(base)
         state, issues = validator.validate_all()
 
         for issue in issues:
             if issue.severity == "critical":
-                return False, None, f"System state error: {issue.message}"
+                return False, None, T("msg_game_recovery_needed") + f"\n\n{issue.message}"
             elif issue.severity == "warning":
                 self._log(f"Warning: {issue.message}")
 
+        source_asar = asar
         if state == SystemState.PATCHED:
-            self._log(T("msg_already_patched"))
-            if on_info:
-                on_info(
-                    T("title_success", "Already Patched"),
-                    T(
-                        "msg_already_patched",
-                        "The game is already patched. No need to apply again.",
-                    ),
-                )
-            return True, None, ""
+            if load_patch_hash(base) == patch_hash:
+                self._log(T("msg_already_patched"))
+                if on_info:
+                    on_info(T("title_success"), T("msg_already_patched"))
+                return True, None, ""
 
-        # Steam 更新检测
-        should_continue, cancel_or_error = handle_steam_update(
-            self.core,
-            base,
-            bak,
-            asar,
-            log_callback=self._log,
-            on_error=on_error,
-            on_ask_yes_no=on_ask_yes_no,
-            on_info=on_info,
-        )
-
-        if cancel_or_error or not should_continue:
-            return False, temp, BATCH_CANCEL_OR_ERROR_MSG
+            # Build a replacement from the original, never overlay two packages.
+            valid, reason = validate_asar_with_sidecar(bak)
+            if not valid:
+                return False, None, T("msg_game_recovery_needed") + "\n\n" + reason
+            if not on_ask_yes_no:
+                return False, None, T("msg_patch_change_requires_restore")
+            if not on_ask_yes_no(T("title_confirm"), T("msg_patch_replace_confirm")):
+                return False, None, BATCH_CANCEL_OR_ERROR_MSG
+            source_asar = bak
+        else:
+            should_continue, cancel_or_error = handle_steam_update(
+                self.core,
+                base,
+                bak,
+                asar,
+                log_callback=self._log,
+                on_error=on_error,
+                on_ask_yes_no=on_ask_yes_no,
+                on_info=on_info,
+            )
+            if cancel_or_error or not should_continue:
+                return False, temp, BATCH_CANCEL_OR_ERROR_MSG
 
         # 磁盘空间预检
-        self._log("Checking disk space...")
+        self._log(T("log_checking_disk_space"))
         space_ok, space_info = self._check_disk_space(base, asar)
         self._log(space_info)
         if not space_ok:
@@ -534,7 +510,7 @@ class PatchController:
                         "Insufficient disk space. Please free up some space and try again.",
                     ),
                 )
-            return False, None, "Insufficient disk space"
+            return False, None, T("msg_insufficient_disk_space")
 
         # ========== 阶段 2: 准备临时目录 ==========
         temp_raw = os.path.join(base, cfg.temp_patch_dir)
@@ -557,6 +533,7 @@ class PatchController:
         # ========== 阶段 3: 补丁操作 ==========
         # 最小化写入流程: 解包 -> 打补丁 -> 重命名 -> 打包
         need_backup = False
+        commit_started = False
         try:
             need_backup = os.path.exists(asar) and not os.path.exists(bak)
 
@@ -567,7 +544,7 @@ class PatchController:
             extract_kwargs = {"callback": self._log}
             if _check_cancelled:
                 extract_kwargs["check_cancelled"] = _check_cancelled
-            _, unpacked_files = self.core.run_asar("extract", asar, temp, **extract_kwargs)
+            _, unpacked_files = self.core.run_asar("extract", source_asar, temp, **extract_kwargs)
 
             # 验证解压结果
             if not os.path.exists(temp) or not os.listdir(temp):
@@ -612,6 +589,9 @@ class PatchController:
                 )
                 self._log(T("log_patch_files_copied"))
 
+            if get_patch_hash(patch_source, _check_cancelled) != patch_hash:
+                raise PatchError(T("err_patch_source_changed"))
+
             # 3.4 Build beside the original ASAR.  This writes the new archive
             # once, but keeps the playable original untouched until validation.
             if os.path.exists(staged_asar):
@@ -646,6 +626,7 @@ class PatchController:
             # the same directory; the journal lets the next launch recover
             # the backup if power is lost between them.
             _write_transaction(base, "committing")
+            commit_started = True
             if need_backup:
                 self._log(T("log_patch_creating_backup"))
                 os.replace(asar, bak)
@@ -667,31 +648,40 @@ class PatchController:
 
             # 3.6 生成补丁元数据
             self._log(T("log_patch_generating_meta"))
-            try:
-                save_patch_info(base, asar, bak)
-                save_patch_meta(base, temp)
-            except Exception as e:
-                logger.warning(f"Failed to save patch metadata: {e}")
+            save_patch_info(base, asar, bak)
+            save_patch_meta(base, temp, patch_hash=patch_hash)
 
             _clear_transaction(base)
 
             self._log(T("log_patch_complete"))
-            self._log(T("patch_done", "✅ 安装完成！"))
+            self._log(T("patch_done", "Installation complete."))
 
             return True, temp, ""
 
         except PatchError as e:
             logger.error(f"Patch error: {e}")
-            self._rollback_asar_on_failure(asar, bak, need_backup)
+            rolled_back = self._rollback_asar_on_failure(asar, bak, commit_started)
             self._cleanup_staged_asar(staged_asar)
-            _clear_transaction(base)
-            return False, temp, str(e)
+            if rolled_back:
+                if commit_started:
+                    _remove_patch_metadata(base)
+                _clear_transaction(base)
+            message = str(e)
+            if not rolled_back:
+                message += "\n\n" + T("msg_game_recovery_needed")
+            return False, temp, message
         except Exception as e:
             logger.exception("Unexpected error during patching")
-            self._rollback_asar_on_failure(asar, bak, need_backup)
+            rolled_back = self._rollback_asar_on_failure(asar, bak, commit_started)
             self._cleanup_staged_asar(staged_asar)
-            _clear_transaction(base)
-            return False, temp, f"Unexpected error: {e}"
+            if rolled_back:
+                if commit_started:
+                    _remove_patch_metadata(base)
+                _clear_transaction(base)
+            message = f"Unexpected error: {e}"
+            if not rolled_back:
+                message += "\n\n" + T("msg_game_recovery_needed")
+            return False, temp, message
         finally:
             # 清理临时目录
             if temp and os.path.exists(temp):
@@ -725,26 +715,25 @@ class PatchController:
             os.replace(staged_unpacked, asar_unpacked)
 
     @staticmethod
-    def _rollback_asar_on_failure(asar: str, bak: str, need_backup: bool) -> None:
-        if not need_backup or not os.path.exists(bak):
-            return
-        if os.path.exists(asar):
-            try:
-                os.remove(asar)
-                logger.info("Removed unverified ASAR before rollback")
-            except Exception as e:
-                logger.warning(f"Failed to remove corrupted ASAR: {e}")
+    def _rollback_asar_on_failure(asar: str, bak: str, commit_started: bool) -> bool:
+        if not commit_started:
+            return True
+        if not os.path.exists(bak):
+            return False
         try:
-            asar_unpacked = asar + ".unpacked"
-            bak_unpacked = bak + ".unpacked"
-            if os.path.isdir(asar_unpacked):
-                shutil.rmtree(asar_unpacked, ignore_errors=True)
+            # Before the original sidecar moves, it is still beside the live path.
+            # Keep it if there is no backup sidecar to replace it with.
             os.replace(bak, asar)
-            if os.path.isdir(bak_unpacked):
-                os.replace(bak_unpacked, asar_unpacked)
-            logger.info(f"Rolled back ASAR from backup: {bak} -> {asar}")
-        except Exception as e:
-            logger.error(f"Failed to rollback ASAR from backup: {e}")
+            if os.path.isdir(bak + ".unpacked"):
+                PatchController._replace_unpacked_sidecar(bak, asar)
+            valid, reason = validate_asar_with_sidecar(asar)
+            if not valid:
+                logger.error("Rollback validation failed: %s", reason)
+                return False
+            return True
+        except OSError as e:
+            logger.error("Failed to rollback ASAR: %s", e)
+            return False
 
     def _cleanup_temp_files(self, base_dir: str) -> None:
         """清理临时备份文件"""
@@ -768,27 +757,4 @@ class PatchController:
         self._log(f"Error: {error}")
         logger.error(f"Patch error: {error}")
 
-        # 如果备份存在但ASAR损坏，尝试恢复
-        if not bak_path or not os.path.exists(bak_path):
-            return
-
-        try:
-            valid, reason = validate_asar_with_reason(bak_path)
-            if not valid:
-                logger.error(f"Backup is corrupted, cannot restore: {reason}")
-                return
-        except Exception as e:
-            logger.error(f"Cannot verify backup: {e}")
-            return
-
-        try:
-            if os.path.exists(asar_path):
-                try:
-                    os.remove(asar_path)
-                except Exception as e_rm:
-                    logger.error(f"Failed to remove corrupted ASAR: {e_rm}")
-            os.replace(bak_path, asar_path)
-            self._log(T("log_patch_restored_backup"))
-        except Exception as be:
-            logger.error(f"Backup restore error: {be}")
-            self._log(T("log_patch_restore_failed").format(error=be))
+        self._log(T("msg_game_recovery_needed"))

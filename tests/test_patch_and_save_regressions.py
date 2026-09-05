@@ -197,7 +197,7 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
 
             controller = PatchController(_CoreStub())
             with patch(
-                "controllers.patch_controller.validate_asar_with_reason",
+                "controllers.patch_controller.validate_asar_with_sidecar",
                 return_value=(True, ""),
             ), patch("controllers.patch_controller.get_config", return_value=config_stub):
                 success, _message = controller._do_restore_patch(str(base), str(asar))
@@ -224,7 +224,7 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
 
             controller = PatchController(_CoreStub())
             with patch(
-                "controllers.patch_controller.validate_asar_with_reason",
+                "controllers.patch_controller.validate_asar_with_sidecar",
                 return_value=(False, "bad header"),
             ):
                 success, message = controller._do_restore_patch(str(base), str(asar))
@@ -266,6 +266,10 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
             ), patch(
                 "controllers.patch_controller.get_resources_path",
                 return_value=str(resources),
+            ), patch(
+                "controllers.patch_controller.validate_asar_with_sidecar", return_value=(True, "")
+            ), patch(
+                "controllers.patch_controller.validate_asar_with_reason", return_value=(True, "")
             ), patch("controllers.patch_controller.FileOperationLock") as lock_cls:
                 lock_cls.return_value.acquire.return_value = True
                 message = recover_incomplete_patch(str(base))

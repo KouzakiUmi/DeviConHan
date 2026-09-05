@@ -18,7 +18,6 @@ from typing import Optional
 from controllers.patch_controller import PatchController
 from controllers.save_manager_controller import SaveManagerController
 from core.config import get_config
-from core.patch_info import has_embedded_patch
 from core.patcher import CoreLogic
 from core.save_service import SaveService
 from gui.about_dialog import show_about_dialog
@@ -168,11 +167,11 @@ class App(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
-        if has_embedded_patch():
-            from gui.tabs.patch_tab import PatchTab
+        # Custom ZIP installation and local restore also work in the toolbox build.
+        from gui.tabs.patch_tab import PatchTab
 
-            self.tab_patch = PatchTab(self.notebook, self)
-            self.notebook.add(self.tab_patch, text=T("tab_main"))
+        self.tab_patch = PatchTab(self.notebook, self)
+        self.notebook.add(self.tab_patch, text=T("tab_main"))
 
         from gui.tabs.save_tab import SaveTab
 
@@ -450,7 +449,8 @@ class App(tk.Tk):
                 if not self._window_alive():
                     q.put(default_value)
                     return
-                res = dialog_func(title, message, parent=self)
+                options = {"default": messagebox.NO} if dialog_func == messagebox.askyesno else {}
+                res = dialog_func(title, message, parent=self, **options)
                 q.put(res)
             except Exception as e:
                 logger.error(f"Error in {log_prefix} dialog: {e}")

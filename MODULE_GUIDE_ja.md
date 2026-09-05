@@ -20,7 +20,7 @@
 - README では短く触れられるだけだった実行時/ビルド/UI モジュール
 - 他の Tyrano/Electron ゲームへ適応する際に見落としやすい責務境界
 
-関数シグネチャの詳細は `API_DOCS.md` とソースコードを参照してください。
+現在の仕様と復元の制約は[技術リファレンス](TECHNICAL_REFERENCE.md)とソースコードを参照してください。`API_DOCS.md` は過去の索引です。
 
 ---
 
@@ -38,9 +38,10 @@
 
 | モジュール | 役割 | 説明 |
 |------|------|------|
+| `core.bootstrap` | 起動時の検証と中断処理の復旧 | GUI は `allow_recovery=True` を使用し、ファイルに異常があっても復元案内を表示できます。 |
 | `core.batch` | GUI なしのバッチ適用フロー | `batch_mode()` が自動化向け入口で、`_validate_fuse_path()` が危険な対象パスを検証します。 |
 | `core.fuse` | Electron Fuse のバックアップ、検証、復元、無効化 | `remove_fuse()`、`restore_fuse()`、`verify_fuse_backup()` を提供し、バックアップ可用性は主にセンチネル/対象バイトで確認し、作成と復元時に完全ハッシュで検証します。 |
-| `core.patch_info` | パッチメタデータ保存 | `has_embedded_patch()` は同梱パッチ有無を判定し、保存処理は原子的に行われます。 |
+| `core.patch_info` | パッチメタデータ保存 | `get_patch_hash()` でパッチのハッシュを計算し、`load_patch_hash()` で `.patch_meta.patch_hash` を読み取ります。保存処理は原子的に行われます。 |
 | `core.state_validator` | システム状態の整合性検証 | `StateValidator` と `validate_system_state()` が ASAR、バックアップ、パッチメタデータ、パッチ情報を集約します。 |
 | `core.steam` | Steam 更新検出とパッチ状態機械 | `handle_steam_update()` がバックアップ欠落、ASAR 上書き、改ざん疑いを処理します。 |
 
@@ -50,8 +51,8 @@
 
 | モジュール | 役割 | 説明 |
 |------|------|------|
-| `gui.tabs.patch_tab` | パッチ適用タブ | パッチ入力、主要ボタン、進行状況表示を担当します。 |
-| `gui.tabs.save_tab` | セーブ管理タブ | `SaveManagerController` と連携して走査、バックアップ、復元、削除、移行を行います。 |
+| `gui.tabs.patch_tab` | パッチ適用タブ | 両エディションに表示され、カスタム ZIP を選択できます。メイン画面は操作案内のみとし、リスクは確認ダイアログで説明します。 |
+| `gui.tabs.save_tab` | セーブ管理タブ | `SaveManagerController` と連携して走査、バックアップ、復元、削除、移行を行います。セーブ先がなくても独立したバックアップを検索し、復元先を選択できます。 |
 | `gui.tabs.tools_tab` | 開発者ツールタブ | ASAR 展開/再梱包、Fuse 編集、設定検証、関連ユーティリティをまとめます。 |
 
 ---
@@ -65,7 +66,7 @@
 | `utils.disk_utils` | ディスク容量と書き込み権限の確認 | bootstrap とパッチ前チェックで使われますが、すべてのファイル操作に自動適用されるわけではありません。 |
 | `utils.operation_lock` | 操作単位の排他制御 | パッチ/セーブ/ツール系の競合書き込みを防ぎます。 |
 | `utils.platform` | クロスプラットフォームのゲーム/Steam 探索 | Steam ライブラリ走査、リソース位置推定、OS 差異吸収を行います。 |
-| `utils.transaction` | トランザクション型ファイル操作 | `FileTransaction`、`atomic_rename()`、`safe_backup()` でロールバック安全性を確保します。 |
+| `utils.transaction` | トランザクション型ファイル操作 | `FileTransaction` などの汎用補助機能を提供します。パッチコントローラーは独自の処理記録と復旧フローを使用します。 |
 
 ---
 
@@ -79,8 +80,8 @@
 
 ### 実行時 i18n
 
-- UI 文言は必ず `utils.language.T(key)` を経由する
-- 新規キーは `cn` / `en` / `jp` を同時に追加する
+- UI 文言、利用者向け進捗、ディスク容量レポートは `utils.language.T(key)` を経由し、内部診断ログは英語で記録する
+- 新規キーは同じ書式引数で `cn` / `en` / `jp` を追加し、確認文は質問、影響、推奨操作の順に並べる
 - 現在のコードでは言語設定の永続化は `utils.language` から `core.config` へ直接行われ、`utils.config_bridge` は利用可能な疎結合フックとして残っています
 
 ---
@@ -92,9 +93,4 @@
 3. `PROJECT_SPECS.md`
 4. `MODULE_GUIDE*`
 5. `UTILS_GUIDE.md`
-6. `API_DOCS.md`
-
----
-
-*文書版: 1.0*  
-*最終更新: 2026-04-16*
+6. `TECHNICAL_REFERENCE.md`

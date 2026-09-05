@@ -19,6 +19,8 @@ from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
 from enum import Enum
 from typing import Any, Callable, Dict, Optional
 
+from utils.language import T
+
 logger = logging.getLogger(__name__)
 
 # ================= 异步操作常量 =================
@@ -144,7 +146,7 @@ class AsyncOperationManager:
 
             progress_info = ProgressInfo(operation_id)
             progress_info.state = OperationState.RUNNING
-            progress_info.message = "Starting..."
+            progress_info.message = T("progress_starting")
             self._operations[operation_id] = progress_info
 
         self._notify_progress(progress_info)
@@ -152,7 +154,7 @@ class AsyncOperationManager:
         def wrapped_func():
             try:
                 # 更新进度
-                progress_info.message = "In progress..."
+                progress_info.message = T("progress_running")
                 self._notify_progress(progress_info)
 
                 call_kwargs = dict(kwargs)
@@ -173,7 +175,7 @@ class AsyncOperationManager:
                 with self._lock:
                     progress_info.state = OperationState.COMPLETED
                     progress_info.progress = 100
-                    progress_info.message = "Completed"
+                    progress_info.message = T("progress_completed")
                     progress_info.result = result
 
                 self._notify_progress(progress_info)
@@ -182,7 +184,7 @@ class AsyncOperationManager:
             except CancelledError:
                 with self._lock:
                     progress_info.state = OperationState.CANCELLED
-                    progress_info.message = "Cancelled"
+                    progress_info.message = T("progress_cancelled")
                 self._notify_progress(progress_info)
                 raise
 
@@ -190,7 +192,7 @@ class AsyncOperationManager:
                 logger.exception(f"Operation {operation_id} failed: {e}")
                 with self._lock:
                     progress_info.state = OperationState.FAILED
-                    progress_info.message = f"Failed: {e}"
+                    progress_info.message = T("progress_failed").format(error=e)
                     progress_info.error = e
                 self._notify_progress(progress_info)
                 raise
@@ -249,7 +251,7 @@ class AsyncOperationManager:
                 cancelled = future.cancel()
                 if cancelled:
                     progress_info.state = OperationState.CANCELLED
-                    progress_info.message = "Cancelled"
+                    progress_info.message = T("progress_cancelled")
                     progress_to_notify = progress_info
                 else:
                     progress_info.state = OperationState.CANCELLING

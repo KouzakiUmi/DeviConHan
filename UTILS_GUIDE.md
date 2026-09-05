@@ -7,7 +7,7 @@
 ## 目录
 
 1. [路径处理 (utils/paths)](#路径处理-utilspaths)
-2. [异步操作 (utils/async_ops)](#异步操作-utilasync_ops)
+2. [异步操作 (utils/async_ops)](#异步操作-utilsasync_ops)
 3. [错误处理 (utils/error_handler)](#错误处理-utilserror_handler)
 4. [性能监控 (utils/performance)](#性能监控-utilsperformance)
 5. [文件操作 (utils/file_ops)](#文件操作-utilsfile_ops)
@@ -16,7 +16,7 @@
 8. [日志系统 (utils/logging)](#日志系统-utilslogging)
 9. [常量定义 (utils/constants)](#常量定义-utilsconstants)
 10. [输入验证 (utils/validators)](#输入验证-utilsvalidators)
-11. [ASAR 工具 (utils/asar_utils)](#asar-工具-utilasar_utils)
+11. [ASAR 工具 (utils/asar_utils)](#asar-工具-utilsasar_utils)
 12. [磁盘工具 (utils/disk_utils)](#磁盘工具-utilsdisk_utils)
 13. [操作锁 (utils/operation_lock)](#操作锁-utilsoperation_lock)
 14. [平台工具 (utils/platform)](#平台工具-utilsplatform)
@@ -46,10 +46,10 @@ from utils.paths import get_resource_path, normalize_path, ensure_directory
 icon_path = get_resource_path("icon.ico")
 
 # 规范化路径
-normalized = normalize_path("C:\Users\测试\game")
+normalized = normalize_path(r"C:\Users\测试\game")
 
 # 确保目录存在
-ensure_directory("C:\game_data\saves")
+ensure_directory(r"C:\game_data\saves")
 ```
 
 ---
@@ -70,22 +70,26 @@ ensure_directory("C:\game_data\saves")
 ### 使用示例
 
 ```python
-from utils.async_ops import get_async_manager
+from concurrent.futures import CancelledError
+from utils.async_ops import AsyncOperationManager
+from utils.language import T
 
-# 获取全局管理器
-async_mgr = get_async_manager()
+# 函数必须声明 cancel_event，管理器才会注入取消参数。
+def worker(cancel_event=None, _check_cancelled=None):
+    for _ in range(100):
+        if _check_cancelled:
+            _check_cancelled()
+        # 在此执行一个工作单元；耗时操作内部也应检查取消。
 
-# 设置进度回调
-async_mgr.set_progress_callback(lambda info: print(f"{info.progress}% - {info.message}"))
-
-# 提交后台任务 (支持通过接收 _check_cancelled kwargs 实现真实线程中断)
-future = async_mgr.submit("my_task", my_worker_function, arg1, arg2)
-
-# 更新进度
-async_mgr.update_progress("my_task", 50, "处理中...")
-
-# 取消任务
-async_mgr.cancel("my_task")
+with AsyncOperationManager() as manager:
+    manager.set_progress_callback(lambda info: print(f"{info.progress}% - {info.message}"))
+    future = manager.submit("example", worker)
+    manager.update_progress("example", 50, T("log_checking_game_state"))
+    manager.cancel("example")  # 协作式请求；任务可能已完成，不强行终止线程。
+    try:
+        future.result()
+    except CancelledError:
+        pass
 ```
 
 ---
@@ -107,17 +111,17 @@ async_mgr.cancel("my_task")
 ### 使用示例
 
 ```python
-from utils.error_handler import PatcherError, get_error_handler, handle_patcher_error
+from utils.error_handler import PatcherFileNotFoundError, get_error_handler, handle_patcher_error
 
-# 抛出自定义异常
-raise PatcherFileNotFoundError("app.asar not found")
+# 构造异常，便于展示不同处理入口
+exception = PatcherFileNotFoundError("app.asar not found", file_path="app.asar")
 
 # 使用错误处理器
 error_handler = get_error_handler()
 user_message = error_handler.get_user_message(exception)
 
 # 便捷函数
-user_message = handle_patcher_error(exception, context="打补丁操作")
+user_message = handle_patcher_error(exception, context="Patch installation")
 ```
 
 ---
@@ -174,9 +178,13 @@ def my_function():
 | `detect_patch_zip_root(zip_path, expected_paths)` | 定位 ZIP 内任意深度的实际 ASAR 补丁根目录 |
 | `safe_extract_zip(zip_path, dest_dir, strip_prefix=...)` | 安全解压 ZIP，并可剥离已检测到的包装目录 |
 
+普通解压失败返回 `False`，不安全的路径或归档条目可抛出 `ValueError`；调用方必须处理这两类失败。
+
 ### 使用示例
 
 ```python
+import tempfile
+
 from utils.file_ops import compute_file_hash, detect_patch_zip_root, migrate_backup, safe_extract_zip
 
 # 计算文件哈希
@@ -187,7 +195,10 @@ success = migrate_backup("old_backup.zip", "C:/backups")
 
 # 自动识别并剥离 Patch/data、release/Patch/data 等包装层级
 prefix = detect_patch_zip_root("Patch.zip", ["data/others/font.ttf"])
-safe_extract_zip("Patch.zip", "C:/game/resources", strip_prefix=prefix)
+with tempfile.TemporaryDirectory() as staging_dir:
+    if not safe_extract_zip("Patch.zip", staging_dir, strip_prefix=prefix):
+        raise RuntimeError("Patch extraction failed")
+    # 在后续流程中将此处文件覆盖到已解包的 ASAR 工作目录
 ```
 
 ---
@@ -229,7 +240,7 @@ schedule_delayed_cleanup("C:\\temp\\old_dir", delay_seconds=60)
 
 ### 主要功能
 
-多语言字典（CN/EN/JP），支持系统语言探测及无缝热切换。**线程安全**：使用版本号缓存机制，语言切换时自动刷新所有线程的缓存。
+多语言字典（CN/EN/JP），支持系统语言探测及语言切换。**线程安全**：使用版本号缓存机制，语言切换时自动刷新所有线程的缓存。
 
 | 函数 | 描述 |
 |------|------|
@@ -254,7 +265,7 @@ set_language("en")  # 英文
 set_language("jp")  # 日文
 
 # 翻译（自动使用线程本地缓存）
-message = T("save_success")  # "存档成功"
+message = T("msg_backup_ok")  # 使用当前语言的备份成功提示
 
 # 带默认值的翻译
 message = T("unknown_key", "Default Text")
@@ -266,7 +277,7 @@ message = T("unknown_key", "Default Text")
 
 ### 主要功能
 
-初始化滚动日志（Rotating File Handler），支持控制台和文件输出。
+初始化滚动日志（Rotating File Handler），支持控制台和文件输出。内部诊断日志使用英文；用户可见提示和进度使用 `T()`，新增键同步提供三语翻译。
 
 | 函数 | 描述 |
 |------|------|
@@ -289,8 +300,8 @@ logger = setup_logging(
 )
 
 # 使用日志
-logger.info("程序启动")
-logger.error("发生错误")
+logger.info("Application started")
+logger.error("Operation failed")
 ```
 
 ---
@@ -335,22 +346,22 @@ with open(file_path, "rb") as f:
 
 | 装饰器 | 描述 |
 |--------|------|
-| `@validate_path(should_exist, path_type)` | 路径存在性和类型验证 |
-| `@validate_not_empty` | 非空字符串验证 |
+| `@validate_path(arg_name, should_exist, path_type)` | 路径存在性和类型验证 |
+| `@validate_not_empty(*arg_names)` | 非空字符串验证 |
 
 ### 使用示例
 
 ```python
 from utils.validators import validate_path, validate_not_empty, ValidationError
 
-@validate_path(should_exist=True, path_type='file')
-@validate_not_empty
+@validate_path('asar_path', should_exist=True, path_type='file')
+@validate_not_empty('asar_path')
 def process_asar_file(asar_path: str) -> None:
     """处理ASAR文件（带验证）"""
     # 路径已通过装饰器验证
     pass
 
-@validate_path(should_exist=True, path_type='dir')
+@validate_path('dir_path', should_exist=True, path_type='dir')
 def backup_directory(dir_path: str) -> bool:
     """备份目录（带验证）"""
     # 目录已验证存在
@@ -376,7 +387,8 @@ except ValidationError as e:
 |------|------|
 | `parse_asar_header(asar_path)` | 解析 ASAR 头部并返回格式、JSON 大小和数据区偏移 |
 | `is_valid_asar(asar_path)` | 验证 ASAR 是否可被支持的解析器成功读取 |
-| `validate_asar_with_reason(asar_path)` | 验证 ASAR 并返回失败原因 |
+| `validate_asar_with_reason(asar_path)` | 验证 ASAR 结构并返回失败原因 |
+| `validate_asar_with_sidecar(asar_path)` | 验证结构及声明外置文件的存在性和大小，不认证官方版本或全部文件内容 |
 | `open_asar_reader(asar_path)` | 以只读方式打开 ASAR 读取器 |
 | `get_file_hashes_in_asar(asar_path, file_paths)` | 批量获取 ASAR 内文件的 SHA256 Hash |
 
@@ -385,7 +397,7 @@ except ValidationError as e:
 - **纯 Python 实现**：无需 Node.js，直接读取 ASAR 二进制格式
 - **多格式解析**：优先识别现代 Pickle 格式，再回退旧布局
 - **直接定位**：使用 `seek` 进行高效文件读取
-- **Hash 验证**：支持 Steam 更新检测，快速比对文件完整性
+- **Hash 验证**：支持 Steam 状态判断，快速比对配置中的关键文件，不等于完整官方校验
 
 ### 使用示例
 
@@ -394,6 +406,8 @@ from utils.asar_utils import get_file_hashes_in_asar, parse_asar_header
 
 # 解析头部
 header = parse_asar_header("app.asar")
+if header is None:
+    raise ValueError("Invalid ASAR header")
 print(header.format_name, header.base_offset)
 
 # 批量获取 ASAR 内文件的 Hash（无需解包）
@@ -432,7 +446,7 @@ for path, file_hash in hashes.items():
 ### 线程安全特性
 
 配置模块已实现线程安全：
-- **RLock 读写锁**：支持并发读取，独占写入
+- **RLock 可重入互斥锁**：受保护的读写互斥，同一线程可重复获取锁
 - **配置快照**：验证时使用快照，避免长时间持有锁
 - **原子操作**：配置保存和重载均为原子操作
 
@@ -476,20 +490,23 @@ config.set_gui_config("language", "cn")
 | `format_bytes(bytes_value)` | 格式化字节数为人类可读格式 |
 | `check_operation_space(operations, base_path)` | 检查一系列操作所需的磁盘空间 |
 
+`check_disk_space()` 默认在空间不足时抛出 `DiskSpaceError`；需要检查布尔值时传入 `raise_on_error=False`。空间读取失败仍可能抛出异常。`check_operation_space()` 的明细随当前语言输出，调用方也应使用翻译后的操作名称。
+
 ### 使用示例
 
 ```python
 from utils.disk_utils import check_disk_space, estimate_asar_size, format_bytes, get_disk_free_space
+from utils.language import T
 
 # 检查磁盘空间
 free_space = get_disk_free_space("/game")
-ok, available = check_disk_space("/game", 100 * 1024 * 1024)  # 100MB
+ok, available = check_disk_space("/game", 100 * 1024 * 1024, raise_on_error=False)  # 100MB
 if not ok:
-    print(f"空间不足，仅剩 {available} 字节")
+    print(T("log_disk_available").format(size=format_bytes(available)))
 
 # 估算ASAR大小
 size = estimate_asar_size("source_dir")
-print(f"预计大小: {format_bytes(size)}")
+print(T("log_disk_required").format(size=format_bytes(size)))
 ```
 
 ---
@@ -508,23 +525,21 @@ print(f"预计大小: {format_bytes(size)}")
 ### 使用示例
 
 ```python
+from utils.language import T
 from utils.operation_lock import OperationType, get_operation_lock, with_operation_lock
 
 op_lock = get_operation_lock()
 
-# 检查操作是否可以开始
-if op_lock.is_operation_running(OperationType.PATCH):
-    print("补丁操作正在进行中")
+# acquire 检查整个冲突组，不能只依赖 is_operation_running(PATCH)。
+if not op_lock.acquire(OperationType.PATCH):
+    print(T("warn_operation_in_progress"))
 else:
-    if op_lock.acquire(OperationType.PATCH):
-        try:
-            apply_patch()
-        finally:
-            op_lock.release(OperationType.PATCH)
+    try:
+        pass  # 在此执行已取得锁的操作。
+    finally:
+        op_lock.release(OperationType.PATCH)
 
-with op_lock.acquire_context(OperationType.PATCH):
-    apply_patch()
-
+# 装饰器是另一种用法，不要在已持有同一操作锁时再次调用。
 @with_operation_lock(OperationType.PATCH)
 def apply_patch():
     pass
@@ -566,6 +581,8 @@ if game_dir:
 ## 事务管理 (utils/transaction)
 
 ### 主要功能
+
+以下是独立的文件操作辅助接口。补丁控制器不使用 `FileTransaction`，其恢复标记与提交阶段见 [技术参考](TECHNICAL_REFERENCE.md)。
 
 | 类/函数 | 描述 |
 |------|------|

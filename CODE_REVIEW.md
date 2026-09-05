@@ -1,5 +1,7 @@
 # Tyrano Patcher — 全面代码审查报告
 
+> 历史审查记录：以下结论对应 2026-04-26 的代码快照，不代表当前缺陷状态或恢复保证。当前安装、校验与恢复行为见 [技术参考](TECHNICAL_REFERENCE.md)。
+
 **审查日期**: 2026-04-26  
 **审查范围**: 完整代码库 (`main.py`, `core/`, `controllers/`, `gui/`, `utils/`, `tests/`, `pyproject.toml`)  
 **审查维度**: 代码质量、安全性、性能、可维护性、测试覆盖  

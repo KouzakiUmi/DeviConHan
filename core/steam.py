@@ -437,7 +437,9 @@ def _handle_inconsistent_state(mismatched_against_patch, bak_path, on_ask_yes_no
         f"Mismatched files against patch: {len(mismatched_against_patch)}."
     )
     for file_path, expected, asar_h in mismatched_against_patch:
-        logger.debug(f"  - {file_path}: patch={expected[:16]}..., asar={asar_h[:16]}...")
+        logger.debug(
+            f"  - {file_path}: patch={expected[:16]}..., asar={(asar_h or 'missing')[:16]}..."
+        )
 
     if on_ask_yes_no:
         result = on_ask_yes_no(
@@ -453,12 +455,8 @@ def _handle_inconsistent_state(mismatched_against_patch, bak_path, on_ask_yes_no
             _remove_backup_safely(bak_path)
         return (result, not result)
     else:
-        logger.warning(
-            "Batch mode: inconsistent file state detected between ASAR and backup. "
-            "Discarding old backup and repatching (consider verifying game integrity via Steam)."
-        )
-        _remove_backup_safely(bak_path, log_error=True)
-        return (True, False)
+        logger.warning(T("msg_game_recovery_needed"))
+        return (False, True)
 
 
 def _handle_steam_update_detected(asar_path, bak_path):

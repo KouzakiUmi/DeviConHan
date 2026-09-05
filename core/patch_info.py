@@ -5,6 +5,7 @@
 """
 
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -14,6 +15,46 @@ from utils.file_ops import compute_file_hash
 from utils.paths import get_resource_path
 
 logger = logging.getLogger(__name__)
+
+
+def get_patch_hash(source, check_cancelled=None):
+    """Fingerprint ZIP bytes, or sorted relative names and directory contents."""
+
+    def file_hash(path):
+        digest = hashlib.sha256()
+        with open(path, "rb") as stream:
+            while True:
+                if check_cancelled:
+                    check_cancelled()
+                chunk = stream.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    if os.path.isfile(source):
+        return "zip-sha256:" + file_hash(source)
+    if not os.path.isdir(source):
+        raise FileNotFoundError(source)
+    entries = []
+    for root, _dirs, files in os.walk(source):
+        for name in files:
+            path = os.path.join(root, name)
+            relative = os.path.relpath(path, source).replace(os.sep, "/")
+            entries.append((relative, file_hash(path)))
+    encoded = json.dumps(sorted(entries), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return "directory-sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def load_patch_hash(base_dir):
+    """Older installations have no fingerprint and must not be skipped."""
+    try:
+        with open(os.path.join(base_dir, get_config().patch_meta_file), encoding="utf-8") as f:
+            meta = json.load(f)
+        value = meta.get("patch_hash") if isinstance(meta, dict) else None
+        return value if isinstance(value, str) else None
+    except (OSError, ValueError):
+        return None
 
 
 def has_embedded_patch():
@@ -77,7 +118,7 @@ def save_patch_info(base_dir, asar_path, bak_path):
     logger.info(f"Saved patch info to: {info_file}")
 
 
-def save_patch_meta(base_dir, temp_dir):
+def save_patch_meta(base_dir, temp_dir, patch_hash=None):
     """
     保存补丁元数据到 .patch_meta 文件
 
@@ -88,7 +129,13 @@ def save_patch_meta(base_dir, temp_dir):
     patch_meta_file = get_config().patch_meta_file
     meta_file = os.path.join(base_dir, patch_meta_file)
 
-    meta_info = {"timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(), "patch_files": {}}
+    meta_info = {
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "patch_files": {},
+    }
+
+    if patch_hash:
+        meta_info["patch_hash"] = patch_hash
 
     check_files = get_config().check_files_for_update
     for file_path in check_files:

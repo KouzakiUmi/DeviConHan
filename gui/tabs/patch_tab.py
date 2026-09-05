@@ -19,7 +19,9 @@ class PatchTab(ttk.Frame):
         self._init_ui()
 
     def _init_ui(self):
-        ttk.Label(self, text=T("lbl_patch_info"), font=get_font(11)).pack(pady=20)
+        ttk.Label(
+            self, text=T("lbl_patch_info"), font=get_font(11), wraplength=560, justify="left"
+        ).pack(pady=20)
 
         source_frame = ttk.LabelFrame(self, text=T("grp_patch_package"), padding=10)
         source_frame.pack(fill="x", padx=30, pady=(0, 10))
@@ -181,7 +183,9 @@ class PatchTab(ttk.Frame):
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
-        if not messagebox.askyesno(T("title_confirm"), T("msg_restore_patch_confirm")):
+        if not messagebox.askyesno(
+            T("title_confirm"), T("msg_restore_patch_confirm"), default=messagebox.NO
+        ):
             return None
 
         self.app.is_operating = True

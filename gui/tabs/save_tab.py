@@ -3,8 +3,8 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from utils.language import T
 from utils.error_handler import ErrorSeverity, PatcherError
+from utils.language import T
 
 logger = logging.getLogger(__name__)
 
@@ -181,28 +181,25 @@ class SaveTab(ttk.Frame):
             self.tree.delete(i)
         self.backup_paths.clear()
 
-        if found:
-            self.app.var_save_path.set(found)
-            self.app.current_save_dir = found
+        self.app.current_save_dir = found
+        self.app.var_save_path.set(found or T("err_no_save"))
+        from core.bootstrap import get_runtime_game_path
 
-            root = os.path.dirname(found)
-            backup_dirs = [self.get_backup_dir()]
-            backup_dirs.extend(
-                path
-                for path in sorted(self._additional_backup_dirs)
-                if os.path.abspath(path) != os.path.abspath(backup_dirs[0])
-            )
-
-            backups = self.app.save_controller.scan_backups(root, backup_dirs)
-
-            for dn, fp, is_zip in backups:
-                iid = f"bk_{len(self.backup_paths)}"
-                type_tag = "[ZIP]" if is_zip else "[DIR]"
-                self.tree.insert("", tk.END, iid=iid, values=(dn, type_tag))
-                self.backup_paths[iid] = fp
-        else:
-            self.app.var_save_path.set(T("err_no_save"))
-            self.app.current_save_dir = None
+        root = (
+            os.path.dirname(found) if found else (get_runtime_game_path() or os.path.abspath("."))
+        )
+        backup_dirs = [self.get_backup_dir()]
+        backup_dirs.extend(
+            path
+            for path in sorted(self._additional_backup_dirs)
+            if os.path.abspath(path) != os.path.abspath(backup_dirs[0])
+        )
+        backups = self.app.save_controller.scan_backups(root, backup_dirs)
+        for dn, fp, is_zip in backups:
+            iid = f"bk_{len(self.backup_paths)}"
+            type_tag = "[ZIP]" if is_zip else "[DIR]"
+            self.tree.insert("", tk.END, iid=iid, values=(dn, type_tag))
+            self.backup_paths[iid] = fp
 
     def _submit_async_operation(self, op_type, op_name, worker_func):
         from utils.operation_lock import get_operation_lock
@@ -278,9 +275,6 @@ class SaveTab(ttk.Frame):
     def do_restore_save(self):
         from utils.operation_lock import OperationType
 
-        if not self.app.current_save_dir:
-            return messagebox.showerror(T("title_error"), T("err_no_save"))
-
         save_dir: str = self.app.current_save_dir
 
         sel = self.tree.selection()
@@ -294,7 +288,25 @@ class SaveTab(ttk.Frame):
                 T("err_backup_not_exist", "Backup file/folder does not exist"),
             )
 
-        if not messagebox.askyesno(T("title_confirm"), T("msg_restore_confirm")):
+        if not save_dir:
+            from core.bootstrap import get_runtime_game_path
+            from core.save_service import SaveService
+
+            game_dir = get_runtime_game_path() or os.path.abspath(".")
+            save_dir = filedialog.askdirectory(
+                title=T("title_select_save_target"), initialdir=game_dir, mustexist=False
+            )
+            if not save_dir:
+                return
+            save_dir = os.path.abspath(save_dir)
+            if SaveService._is_within_or_equal(game_dir, save_dir):
+                return messagebox.showerror(T("title_error"), T("err_save_target_game_root"))
+
+        if not messagebox.askyesno(
+            T("title_confirm"),
+            T("msg_restore_confirm") + "\n\n" + save_dir,
+            default=messagebox.NO,
+        ):
             return
 
         def _w(cancel_event=None, _check_cancelled=None):

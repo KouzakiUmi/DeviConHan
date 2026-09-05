@@ -21,8 +21,9 @@ import os
 from typing import List, Optional, Tuple
 
 from core.config import get_config
-from core.state_validator import validate_system_state
+from core.state_validator import SystemState, validate_system_state
 from utils.disk_utils import format_bytes, get_disk_free_space
+from utils.language import T
 from utils.operation_lock import get_operation_lock
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ def bootstrap_system(
     base_dir: Optional[str] = None,
     skip_state_check: bool = False,
     skip_disk_check: bool = False,
+    allow_recovery: bool = False,
 ) -> Tuple[bool, List[str]]:
     """
     执行系统启动引导和验证
@@ -182,6 +184,7 @@ def bootstrap_system(
         base_dir: 基础目录，默认为当前目录
         skip_state_check: 是否跳过状态检查
         skip_disk_check: 是否跳过磁盘检查
+        allow_recovery: 游戏文件异常时仍允许进入 GUI，安装前仍会再次校验
 
     Returns:
         Tuple[bool, List[str]]: (是否成功, 警告/信息列表)
@@ -262,10 +265,12 @@ def bootstrap_system(
         critical_errors = [i for i in issues if i.severity == "critical"]
         warnings_list = [i for i in issues if i.severity == "warning"]
 
-        if critical_errors:
-            error_msg = f"System state critical errors: {[e.message for e in critical_errors]}"
+        if critical_errors or state == SystemState.CORRUPTED:
+            error_msg = f"System state errors: {[e.message for e in issues]}"
             logger.error(error_msg)
-            raise SystemBootstrapError(error_msg)
+            if not allow_recovery:
+                raise SystemBootstrapError(error_msg)
+            messages.append("Warning: " + T("msg_game_recovery_needed"))
 
         for warning in warnings_list:
             messages.append(f"Warning: {warning.message}")
