@@ -17,7 +17,7 @@ Patch/
         └── scene.ks
 ```
 
-可将该目录压缩成 ZIP，然后在安装页选择，无需覆盖工具内置的 `Patch.zip`：
+可将该目录压缩成 ZIP，然后在安装页选择，无需覆盖工具内置的 `Patch.zip`。工具箱版先在“开发者工具 → 配置管理”中启用补丁安装：
 
 ```bash
 python -c "import shutil; shutil.make_archive('MyPatch', 'zip', 'Patch')"

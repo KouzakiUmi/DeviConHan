@@ -14,14 +14,19 @@ class PatchTab(ttk.Frame):
         super().__init__(parent, padding=20)
         self.app = app
         self.default_patch_zip = get_resource_path(get_config().patch_zip_name)
-        self.var_patch_zip = tk.StringVar(value=self.default_patch_zip)
-        self._pending_patch_zip = self.default_patch_zip
+        self.var_patch_zip = tk.StringVar(
+            master=self,
+            value=app.selected_patch_zip or (T("lbl_bundled_patch") if app.has_bundled_patch else "")
+        )
+        self._pending_patch_zip = None
         self._init_ui()
+        self.refresh_patch_access()
 
     def _init_ui(self):
-        ttk.Label(
-            self, text=T("lbl_patch_info"), font=get_font(11), wraplength=560, justify="left"
-        ).pack(pady=20)
+        self.info_label = ttk.Label(
+            self, font=get_font(11), wraplength=560, justify="left"
+        )
+        self.info_label.pack(pady=20)
 
         source_frame = ttk.LabelFrame(self, text=T("grp_patch_package"), padding=10)
         source_frame.pack(fill="x", padx=30, pady=(0, 10))
@@ -62,6 +67,22 @@ class PatchTab(ttk.Frame):
             text=T("btn_to_tools"),
             command=self._switch_to_tools,
         ).pack(pady=10)
+
+    def refresh_patch_access(self):
+        if not self.app.var_patch_enabled.get():
+            key = "lbl_patch_disabled"
+        elif self.app.has_bundled_patch:
+            key = "lbl_patch_info"
+        else:
+            key = "lbl_custom_patch_info"
+        self.info_label.configure(text=T(key))
+        self._set_action_buttons_enabled(not self.app.is_operating)
+
+    def _check_patch_access(self):
+        if not self.app.var_patch_enabled.get():
+            messagebox.showwarning(T("title_warning"), T("lbl_patch_disabled"))
+            return False
+        return True
 
     def _switch_to_tools(self):
         """切换到开发者工具箱标签页"""
@@ -112,19 +133,28 @@ class PatchTab(ttk.Frame):
             self.app._finish_operation("auto_patch")
 
     def run_auto_patch(self):
+        if not self._check_patch_access():
+            return None
         if self.app.is_operating:
             return messagebox.showwarning(
                 T("title_warning"),
                 T("warn_operation_in_progress", "Operation in progress..."),
             )
+        selected = self.app.selected_patch_zip
+        if not selected and not self.app.has_bundled_patch:
+            return messagebox.showwarning(T("title_warning"), T("warn_select_patch_zip"))
+        if selected and not os.path.isfile(selected):
+            return messagebox.showwarning(
+                T("title_warning"), T("err_custom_patch_missing").format(path=selected)
+            )
         self.app.is_operating = True
-        self._pending_patch_zip = self.var_patch_zip.get().strip() or self.default_patch_zip
+        self._pending_patch_zip = selected
         self._set_action_buttons_enabled(False)
         self.app.toggle_progress(True)
         self.app.async_manager.submit("auto_patch_op", self._run_auto_patch_worker)
 
     def _set_action_buttons_enabled(self, enabled):
-        state = ["!disabled"] if enabled else ["disabled"]
+        enabled = enabled and self.app.var_patch_enabled.get()
         for name in (
             "btn_p",
             "btn_restore_patch",
@@ -134,12 +164,17 @@ class PatchTab(ttk.Frame):
             button = getattr(self, name, None)
             if button:
                 try:
-                    button.state(state)
+                    allowed = enabled and (
+                        name != "btn_default_patch" or self.app.has_bundled_patch
+                    )
+                    button.state(["!disabled"] if allowed else ["disabled"])
                 except tk.TclError:
                     pass
 
     def select_patch_zip(self):
-        current = self.var_patch_zip.get().strip()
+        if not self._check_patch_access() or self.app.is_operating:
+            return
+        current = self.app.selected_patch_zip or ""
         initial_dir = (
             os.path.dirname(current) if current else os.path.dirname(self.default_patch_zip)
         )
@@ -152,10 +187,15 @@ class PatchTab(ttk.Frame):
             ],
         )
         if selected:
-            self.var_patch_zip.set(os.path.abspath(selected))
+            self.app.selected_patch_zip = os.path.abspath(selected)
+            self.var_patch_zip.set(self.app.selected_patch_zip)
 
     def use_default_patch(self):
-        self.var_patch_zip.set(self.default_patch_zip)
+        if not self._check_patch_access() or self.app.is_operating:
+            return
+        if self.app.has_bundled_patch:
+            self.app.selected_patch_zip = None
+            self.var_patch_zip.set(T("lbl_bundled_patch"))
 
     def _restore_patch_worker(self, cancel_event=None, _check_cancelled=None):
         self.app.performance_monitor.start("restore_patch")
@@ -178,6 +218,8 @@ class PatchTab(ttk.Frame):
             self.app._finish_operation("restore_patch")
 
     def restore_patch(self):
+        if not self._check_patch_access():
+            return None
         if self.app.is_operating:
             return messagebox.showwarning(
                 T("title_warning"),

@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 import threading
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 from utils.paths import get_user_config_path
 
@@ -24,6 +24,11 @@ IS_WIN: bool = sys.platform.startswith("win")
 # ================= 多语言字典 =================
 LANG_DICT: Dict[str, Dict[str, str]] = {
     "cn": {
+        "chk_enable_patch": "启用补丁安装（工具箱需自选 ZIP）",
+        "lbl_bundled_patch": "内置补丁",
+        "lbl_patch_disabled": "请在“开发者工具”的配置管理中勾选“启用补丁安装”，再返回此页操作。",
+        "lbl_custom_patch_info": "请选择补丁 ZIP，然后点击安装。\n如需更换补丁，请先通过 Steam 验证游戏文件完整性，或还原原版游戏文件。",
+        "warn_select_patch_zip": "请先选择要安装的补丁 ZIP。",
         "msg_both_corrupted": "游戏文件与本地备份均未通过校验。请先通过 Steam 验证游戏文件完整性，再安装补丁。",
         "msg_asar_corrupted_valid_backup": "是否从本地备份恢复游戏文件并继续安装补丁？\n\n当前 ASAR 未通过校验，备份通过了文件检查，但可能早于当前游戏版本。覆盖不兼容的文件可能导致内容混杂。\n\n建议选择“否”，优先通过 Steam 验证游戏文件完整性。",
         "progress_starting": "正在开始…",
@@ -258,6 +263,11 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "btn_ok": "确定",
     },
     "en": {
+        "chk_enable_patch": "Enable patch installation (toolbox requires a custom ZIP)",
+        "lbl_bundled_patch": "Bundled patch",
+        "lbl_patch_disabled": "Enable patch installation under Developer Tools → Configuration, then return to this page.",
+        "lbl_custom_patch_info": "Select a patch ZIP, then install.\nBefore switching patches, verify game files in Steam or restore the original game files.",
+        "warn_select_patch_zip": "Select a patch ZIP before installing.",
         "msg_both_corrupted": "Both game files and the local backup failed validation. Verify game files in Steam before installing the patch.",
         "msg_asar_corrupted_valid_backup": "Restore game files from the local backup and install the patch?\n\nThe current ASAR failed validation. The backup passed file checks but may be older than the current game. Overwriting incompatible files may leave mixed content.\n\nRecommended: choose No and verify game files in Steam first.",
         "progress_starting": "Starting...",
@@ -491,6 +501,11 @@ LANG_DICT: Dict[str, Dict[str, str]] = {
         "btn_ok": "OK",
     },
     "jp": {
+        "chk_enable_patch": "パッチ適用を有効化（ツールボックスでは ZIP の選択が必要）",
+        "lbl_bundled_patch": "同梱パッチ",
+        "lbl_patch_disabled": "開発者ツールの設定管理でパッチ適用を有効にしてから、このページに戻ってください。",
+        "lbl_custom_patch_info": "パッチ ZIP を選択して適用してください。\n別のパッチに変更する前に、Steam で整合性を確認するか元のゲームファイルに戻してください。",
+        "warn_select_patch_zip": "適用するパッチ ZIP を先に選択してください。",
         "msg_both_corrupted": "ゲームファイルとローカルバックアップの両方が検証に失敗しました。Steam で整合性を確認してからパッチを適用してください。",
         "msg_asar_corrupted_valid_backup": "ローカルバックアップから復元し、パッチを適用しますか？\n\n現在の ASAR は検証に失敗しました。バックアップは検証に合格しましたが、古いバージョンの可能性があります。互換性のないファイルの上書きで内容が混在する場合があります。\n\n「いいえ」を選び、先に Steam で整合性を確認することをお勧めします。",
         "progress_starting": "開始しています…",
@@ -875,17 +890,46 @@ def get_font(size: int = 9, weight: str = "normal") -> Union[Tuple[str, int], Tu
         return (family, size, weight)
 
 
-def get_mono_font(size: int = 9) -> Tuple[str, int]:
+def get_mono_font(
+    size: int = 9, available_families: Optional[Iterable[str]] = None
+) -> Tuple[str, int]:
+    """Choose a log font: prefer CJK monospace, then a readable local CJK font.
+
+    Pass Tk's available families from the UI thread to avoid implicit font
+    substitution. Without an inventory, use the platform's usual default.
     """
-    返回合适的等宽字体（用于日志等）
-    """
+    with _lang_lock:
+        lang_code = CURRENT_LANG_CODE
+
     if IS_WIN:
-        family = "Consolas"
+        defaults = {"cn": "Microsoft YaHei UI", "jp": "Meiryo", "en": "Consolas"}
+        fallbacks = {"cn": ["Microsoft YaHei", "SimHei"], "jp": ["Yu Gothic UI", "MS Gothic"]}
     elif sys.platform == "darwin":
-        family = "Menlo"
+        defaults = {"cn": "PingFang SC", "jp": "Hiragino Sans", "en": "Menlo"}
+        fallbacks = {"cn": ["Heiti SC"], "jp": ["Hiragino Kaku Gothic ProN"]}
     else:
-        family = "monospace"
-    return (family, size)
+        defaults = {"cn": "Noto Sans CJK SC", "jp": "Noto Sans CJK JP", "en": "monospace"}
+        fallbacks = {"cn": ["WenQuanYi Micro Hei", "WenQuanYi Zen Hei"], "jp": ["IPAGothic"]}
+
+    default = defaults.get(lang_code, defaults["en"])
+    if available_families is None:
+        return (default, size)
+
+    available = {family.casefold(): family for family in available_families}
+    if lang_code in ("cn", "jp"):
+        region = "SC" if lang_code == "cn" else "JP"
+        candidates = [
+            "Sarasa Mono " + ("SC" if lang_code == "cn" else "J"),
+            "Noto Sans Mono CJK " + region,
+            default,
+            *fallbacks[lang_code],
+        ]
+    else:
+        candidates = [default, "Cascadia Mono", "DejaVu Sans Mono", "Liberation Mono"]
+    for family in candidates:
+        if family.casefold() in available:
+            return (available[family.casefold()], size)
+    return (default, size)
 
 
 def set_language(code: str) -> None:

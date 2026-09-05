@@ -23,9 +23,10 @@ MAX_ASAR_SIZE: int = 8 * 1024 * 1024 * 1024
 # ================= UI 常量 =================
 DEFAULT_FONT_SIZE: int = 9
 LARGE_FONT_SIZE: int = 11
-LOG_AREA_HEIGHT: int = 12
+LOG_AREA_HEIGHT: int = 6
 WINDOW_MIN_WIDTH: int = 800
 WINDOW_MIN_HEIGHT: int = 680
+WINDOW_DEFAULT_HEIGHT: int = 800
 
 # ================= 目录和文件命名常量 =================
 UNPACKED_DIR_NAME: str = "_Unpacked"

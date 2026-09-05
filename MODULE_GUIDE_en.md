@@ -51,7 +51,7 @@ Use the [technical reference](TECHNICAL_REFERENCE.md) and source for current con
 
 | Module | Responsibility | Notes |
 |------|------|------|
-| `gui.tabs.patch_tab` | Patch-install tab | Available in both editions, including custom ZIP selection. The main page gives operation guidance; confirmation dialogs explain risks. |
+| `gui.tabs.patch_tab` | Patch-install tab | Available in both editions. Enabled by default when bundled; the toolbox tab stays disabled until enabled in Developer Tools, and installation requires a selected ZIP. The main page gives operation guidance; confirmation dialogs explain risks. |
 | `gui.tabs.save_tab` | Save-management tab | Connects to `SaveManagerController` for scan, backup, restore, delete, and migration. Separate backups remain accessible when the save directory is missing; users can select a restore destination. |
 | `gui.tabs.tools_tab` | Developer tools tab | Hosts ASAR pack/extract, Fuse editing, config validation, and related utilities. |
 

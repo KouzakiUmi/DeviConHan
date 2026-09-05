@@ -12,12 +12,14 @@ import queue
 import shutil
 import sys
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Optional
 
 from controllers.patch_controller import PatchController
 from controllers.save_manager_controller import SaveManagerController
 from core.config import get_config
+from core.patch_info import has_embedded_patch
 from core.patcher import CoreLogic
 from core.save_service import SaveService
 from gui.about_dialog import show_about_dialog
@@ -26,6 +28,7 @@ from utils.constants import (
     CORRUPTED_SUFFIX,
     DEFAULT_DIALOG_TIMEOUT,
     LOG_AREA_HEIGHT,
+    WINDOW_DEFAULT_HEIGHT,
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
 )
@@ -79,6 +82,7 @@ class App(tk.Tk):
         self.config_file = get_user_config_path()
 
         self.load_config()
+        self._init_patch_settings()
 
         # 初始化性能监控器
         self.performance_monitor = get_performance_monitor()
@@ -94,6 +98,30 @@ class App(tk.Tk):
         self._process_ui_queue()
 
         self.init_ui()
+
+    def _init_patch_settings(self):
+        self.has_bundled_patch = has_embedded_patch()
+        self.patch_enabled_key = (
+            "patch_enabled_bundled" if self.has_bundled_patch else "patch_enabled_toolbox"
+        )
+        enabled = self.get_config_value(self.patch_enabled_key, self.has_bundled_patch)
+        self.var_patch_enabled = tk.BooleanVar(master=self, value=enabled)
+        self.selected_patch_zip = None
+
+    def on_patch_enabled_changed(self):
+        if self.is_operating:
+            self.var_patch_enabled.set(not self.var_patch_enabled.get())
+            messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress"))
+            return
+        self.refresh_patch_access()
+        self.save_config()
+
+    def refresh_patch_access(self):
+        enabled = self.var_patch_enabled.get()
+        if not enabled and self.notebook.select() == str(self.tab_patch):
+            self.notebook.select(self.tab_tools)
+        self.notebook.tab(self.tab_patch, state="normal" if enabled else "disabled")
+        self.tab_patch.refresh_patch_access()
 
     def _process_ui_queue(self):
         """处理来自后台线程的UI更新任务"""
@@ -127,7 +155,7 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_window_close)
 
         self.title(T("app_title"))
-        self.geometry(f"{WINDOW_MIN_WIDTH}x{WINDOW_MIN_HEIGHT}")
+        self.geometry(f"{WINDOW_MIN_WIDTH}x{WINDOW_DEFAULT_HEIGHT}")
         self.minsize(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT)
 
         default_font = get_font(9)
@@ -182,6 +210,7 @@ class App(tk.Tk):
 
         self.tab_tools = ToolsTab(self.notebook, self)
         self.notebook.add(self.tab_tools, text=T("tab_tools"))
+        self.refresh_patch_access()
 
         self.log_frame = ttk.LabelFrame(self, text=T("log_frame"))
         self.log_frame.pack(fill="x", padx=5, pady=5, side="bottom")
@@ -189,7 +218,11 @@ class App(tk.Tk):
             self.log_frame,
             height=LOG_AREA_HEIGHT,
             state="disabled",
-            font=get_mono_font(9),
+            font=get_mono_font(10, available_families=tkfont.families(self)),
+            spacing1=1,
+            spacing3=1,
+            padx=6,
+            pady=4,
         )
         self.log_area.pack(fill="both", padx=5, pady=5)
 
@@ -286,6 +319,8 @@ class App(tk.Tk):
 
             # 收集所有需要保存的配置项
             config_dict = {}
+            if hasattr(self, "var_patch_enabled"):
+                config_dict[self.patch_enabled_key] = str(self.var_patch_enabled.get()).lower()
             if hasattr(self, "var_plat") and self.var_plat is not None:
                 config_dict["platform"] = str(self.var_plat.get())
 

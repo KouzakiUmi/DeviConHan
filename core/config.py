@@ -250,7 +250,7 @@ class AppConfig:
         """
         try:
             # 定义特殊处理的配置项
-            bool_keys = {"use_zip", "show_console"}
+            bool_keys = {"use_zip", "show_console", "patch_enabled_bundled", "patch_enabled_toolbox"}
             if key in bool_keys:
                 fallback = (
                     bool(default) if default is not None else (True if key == "use_zip" else False)

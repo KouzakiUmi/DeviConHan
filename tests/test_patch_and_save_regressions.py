@@ -10,6 +10,7 @@ from controllers.save_manager_controller import SaveManagerController
 from core.save_service import SaveService
 from gui.tabs.patch_tab import PatchTab
 from gui.tabs.save_tab import SaveTab
+from utils.language import T
 from utils.operation_lock import FileOperationLock
 
 
@@ -105,7 +106,11 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
     def test_patch_tab_selects_resets_and_submits_custom_patch(self):
         tab = PatchTab.__new__(PatchTab)
         tab.default_patch_zip = os.path.abspath("Patch.zip")
-        tab.var_patch_zip = _VarStub(tab.default_patch_zip)
+        tab.var_patch_zip = _VarStub(T("lbl_bundled_patch"))
+        tab.app = SimpleNamespace(
+            var_patch_enabled=_VarStub(True), has_bundled_patch=True,
+            selected_patch_zip=None, is_operating=False,
+        )
         custom_patch = os.path.abspath("custom.zip")
 
         with patch("gui.tabs.patch_tab.filedialog.askopenfilename", return_value=custom_patch):
@@ -113,7 +118,8 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
         self.assertEqual(tab.var_patch_zip.get(), custom_patch)
 
         tab.use_default_patch()
-        self.assertEqual(tab.var_patch_zip.get(), tab.default_patch_zip)
+        self.assertEqual(tab.var_patch_zip.get(), T("lbl_bundled_patch"))
+        self.assertIsNone(tab.app.selected_patch_zip)
 
         tab._pending_patch_zip = custom_patch
         tab.after = lambda _delay, callback: callback()
@@ -121,6 +127,8 @@ class TestPatchAndSaveRegressions(unittest.TestCase):
             performance_monitor=Mock(),
             patch_controller=Mock(),
             _finish_operation=Mock(),
+            var_patch_enabled=_VarStub(True),
+            has_bundled_patch=True,
         )
         tab.app.patch_controller.run_auto_patch.return_value = (True, None, "")
         cancellation_check = Mock()

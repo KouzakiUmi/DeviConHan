@@ -81,9 +81,11 @@ For the patch version, provide an existing `Patch.zip` or a nonempty `Patch/` di
 
 ## 🎮 Patching and Restoration
 
-1. Close the game, choose the bundled patch or a custom ZIP on the patch tab, then install. Both editions provide installation and restoration controls.
+1. Close the game, choose the bundled patch or a custom ZIP on the patch tab, then install. In the toolbox edition, first enable patch installation under Developer Tools → Configuration. You can then open the first tab and choose a ZIP. The bundled edition enables this option by default.
 2. Before switching patches, verify game files in Steam or restore the original files, then install a patch for that game version.
 3. For game-file problems, first use Steam Properties → Installed Files → Verify integrity of game files.
+
+**🌐 English Patch**: [EnglishPatch.zip](EnglishPatch.zip) is the English-language patch for `でびるコネクショん` (Devil Connection). Select it as a custom ZIP using the steps above.
 
 > 💡 **Patch compatibility**: The tool extracts the original ASAR, overwrites corresponding files with the new Patch, and repacks it. A mismatched game version or existing modifications may mix incompatible files, cause inconsistent content, or prevent the game from running.
 
@@ -127,6 +129,8 @@ See [DOCS_INDEX_en.md](DOCS_INDEX_en.md) for the English documentation entry poi
 
 **Config**:
 User config copied from template to `~/.tyranopatcher/config.ini` on all platforms; `~` means `%USERPROFILE%` on Windows. Supports all keys with fallbacks. Use Tools tab to validate/reset. Logs default to `~/.tyranopatcher/tyrano_patcher.log`; user-facing progress follows the selected language, while internal diagnostics use English.
+
+**Log Display**: The default window is `800 × 800`, with a six-row log area, 10-point text, and extra line spacing. Chinese logs prefer an installed CJK monospace font, then a local CJK font such as Microsoft YaHei UI; the English interface retains monospace text.
 
 **Running Logic** (from code):
 1. Bootstrap: config load, paths, state checks and interrupted-operation recovery. These checks do not certify official game files.

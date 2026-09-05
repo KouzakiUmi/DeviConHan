@@ -204,6 +204,13 @@ class ToolsTab(ttk.Frame):
         lf3 = ttk.LabelFrame(self, text=T("grp_config"), padding=10)
         lf3.pack(fill="x", pady=10)
 
+        ttk.Checkbutton(
+            lf3,
+            text=T("chk_enable_patch"),
+            variable=self.app.var_patch_enabled,
+            command=self.app.on_patch_enabled_changed,
+        ).pack(anchor="w", pady=(0, 10))
+
         if sys.platform.startswith("win"):
             box_debug = ttk.Frame(lf3)
             box_debug.pack(fill="x", pady=(0, 10))
@@ -243,6 +250,9 @@ class ToolsTab(ttk.Frame):
             self.app.log("Configuration validation failed!")
 
     def _reset_config(self):
+        if self.app.is_operating:
+            messagebox.showwarning(T("title_warning"), T("warn_operation_in_progress"))
+            return
         from utils.paths import get_resource_path
 
         if not messagebox.askyesno(T("title_confirm"), T("msg_reset_confirm")):
@@ -256,6 +266,8 @@ class ToolsTab(ttk.Frame):
             if os.path.exists(default_config_path):
                 shutil.copy2(default_config_path, user_config_path)
                 config.reload()
+                self.app.var_patch_enabled.set(self.app.has_bundled_patch)
+                self.app.refresh_patch_access()
                 messagebox.showinfo(T("title_success"), T("msg_reset_success"))
                 self.app.log("Configuration reset to default successfully.")
             else:

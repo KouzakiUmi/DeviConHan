@@ -249,7 +249,7 @@ schedule_delayed_cleanup("C:\\temp\\old_dir", delay_seconds=60)
 | `init_lang()` | 初始化语言设置 |
 | `detect_lang()` | 自动检测系统语言 |
 | `get_font(size, weight)` | 根据平台和语言返回合适的 UI 字体 |
-| `get_mono_font(size)` | 返回合适的等宽字体 |
+| `get_mono_font(size, available_families=None)` | 按语言选择日志字体；优先已安装的中日文等宽字体，缺少时回退到可读的本地字体，英文保持等宽 |
 
 ### 使用示例
 
@@ -278,6 +278,8 @@ message = T("unknown_key", "Default Text")
 ### 主要功能
 
 初始化滚动日志（Rotating File Handler），支持控制台和文件输出。内部诊断日志使用英文；用户可见提示和进度使用 `T()`，新增键同步提供三语翻译。
+
+GUI 默认窗口为 `800 × 800`，日志控件默认按 6 行设置，可用滚动条查看历史内容。日志区从 Tk 字体清单中选择字体，使用 10 磅字号并增加行距；中文 Windows 环境优先中文等宽字体，其次使用微软雅黑 UI，避免直接以 Consolas 显示中文。
 
 | 函数 | 描述 |
 |------|------|
