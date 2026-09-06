@@ -103,6 +103,7 @@ jobs:
           sparse-checkout: |
             .github
             README.md
+            EnglishPatch.zip
           sparse-checkout-cone-mode: false
 
       - name: Generate Build Info
@@ -160,6 +161,10 @@ jobs:
           
           echo "New nightly tag created and pushed"
 
+      - name: Include English Patch Package
+        run: |
+          cp EnglishPatch.zip all_artifacts/EnglishPatch.zip
+
       - name: Release Nightly
         uses: softprops/action-gh-release@v2
         with:
@@ -174,6 +179,9 @@ jobs:
 
             **更新日志:**
             ${{ github.event.head_commit.message }}
+
+            **Notes:**
+            > EnglishPatch.zip is included as a separate asset. Users who need the English language patch should download it independently from the file list below.
           files: all_artifacts/*
           prerelease: true
           draft: false
