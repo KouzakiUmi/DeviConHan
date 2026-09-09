@@ -18,6 +18,7 @@ from utils.constants import (
     UNPACKED_DIR_NAME,
 )
 from utils.language import T
+from utils.paths import normalize_path
 from utils.platform import get_platform_info, get_resources_path
 from utils.validators import ValidationError, sanitize_user_path
 
@@ -128,8 +129,10 @@ class ToolsTab(ttk.Frame):
     ) -> str:
         path = sanitize_user_path(raw_value, allow_empty=False)
 
-        if len(path) > MAX_PATH_LENGTH and not path.startswith("\\\\?\\"):
-            raise ValidationError(f"Path exceeds maximum supported length ({MAX_PATH_LENGTH})")
+        if os.name == "nt" and len(path) >= MAX_PATH_LENGTH and not path.startswith("\\\\?\\"):
+            path = normalize_path(path)
+            if not path:
+                raise ValidationError("Path could not be normalized")
 
         if must_exist and not os.path.exists(path):
             raise ValidationError(T("err_path_not_exist", f"Path does not exist: {path}"))

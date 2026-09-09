@@ -1,10 +1,12 @@
+import os
 import stat
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from utils.file_ops import detect_patch_zip_root, safe_extract_zip
+from utils.file_ops import detect_patch_zip_root, safe_extract_zip, verify_directory_safe
+from utils.paths import safe_path_within
 
 
 class TestFileOpsSecurity(unittest.TestCase):
@@ -80,6 +82,17 @@ class TestFileOpsSecurity(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "Symlink not allowed"):
                 safe_extract_zip(str(zip_path), str(dest))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX symlink semantics are required")
+    def test_rejects_existing_symlink_escape(self):
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside:
+            root = Path(td) / "root"
+            root.mkdir()
+            linked = root / "linked"
+            linked.symlink_to(outside, target_is_directory=True)
+
+            self.assertIsNone(safe_path_within("linked/payload", str(root)))
+            self.assertFalse(verify_directory_safe(str(root)))
 
 
 if __name__ == "__main__":

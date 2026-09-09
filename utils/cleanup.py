@@ -88,24 +88,61 @@ def force_cleanup_dir(temp_dir: str, max_retries: int = 3) -> bool:
         bool: 是否成功清理
     """
     if not os.path.exists(temp_dir):
+        # A dangling symlink is not reported by exists(), but it is still a
+        # stale cleanup target.  Remove the link itself, never its target.
+        if os.path.islink(temp_dir):
+            try:
+                os.unlink(temp_dir)
+            except OSError as e:
+                logger.warning(f"Failed to remove stale cleanup symlink {temp_dir}: {e}")
+                return False
         logger.debug(f"Temp directory already removed: {temp_dir}")
         return True
 
+    if os.path.islink(temp_dir):
+        try:
+            os.unlink(temp_dir)
+            return not os.path.lexists(temp_dir)
+        except OSError as e:
+            logger.warning(f"Failed to remove cleanup symlink {temp_dir}: {e}")
+            return False
+
     # 1. 修改所有文件和目录的只读属性
     def chmod_recursive():
+        try:
+            # The root itself also needs write + execute permission for
+            # deleting its children and for the final rmdir call.
+            os.chmod(temp_dir, stat.S_IWRITE | stat.S_IRUSR | stat.S_IEXEC)
+        except OSError as e:
+            logger.debug(f"Failed to chmod cleanup root: {temp_dir} - {e}")
+
         for root, dirs, files in os.walk(temp_dir):
+            for name in list(dirs):
+                dir_path = os.path.join(root, name)
+                if os.path.islink(dir_path):
+                    dirs.remove(name)
+                    try:
+                        os.unlink(dir_path)
+                    except OSError as e:
+                        logger.debug(f"Failed to remove symlink during cleanup: {dir_path} - {e}")
+                    continue
+                try:
+                    # POSIX directories need execute permission to be
+                    # traversed.  Without it, rmtree/manual cleanup cannot
+                    # enter nested directories after this chmod pass.
+                    os.chmod(dir_path, stat.S_IWRITE | stat.S_IRUSR | stat.S_IEXEC)
+                except OSError as e:
+                    logger.debug(f"Failed to chmod directory during cleanup: {dir_path} - {e}")
+
             for name in files:
                 file_path = os.path.join(root, name)
                 try:
+                    if os.path.islink(file_path):
+                        os.unlink(file_path)
+                        continue
                     os.chmod(file_path, stat.S_IWRITE | stat.S_IRUSR)
                 except OSError as e:
                     logger.debug(f"Failed to chmod file during cleanup: {file_path} - {e}")
-            for name in dirs:
-                dir_path = os.path.join(root, name)
-                try:
-                    os.chmod(dir_path, stat.S_IWRITE | stat.S_IRUSR)
-                except OSError as e:
-                    logger.debug(f"Failed to chmod directory during cleanup: {dir_path} - {e}")
 
     # 2. 尝试使用 shutil.rmtree
     def rmtree_attempt():
@@ -124,7 +161,11 @@ def force_cleanup_dir(temp_dir: str, max_retries: int = 3) -> bool:
                     pass
             for name in dirs:
                 try:
-                    os.rmdir(os.path.join(root, name))
+                    path = os.path.join(root, name)
+                    if os.path.islink(path):
+                        os.unlink(path)
+                    else:
+                        os.rmdir(path)
                 except Exception:
                     pass
         try:

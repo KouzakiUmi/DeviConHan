@@ -95,8 +95,15 @@ def safe_path_within(path: str, base_dir: str) -> Optional[str]:
         abs_base = os.path.normpath(os.path.abspath(base_dir))
         abs_path = os.path.normpath(os.path.abspath(os.path.join(abs_base, path)))
 
-        base_normalized = os.path.normcase(abs_base).replace("\\", "/").rstrip("/") + "/"
-        path_normalized = os.path.normcase(abs_path).replace("\\", "/")
+        # Lexical normalization does not protect against an existing
+        # symlink component escaping the base directory.  Resolve both paths
+        # for the containment check while returning the original normalized
+        # path so callers retain their intended destination spelling.
+        real_base = os.path.realpath(abs_base)
+        real_path = os.path.realpath(abs_path)
+
+        base_normalized = os.path.normcase(real_base).replace("\\", "/").rstrip("/") + "/"
+        path_normalized = os.path.normcase(real_path).replace("\\", "/")
 
         path_normalized = path_normalized.rstrip("/") + "/"
         base_normalized = base_normalized.rstrip("/") + "/"

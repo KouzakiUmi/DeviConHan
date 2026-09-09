@@ -63,7 +63,18 @@ def get_platform_info() -> PlatformInfo:
         )
     elif system.startswith("linux"):
         system_name = "linux"
-        steam_path = os.path.join(os.path.expanduser("~/.steam/steam"), "steamapps", "common")
+        home = os.path.expanduser("~")
+        linux_roots = [
+            os.path.join(home, ".steam", "steam"),
+            os.path.join(home, ".steam", "root"),
+            os.path.join(home, ".local", "share", "Steam"),
+            os.path.join(
+                home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"
+            ),
+            os.path.join(home, ".var", "app", "com.valvesoftware.Steam", "data", "Steam"),
+        ]
+        steam_root = next((path for path in linux_roots if os.path.isdir(path)), linux_roots[0])
+        steam_path = os.path.join(steam_root, "steamapps", "common")
     else:
         system_name = "unknown"
         steam_path = ""
@@ -149,7 +160,12 @@ def _get_steam_install_path() -> Optional[str]:
         home = os.path.expanduser("~")
         for candidate in [
             os.path.join(home, ".steam", "steam"),
+            os.path.join(home, ".steam", "root"),
             os.path.join(home, ".local", "share", "Steam"),
+            os.path.join(
+                home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"
+            ),
+            os.path.join(home, ".var", "app", "com.valvesoftware.Steam", "data", "Steam"),
         ]:
             if os.path.isdir(candidate):
                 return candidate

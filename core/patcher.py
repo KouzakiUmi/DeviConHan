@@ -26,7 +26,15 @@ class CoreLogic:
     def remove_readonly_handler(func, path, excinfo):
         """删除只读属性的回调函数"""
         try:
-            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+            if os.path.islink(path):
+                os.unlink(path)
+                return
+            mode = stat.S_IRUSR | stat.S_IWUSR
+            if os.path.isdir(path):
+                # Directories require execute permission to be traversed on
+                # POSIX; chmod(600) makes a retry fail with the same error.
+                mode |= stat.S_IXUSR
+            os.chmod(path, mode)
             func(path)
         except Exception as e:
             logger.debug(f"Failed to remove readonly: {e}")

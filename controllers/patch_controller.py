@@ -32,7 +32,7 @@ from utils.disk_utils import (
 from utils.file_ops import detect_patch_zip_root, safe_extract_zip
 from utils.language import T
 from utils.operation_lock import FileOperationLock, OperationType
-from utils.paths import get_resource_path, safe_path_within
+from utils.paths import get_resource_path, normalize_path, safe_path_within
 from utils.platform import get_platform_info, get_resources_path
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ def recover_incomplete_patch(base_dir: str) -> Optional[str]:
     always rolled back to the known backup rather than trying to guess whether
     a partially-written ASAR is usable.
     """
+    base_dir = normalize_path(base_dir) or base_dir
     marker = _transaction_path(base_dir)
     if not os.path.exists(marker):
         return None
@@ -214,7 +215,7 @@ class PatchController:
             (是否满足, 错误消息)
         """
         # 优先使用检测到的游戏目录，否则使用当前目录
-        base = get_runtime_game_path() or os.path.abspath(".")
+        base = normalize_path(get_runtime_game_path() or os.path.abspath("."))
         cfg = get_config()
 
         # 跨平台资源路径处理
@@ -283,7 +284,7 @@ class PatchController:
             return False, None, T("warn_operation_in_progress")
 
         cfg = get_config()
-        base = get_runtime_game_path() or os.path.abspath(".")
+        base = normalize_path(get_runtime_game_path() or os.path.abspath("."))
         asar = os.path.join(
             get_resources_path(base, get_platform_info().system), cfg.target_asar_name
         )
@@ -309,7 +310,7 @@ class PatchController:
             return False, T("warn_operation_in_progress", "Another operation is in progress.")
 
         cfg = get_config()
-        base = get_runtime_game_path() or os.path.abspath(".")
+        base = normalize_path(get_runtime_game_path() or os.path.abspath("."))
         asar = os.path.join(
             get_resources_path(base, get_platform_info().system), cfg.target_asar_name
         )
@@ -383,7 +384,7 @@ class PatchController:
         patch_zip_path: Optional[str] = None,
     ) -> Tuple[bool, Optional[str], str]:
         """实际的补丁安装逻辑"""
-        base = get_runtime_game_path() or os.path.abspath(".")
+        base = normalize_path(get_runtime_game_path() or os.path.abspath("."))
         cfg = get_config()
 
         # 跨平台资源路径处理
@@ -401,7 +402,9 @@ class PatchController:
         patch_zip = bundled_patch_zip
         using_custom_patch = False
         if patch_zip_path and os.fspath(patch_zip_path).strip():
-            patch_zip = os.path.abspath(os.path.expanduser(os.fspath(patch_zip_path).strip()))
+            patch_zip = normalize_path(os.path.expanduser(os.fspath(patch_zip_path).strip()))
+            if not patch_zip:
+                return False, None, "Invalid custom patch ZIP path."
             using_custom_patch = os.path.normcase(os.path.normpath(patch_zip)) != os.path.normcase(
                 os.path.normpath(os.path.abspath(bundled_patch_zip))
             )

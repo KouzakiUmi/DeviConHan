@@ -445,17 +445,28 @@ def verify_directory_safe(directory: str) -> bool:
     Returns:
         bool: 目录是否安全（所有路径都在目录内）
     """
-    if not directory or not os.path.exists(directory):
+    if not directory:
+        return True
+
+    # A caller-provided symlink as the extraction root would make every
+    # lexical child appear safe while writes actually land elsewhere.
+    if os.path.islink(directory):
+        logger.error(f"Extraction root must not be a symbolic link: {directory}")
+        return False
+
+    if not os.path.exists(directory):
         return True
 
     try:
-        abs_dir = os.path.normpath(os.path.abspath(directory))
+        abs_dir = os.path.normcase(os.path.realpath(os.path.normpath(os.path.abspath(directory))))
         dir_with_sep = abs_dir if abs_dir.endswith(os.sep) else abs_dir + os.sep
 
         for root, dirs, files in os.walk(directory):
             for name in dirs + files:
                 item_path = os.path.join(root, name)
-                abs_item = os.path.normpath(os.path.abspath(item_path))
+                abs_item = os.path.normcase(
+                    os.path.realpath(os.path.normpath(os.path.abspath(item_path)))
+                )
 
                 if abs_item != abs_dir and not abs_item.startswith(dir_with_sep):
                     logger.error(

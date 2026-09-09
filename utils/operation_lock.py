@@ -20,6 +20,8 @@ from enum import Enum
 from functools import wraps
 from typing import Callable, Optional, Set, TextIO
 
+from utils.paths import normalize_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -209,7 +211,8 @@ class FileOperationLock:
     """
 
     def __init__(self, target_path: str) -> None:
-        self.path = os.path.abspath(target_path) + ".tyranopatcher.lock"
+        normalized = normalize_path(target_path)
+        self.path = (normalized or os.path.abspath(target_path)) + ".tyranopatcher.lock"
         self._file: Optional[TextIO] = None
         self._locked = False
 
