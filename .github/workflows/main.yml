@@ -104,6 +104,7 @@ jobs:
             .github
             README.md
             EnglishPatch.zip
+            EnglishPatchAlternative.zip
           sparse-checkout-cone-mode: false
 
       - name: Generate Build Info
@@ -164,6 +165,11 @@ jobs:
       - name: Include English Patch Package
         run: |
           cp EnglishPatch.zip all_artifacts/EnglishPatch.zip
+          # 另一个英文包版本（自然断句校对版）。原版与它同文件集、178 个文件内容不同，
+          # 两个都附在 release 里供玩家选择。
+          if [ -f EnglishPatchAlternative.zip ]; then
+            cp EnglishPatchAlternative.zip all_artifacts/EnglishPatchAlternative.zip
+          fi
 
       - name: Release Nightly
         uses: softprops/action-gh-release@v2
@@ -182,6 +188,7 @@ jobs:
 
             **Notes:**
             > EnglishPatch.zip is included as a separate asset. Users who need the English language patch should download it independently from the file list below.
+            > EnglishPatchAlternative.zip is an alternative English build of the same 209 files, with line breaks reworked against the Japanese script so sentences break at natural boundaries. Pick either one, not both.
           files: all_artifacts/*
           prerelease: true
           draft: false
